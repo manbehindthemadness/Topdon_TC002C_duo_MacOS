@@ -10,10 +10,6 @@ import numpy as np
 from .camera import decode_duo_frame, raw_temperatures
 
 
-class InvalidThermalFrame(ValueError):
-    """Raised when a startup/desynchronized frame is not physically plausible."""
-
-
 @dataclass(frozen=True)
 class TemperatureStats:
     minimum: float
@@ -52,15 +48,6 @@ class ThermalRenderer:
 
     def render(self, frame: bytes) -> tuple[np.ndarray, TemperatureStats]:
         _telemetry, raw, _preview = decode_duo_frame(frame)
-        current_celsius = raw_temperatures(raw, ambient_celsius=self.ambient_celsius)
-        median = float(np.median(current_celsius))
-        garbage_fraction = float(
-            np.mean((current_celsius < -40.0) | (current_celsius > 300.0))
-        )
-        if not -25.0 <= median <= 160.0 or garbage_fraction >= 0.02:
-            raise InvalidThermalFrame(
-                f"implausible frame: median={median:.1f} C, garbage={garbage_fraction:.1%}"
-            )
 
         if self._average_raw is None:
             self._average_raw = raw.astype(np.float32)
@@ -70,11 +57,10 @@ class ThermalRenderer:
         averaged = self._average_raw
         celsius = raw_temperatures(averaged, ambient_celsius=self.ambient_celsius)
         center_y, center_x = celsius.shape[0] // 2, celsius.shape[1] // 2
-        inner = celsius[2:-2, 2:-2]
         stats = TemperatureStats(
-            minimum=float(inner.min()),
-            average=float(inner.mean()),
-            maximum=float(inner.max()),
+            minimum=float(celsius.min()),
+            average=float(celsius.mean()),
+            maximum=float(celsius.max()),
             center=float(celsius[center_y, center_x]),
         )
 

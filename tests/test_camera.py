@@ -17,7 +17,6 @@ from topdon_duo.camera import (
     parse_probe,
     raw_temperatures,
 )
-from topdon_duo.render import InvalidThermalFrame, ThermalRenderer
 
 
 def make_frame(raw_value: int = 20_000) -> bytes:
@@ -64,11 +63,3 @@ def test_decode_and_temperature_conversion():
 def test_decode_rejects_wrong_magic():
     with pytest.raises(ValueError, match="invalid Duo frame magic"):
         decode_duo_frame(bytes(FRAME_BYTES))
-
-
-def test_renderer_rejects_large_absurd_temperature_band():
-    values = np.frombuffer(bytearray(make_frame()), dtype="<u2")
-    temperature = values[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS]
-    temperature[: SENSOR_PIXELS // 5] = 50_000
-    with pytest.raises(InvalidThermalFrame):
-        ThermalRenderer().render(values.tobytes())
