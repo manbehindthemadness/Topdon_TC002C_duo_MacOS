@@ -61,6 +61,8 @@ sudo .venv/bin/topdon-duo-desktop --ambient 21.9 --rotate 90
 Controls:
 
 - Move the mouse over the image to inspect the exact sensor pixel temperature.
+- Resize the window freely; the image and pixel picker follow its displayed size.
+- Scroll the mouse wheel to adjust the ambient anchor by 0.1 °C per step.
 - Press `s` to save a capture.
 - Press `o` to rotate clockwise.
 - Press Space to show or hide the on-screen control instructions.

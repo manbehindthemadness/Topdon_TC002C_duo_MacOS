@@ -24,10 +24,21 @@ WINDOW_NAME = "TOPDON TC002C Duo"
 class MousePicker:
     x: int | None = None
     y: int | None = None
+    ambient_steps: int = 0
 
-    def callback(self, event: int, x: int, y: int, _flags: int, _parameter) -> None:
+    def callback(self, event: int, x: int, y: int, flags: int, _parameter) -> None:
         if event in (cv2.EVENT_MOUSEMOVE, cv2.EVENT_LBUTTONDOWN):
             self.x, self.y = x, y
+        elif event == cv2.EVENT_MOUSEWHEEL:
+            delta = (flags >> 16) & 0xFFFF
+            if delta >= 0x8000:
+                delta -= 0x10000
+            if delta:
+                self.ambient_steps += 1 if delta > 0 else -1
+
+    def consume_ambient_steps(self) -> int:
+        steps, self.ambient_steps = self.ambient_steps, 0
+        return steps
 
 
 def _restore_user_ownership(paths: list[Path]) -> None:
@@ -95,26 +106,33 @@ def save_capture(
 
 
 def draw_picker(
-    rendered: RenderedThermalFrame, picker: MousePicker, scale: int
+    rendered: RenderedThermalFrame,
+    picker: MousePicker,
+    scale: int,
+    viewport_size: tuple[int, int] | None = None,
 ) -> tuple[np.ndarray, tuple[int, int] | None]:
     image = rendered.image.copy()
     if picker.x is None or picker.y is None:
         return image, None
-    sensor_x = min(max(picker.x // scale, 0), rendered.temperatures_celsius.shape[1] - 1)
-    sensor_y = min(max(picker.y // scale, 0), rendered.temperatures_celsius.shape[0] - 1)
+    image_x, image_y = picker.x, picker.y
+    if viewport_size and viewport_size[0] > 0 and viewport_size[1] > 0:
+        image_x = round(image_x * image.shape[1] / viewport_size[0])
+        image_y = round(image_y * image.shape[0] / viewport_size[1])
+    sensor_x = min(max(image_x // scale, 0), rendered.temperatures_celsius.shape[1] - 1)
+    sensor_y = min(max(image_y // scale, 0), rendered.temperatures_celsius.shape[0] - 1)
     temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
 
     cv2.drawMarker(
         image,
-        (picker.x, picker.y),
+        (image_x, image_y),
         (80, 255, 80),
         markerType=cv2.MARKER_CROSS,
         markerSize=20,
         thickness=2,
     )
     text = f"({sensor_x}, {sensor_y}) {temperature:.2f} C"
-    text_x = min(picker.x + 12, max(5, image.shape[1] - 190))
-    text_y = max(52, picker.y - 12)
+    text_x = min(image_x + 12, max(5, image.shape[1] - 190))
+    text_y = max(52, image_y - 12)
     cv2.putText(
         image,
         text,
@@ -142,7 +160,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     """Draw a translucent keyboard/mouse help panel over the image."""
     result = image.copy()
     panel_width = min(390, result.shape[1] - 20)
-    panel_height = min(174, result.shape[0] - 20)
+    panel_height = min(199, result.shape[0] - 20)
     x0, y0 = 10, result.shape[0] - panel_height - 10
     x1, y1 = x0 + panel_width, y0 + panel_height
 
@@ -154,6 +172,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     lines = (
         ("Controls", (255, 255, 255)),
         ("Mouse move   Inspect pixel temperature", (210, 215, 225)),
+        ("Mouse wheel  Adjust ambient by 0.1 C", (210, 215, 225)),
         ("S            Save PNG + radiometric data", (210, 215, 225)),
         ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
         ("Space        Hide controls", (210, 215, 225)),
@@ -199,16 +218,38 @@ def main(argv: list[str] | None = None) -> int:
     show_instructions = False
 
     print(
-        "Mouse: inspect a pixel | s: save PNG + radiometric data | "
-        "o: rotate | Space: controls | q/Esc: quit"
+        "Mouse: inspect a pixel | wheel: ambient +/- 0.1 C | "
+        "s: save | o: rotate | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
-        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
         cv2.setMouseCallback(WINDOW_NAME, picker.callback)
+        initial_window_size_set = False
         for frame in camera.frames():
+            ambient_steps = picker.consume_ambient_steps()
+            if ambient_steps:
+                renderer.ambient_celsius = round(
+                    renderer.ambient_celsius + ambient_steps * 0.1,
+                    1,
+                )
             rendered = renderer.render_detailed(frame)
-            display, selected = draw_picker(rendered, picker, renderer.scale)
+            if not initial_window_size_set:
+                cv2.resizeWindow(WINDOW_NAME, rendered.image.shape[1], rendered.image.shape[0])
+                initial_window_size_set = True
+            try:
+                _left, _top, viewport_width, viewport_height = cv2.getWindowImageRect(
+                    WINDOW_NAME
+                )
+                viewport_size = (viewport_width, viewport_height)
+            except cv2.error:
+                viewport_size = None
+            display, selected = draw_picker(
+                rendered,
+                picker,
+                renderer.scale,
+                viewport_size=viewport_size,
+            )
             if show_instructions:
                 display = draw_control_instructions(display)
             cv2.imshow(WINDOW_NAME, display)

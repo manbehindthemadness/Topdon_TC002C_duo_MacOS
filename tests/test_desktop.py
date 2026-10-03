@@ -3,7 +3,12 @@ import json
 import numpy as np
 from test_camera import make_frame
 
-from topdon_duo.desktop import draw_control_instructions, save_capture
+from topdon_duo.desktop import (
+    MousePicker,
+    draw_control_instructions,
+    draw_picker,
+    save_capture,
+)
 from topdon_duo.render import ThermalRenderer
 
 
@@ -38,3 +43,19 @@ def test_control_instructions_preserve_shape_and_draw_overlay():
     result = draw_control_instructions(image)
     assert result.shape == image.shape
     assert np.count_nonzero(result) > 0
+
+
+def test_mouse_wheel_accumulates_signed_ambient_steps():
+    picker = MousePicker()
+    picker.callback(10, 0, 0, 120 << 16, None)
+    picker.callback(10, 0, 0, 0xFF88 << 16, None)
+    picker.callback(10, 0, 0, 120 << 16, None)
+    assert picker.consume_ambient_steps() == 1
+    assert picker.consume_ambient_steps() == 0
+
+
+def test_picker_maps_resized_viewport_to_sensor_pixel():
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    picker = MousePicker(x=192, y=144)
+    _image, selected = draw_picker(rendered, picker, scale=3, viewport_size=(384, 288))
+    assert selected == (128, 96)

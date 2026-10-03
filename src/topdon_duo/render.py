@@ -114,7 +114,8 @@ class ThermalRenderer:
         )
         label = (
             f"Min {stats.minimum:.1f} C   Avg {stats.average:.1f} C   "
-            f"Max {stats.maximum:.1f} C   Center {stats.center:.1f} C"
+            f"Max {stats.maximum:.1f} C   Center {stats.center:.1f} C   "
+            f"Ambient {self.ambient_celsius:.1f} C"
         )
         cv2.rectangle(heatmap, (0, 0), (heatmap.shape[1], 32), (0, 0, 0), -1)
         cv2.putText(
