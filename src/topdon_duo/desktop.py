@@ -138,6 +138,41 @@ def draw_picker(
     return image, (sensor_x, sensor_y)
 
 
+def draw_control_instructions(image: np.ndarray) -> np.ndarray:
+    """Draw a translucent keyboard/mouse help panel over the image."""
+    result = image.copy()
+    panel_width = min(390, result.shape[1] - 20)
+    panel_height = min(174, result.shape[0] - 20)
+    x0, y0 = 10, result.shape[0] - panel_height - 10
+    x1, y1 = x0 + panel_width, y0 + panel_height
+
+    overlay = result.copy()
+    cv2.rectangle(overlay, (x0, y0), (x1, y1), (8, 10, 16), -1)
+    cv2.addWeighted(overlay, 0.82, result, 0.18, 0, result)
+    cv2.rectangle(result, (x0, y0), (x1, y1), (120, 130, 150), 1)
+
+    lines = (
+        ("Controls", (255, 255, 255)),
+        ("Mouse move   Inspect pixel temperature", (210, 215, 225)),
+        ("S            Save PNG + radiometric data", (210, 215, 225)),
+        ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
+        ("Space        Hide controls", (210, 215, 225)),
+        ("Q / Esc      Quit", (210, 215, 225)),
+    )
+    for index, (line, color) in enumerate(lines):
+        cv2.putText(
+            result,
+            line,
+            (x0 + 14, y0 + 25 + index * 25),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.48 if index else 0.58,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
+    return result
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Native TOPDON TC002C Duo viewer")
     parser.add_argument("--ambient", type=float, default=22.0)
@@ -161,8 +196,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     camera = TC002CDuoCamera()
     picker = MousePicker()
+    show_instructions = False
 
-    print("Mouse: inspect a pixel | s: save PNG + radiometric data | o: rotate | q/Esc: quit")
+    print(
+        "Mouse: inspect a pixel | s: save PNG + radiometric data | "
+        "o: rotate | Space: controls | q/Esc: quit"
+    )
     try:
         camera.open()
         cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
@@ -170,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
         for frame in camera.frames():
             rendered = renderer.render_detailed(frame)
             display, selected = draw_picker(rendered, picker, renderer.scale)
+            if show_instructions:
+                display = draw_control_instructions(display)
             cv2.imshow(WINDOW_NAME, display)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
@@ -177,6 +218,8 @@ def main(argv: list[str] | None = None) -> int:
             if key == ord("o"):
                 renderer.rotate_clockwise()
                 picker.x = picker.y = None
+            elif key == ord(" "):
+                show_instructions = not show_instructions
             elif key == ord("s"):
                 saved = save_capture(
                     rendered,

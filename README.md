@@ -63,6 +63,7 @@ Controls:
 - Move the mouse over the image to inspect the exact sensor pixel temperature.
 - Press `s` to save a capture.
 - Press `o` to rotate clockwise.
+- Press Space to show or hide the on-screen control instructions.
 - Press `q` or Escape to quit.
 
 Each capture creates three files in `captures/`:

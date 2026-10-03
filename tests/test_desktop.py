@@ -3,7 +3,7 @@ import json
 import numpy as np
 from test_camera import make_frame
 
-from topdon_duo.desktop import save_capture
+from topdon_duo.desktop import draw_control_instructions, save_capture
 from topdon_duo.render import ThermalRenderer
 
 
@@ -31,3 +31,10 @@ def test_save_capture_preserves_raw_and_temperature_data(tmp_path):
     metadata = json.loads(json_path.read_text())
     assert metadata["selected_pixel"]["x"] == 10
     assert metadata["selected_pixel"]["raw_count"] == 20_000
+
+
+def test_control_instructions_preserve_shape_and_draw_overlay():
+    image = np.zeros((576, 768, 3), dtype=np.uint8)
+    result = draw_control_instructions(image)
+    assert result.shape == image.shape
+    assert np.count_nonzero(result) > 0
