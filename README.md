@@ -1,101 +1,102 @@
-# TOPDON TC002C Duo viewer for macOS
+# TOPDON TC002C Duo for macOS
 
-An experimental live thermal viewer for the TOPDON TC002C Duo on Apple Silicon
-macOS. It talks directly to the camera's USB Video Class bulk endpoint because
-AVFoundation/OpenCV can select one of the device's malformed UVC descriptors and
-crash before capture starts.
+An experimental native thermal-camera viewer for the TOPDON TC002C Duo on
+Apple Silicon Macs. It reads the camera directly over USB, extracts the native
+`256x192` 16-bit radiometric plane, and provides both an OpenCV desktop app and
+a browser-based MJPEG viewer.
 
-The viewer negotiates the camera's radiometric UVC mode (frame index 10), extracts
-its native `256x192` 16-bit temperature plane, and serves a false-colour MJPEG
-stream at <http://127.0.0.1:5001>.
+## Features
+
+- Live false-colour thermal video at the camera's 25 fps rate
+- Per-pixel temperature inspection
+- Resizable and rotatable desktop view
+- Adjustable ambient-temperature calibration
+- Celsius and Fahrenheit display modes
+- Native macOS Save dialog
+- PNG preview plus lossless NPZ radiometric data and JSON metadata
+- Optional local web viewer
 
 ## Requirements
 
-- macOS on Apple Silicon
-- Python 3.12+
+- Apple Silicon Mac running macOS
+- Python 3.12 or newer
 - [uv](https://docs.astral.sh/uv/)
-- A TOPDON TC002C Duo that settles as USB device `2bdf:0102`
+- TOPDON TC002C Duo (`2bdf:0102`)
 
-## Install and run
+## Quick start
 
 ```bash
 git clone https://github.com/manbehindthemadness/Topdon_TC002C_duo_MacOS.git
 cd Topdon_TC002C_duo_MacOS
 uv sync
 
-# macOS owns the UVC interfaces, so direct USB capture must run elevated.
-sudo .venv/bin/topdon-duo
+# Direct USB capture needs elevated access on macOS.
+sudo .venv/bin/topdon-duo-desktop --ambient 21.9 --rotate 90
 ```
 
-The Duo's temperature offset tracks its internal sensor temperature. By default,
-the viewer anchors the cold background to 22 °C. Set this to your measured room
-temperature for better absolute readings:
+Set `--ambient` to the measured room temperature for more useful absolute
+readings. Use `--rotate` with `0`, `90`, `180`, or `270` to choose the starting
+orientation.
 
-```bash
-sudo .venv/bin/topdon-duo --ambient 21.9
-```
+## Desktop controls
 
-Use the **Rotate 90° clockwise** button while viewing, or set the initial camera
-orientation on startup:
+The controls are available from the toolbar as well as the keyboard:
+
+| Action | Control |
+| --- | --- |
+| Inspect a pixel | Move the mouse over the image |
+| Adjust ambient temperature | Toolbar, `[` / `]`, slider, or mouse wheel when supported |
+| Save a capture | **Save** or `S` |
+| Rotate clockwise | **Rotate** or `O` |
+| Toggle Celsius/Fahrenheit | **Unit** or `F` |
+| Show control help | **Help** or Space |
+| Quit | **Quit**, `Q`, or Escape |
+
+Saving opens the native macOS Save dialog without pausing camera capture. A
+single chosen filename produces three matching files:
+
+- `.png` — the false-colour image
+- `.npz` — lossless `uint16` raw counts and `float32` Celsius temperatures
+- `.json` — capture time, statistics, orientation, ambient setting, and selected
+  pixel information
+
+Radiometric data remains in Celsius even when the viewer is displaying
+Fahrenheit.
+
+## Web viewer
+
+Start the local server:
 
 ```bash
 sudo .venv/bin/topdon-duo --ambient 21.9 --rotate 90
 ```
 
-Then open <http://127.0.0.1:5001>. Keep the default loopback host unless you
-intentionally want to expose the stream to your local network:
+Then open <http://127.0.0.1:5001>. To make it available on your local network:
 
 ```bash
 sudo .venv/bin/topdon-duo --host 0.0.0.0 --port 5001
 ```
 
-## Native desktop viewer
+Only use `0.0.0.0` when you intend to expose the viewer to other devices on the
+network.
 
-The OpenCV desktop viewer shows the temperature under the mouse pointer and can
-save a normal image together with the full radiometric data:
+## Diagnostics
 
-```bash
-sudo .venv/bin/topdon-duo-desktop --ambient 21.9 --rotate 90
-```
-
-Controls:
-
-- Click the top toolbar to adjust ambient temperature, save, rotate, switch
-  between Celsius and Fahrenheit, show help, or quit.
-- Move the mouse over the image to inspect the exact sensor pixel temperature.
-- Resize the window freely; the image and pixel picker follow its displayed size.
-- Use the ambient slider, `[` / `]`, or the mouse wheel (where delivered by the
-  window backend) to adjust the ambient anchor by 0.1 °C per step.
-- Press `s` to open the native macOS Save dialog. The stream continues running
-  while the dialog is open.
-- Press `o` to rotate clockwise.
-- Press `f` to toggle between Celsius and Fahrenheit. Saved radiometric arrays
-  remain in Celsius so captures retain a consistent scientific data format.
-- Press Space to show or hide the on-screen control instructions.
-- Press `q` or Escape to quit.
-
-Each capture creates three files with the chosen name in the selected folder:
-
-- `.png`: the displayed false-colour image.
-- `.npz`: lossless `uint16` raw counts and `float32` Celsius arrays.
-- `.json`: timestamp, temperature statistics, orientation, ambient setting, and
-  the selected pixel reading.
-
-Diagnostics that do not claim the camera can run without `sudo`:
+Camera discovery can be checked without claiming its USB interfaces:
 
 ```bash
 uv run topdon-duo --diagnose
 ```
 
-Press `Ctrl-C` to stop. The USB interfaces are released and the macOS drivers
-are reattached when possible.
+If capture cannot open the camera, disconnect other apps using it, reconnect the
+device, wait a moment for macOS to enumerate it, and run the viewer with `sudo`.
 
-## Temperature caveat
+## Temperature accuracy
 
-The radiometric mode has a validated gain of 1/64 °C per raw count, but its
-per-frame offset depends on the camera's internal temperature. The viewer tracks
-that drift by anchoring the second percentile to `--ambient`. It is useful for
-thermal contrast and approximate readings, but is not measurement-grade.
+The radiometric mode uses a validated gain of 1/64 °C per raw count. Its
+per-frame offset varies with the camera's internal temperature, so this project
+anchors the cold-background percentile to `--ambient`. The result is useful for
+thermal contrast and approximate readings, but it is not measurement-grade.
 
 ## Development
 
@@ -108,7 +109,7 @@ uv run ruff check .
 ## Acknowledgements
 
 This project began as a macOS adaptation of
-[tna76874/topdon](https://github.com/tna76874/topdon), which in turn credits
-PyThermalCamera and P2Pro-Viewer. The direct UVC handling is based on the
-published TC001N/`2bdf:0102` descriptor and streaming analysis by Samuel Loury.
-The original BSD 2-Clause license is retained.
+[tna76874/topdon](https://github.com/tna76874/topdon), which credits
+PyThermalCamera and P2Pro-Viewer. The direct UVC handling builds on published
+TC001N/`2bdf:0102` descriptor and streaming analysis by Samuel Loury. The
+original BSD 2-Clause license is retained.
