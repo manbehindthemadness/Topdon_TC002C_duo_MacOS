@@ -22,15 +22,24 @@ PRODUCT_ID = 0x0102
 VIDEO_STREAMING_INTERFACE = 1
 BULK_ENDPOINT = 0x81
 
-FRAME_WIDTH = 256
-FRAME_HEIGHT = 392
-PANE_HEIGHT = FRAME_HEIGHT // 2
+SENSOR_WIDTH = 256
+SENSOR_HEIGHT = 192
 FRAME_RATE = 25
 FRAME_INTERVAL = 400_000
-FRAME_BYTES = FRAME_WIDTH * FRAME_HEIGHT * 2
+
+# Frame index 10 is advertised as the intentionally odd 8x12578 YUY2 mode.
+# It is actually a flat array of 100624 little-endian uint16 values:
+# telemetry, a 256x192 temperature plane, then a 256x192 preview plane.
+FRAME_U16 = 100_624
+FRAME_BYTES = FRAME_U16 * 2
+FRAME_MAGIC = 0x70827773
+HEADER_U16 = 2_320
+SENSOR_PIXELS = SENSOR_WIDTH * SENSOR_HEIGHT
+TEMPERATURE_OFFSET = HEADER_U16
+IMAGE_OFFSET = TEMPERATURE_OFFSET + SENSOR_PIXELS
 
 FORMAT_INDEX = 1
-FRAME_INDEX = 1
+FRAME_INDEX = 10
 PROBE_LENGTH = 34
 SET_CUR = 0x01
 GET_CUR = 0x81
@@ -106,21 +115,39 @@ class FrameAssembler:
         return frame
 
 
-def decode_yuy2_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray]:
-    """Return the top YUY2 pane and bottom radiometric pane from a frame."""
+def decode_duo_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return the telemetry, raw temperature, and preview planes."""
     if len(frame) < FRAME_BYTES:
         raise ValueError(f"short frame: expected {FRAME_BYTES} bytes, got {len(frame)}")
-    array = np.frombuffer(frame[:FRAME_BYTES], dtype=np.uint8).reshape(
-        FRAME_HEIGHT, FRAME_WIDTH, 2
+    values = np.frombuffer(frame[:FRAME_BYTES], dtype="<u2")
+    magic = int(values[0]) | (int(values[1]) << 16)
+    if magic != FRAME_MAGIC:
+        raise ValueError(f"invalid Duo frame magic: 0x{magic:08x}")
+    telemetry = values[:HEADER_U16].copy()
+    temperatures = values[
+        TEMPERATURE_OFFSET : TEMPERATURE_OFFSET + SENSOR_PIXELS
+    ].reshape(SENSOR_HEIGHT, SENSOR_WIDTH).copy()
+    preview = (
+        values[IMAGE_OFFSET : IMAGE_OFFSET + SENSOR_PIXELS]
+        .astype(np.uint8)
+        .reshape(SENSOR_HEIGHT, SENSOR_WIDTH)
     )
-    return array[:PANE_HEIGHT].copy(), array[PANE_HEIGHT:].copy()
+    return telemetry, temperatures, preview
 
 
-def raw_temperatures(radiometric: np.ndarray) -> np.ndarray:
-    """Decode little-endian 16-bit radiometric values to uncalibrated Celsius."""
-    raw = radiometric[..., 0].astype(np.uint16)
-    raw |= radiometric[..., 1].astype(np.uint16) << 8
-    return raw.astype(np.float32) / 64.0 - 273.15
+def estimate_temperature_offset(raw: np.ndarray, ambient_celsius: float = 22.0) -> float:
+    """Anchor the stable cold-background percentile to ambient temperature."""
+    return float(np.percentile(raw, 2.0)) / 64.0 - ambient_celsius
+
+
+def raw_temperatures(
+    raw: np.ndarray, ambient_celsius: float = 22.0, offset: float | None = None
+) -> np.ndarray:
+    """Convert Duo raw counts to apparent Celsius using its 1/64 °C gain."""
+    raw_float = np.asarray(raw, dtype=np.float32)
+    if offset is None:
+        offset = estimate_temperature_offset(raw_float, ambient_celsius)
+    return raw_float / 64.0 - np.float32(offset)
 
 
 def build_probe() -> bytearray:
@@ -204,9 +231,7 @@ class TC002CDuoCamera:
             self.mode = self._negotiate()
             self._running.set()
             LOG.info(
-                "Negotiated %dx%d at %.1f fps (payload %d bytes)",
-                FRAME_WIDTH,
-                FRAME_HEIGHT,
+                "Negotiated TC002C Duo radiometric mode at %.1f fps (payload %d bytes)",
                 self.mode.fps,
                 self.mode.max_payload_size,
             )
@@ -255,7 +280,7 @@ class TC002CDuoCamera:
         mode = parse_probe(response)
         if (mode.format_index, mode.frame_index) != (FORMAT_INDEX, FRAME_INDEX):
             raise CameraError(
-                "camera rejected 256x392 mode "
+                "camera rejected TC002C Duo radiometric mode "
                 f"(returned format {mode.format_index}, frame {mode.frame_index})"
             )
 

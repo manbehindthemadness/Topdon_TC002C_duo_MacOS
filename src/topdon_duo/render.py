@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from .camera import decode_yuy2_frame, raw_temperatures
+from .camera import decode_duo_frame, raw_temperatures
 
 
 @dataclass(frozen=True)
@@ -27,15 +27,16 @@ class TemperatureStats:
 
 
 class ThermalRenderer:
-    def __init__(self, scale: int = 3, smoothing: float = 0.25) -> None:
+    def __init__(
+        self, scale: int = 3, smoothing: float = 0.25, ambient_celsius: float = 22.0
+    ) -> None:
         self.scale = scale
         self.smoothing = smoothing
+        self.ambient_celsius = ambient_celsius
         self._average_raw: np.ndarray | None = None
 
     def render(self, frame: bytes) -> tuple[np.ndarray, TemperatureStats]:
-        _image, radiometric = decode_yuy2_frame(frame)
-        raw = radiometric[..., 0].astype(np.uint16)
-        raw |= radiometric[..., 1].astype(np.uint16) << 8
+        _telemetry, raw, _preview = decode_duo_frame(frame)
 
         if self._average_raw is None:
             self._average_raw = raw.astype(np.float32)
@@ -43,7 +44,7 @@ class ThermalRenderer:
             cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
 
         averaged = self._average_raw
-        celsius = averaged / 64.0 - 273.15
+        celsius = raw_temperatures(averaged, ambient_celsius=self.ambient_celsius)
         center_y, center_x = celsius.shape[0] // 2, celsius.shape[1] // 2
         stats = TemperatureStats(
             minimum=float(celsius.min()),
@@ -95,5 +96,5 @@ class ThermalRenderer:
 
 def decode_temperatures(frame: bytes) -> np.ndarray:
     """Public helper for consumers that need the radiometric values."""
-    _, radiometric = decode_yuy2_frame(frame)
-    return raw_temperatures(radiometric)
+    _, raw, _ = decode_duo_frame(frame)
+    return raw_temperatures(raw)

@@ -40,7 +40,7 @@ PAGE = """<!doctype html>
 <body><main>
   <header><h1>TOPDON TC002C Duo</h1><span id="status">Connecting...</span></header>
   <img src="/stream.mjpg" alt="Live thermal camera stream">
-  <footer>Native 256x196 radiometric pane · 25 fps camera · uncalibrated temperatures</footer>
+  <footer>Native 256x192 radiometric plane · 25 fps camera · ambient-anchored temperatures</footer>
   <script>
     const status = document.querySelector('#status');
     setInterval(async () => {
@@ -57,9 +57,11 @@ PAGE = """<!doctype html>
 
 
 class LiveStream:
-    def __init__(self, camera: TC002CDuoCamera | None = None) -> None:
+    def __init__(
+        self, camera: TC002CDuoCamera | None = None, ambient_celsius: float = 22.0
+    ) -> None:
         self.camera = camera or TC002CDuoCamera()
-        self.renderer = ThermalRenderer()
+        self.renderer = ThermalRenderer(ambient_celsius=ambient_celsius)
         self.condition = threading.Condition()
         self.jpeg: bytes | None = None
         self.stats: dict[str, float] | None = None
@@ -149,6 +151,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1", help="web bind address")
     parser.add_argument("--port", type=int, default=5001, help="web port")
     parser.add_argument("--diagnose", action="store_true", help="list the USB device and exit")
+    parser.add_argument(
+        "--ambient",
+        type=float,
+        default=22.0,
+        help="ambient background anchor in Celsius (default: 22.0)",
+    )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
@@ -166,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(TC002CDuoCamera.diagnostics(), indent=2))
         return 0
 
-    stream = LiveStream()
+    stream = LiveStream(ambient_celsius=args.ambient)
     app = create_app(stream)
     try:
         stream.start()

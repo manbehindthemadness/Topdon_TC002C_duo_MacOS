@@ -5,9 +5,9 @@ macOS. It talks directly to the camera's USB Video Class bulk endpoint because
 AVFoundation/OpenCV can select one of the device's malformed UVC descriptors and
 crash before capture starts.
 
-The viewer negotiates the camera's native `256x392 @ 25 fps` YUY2 stream, splits
-its 196-row image and radiometric panes, converts the 16-bit radiometric values,
-and serves a false-colour MJPEG stream at <http://127.0.0.1:5001>.
+The viewer negotiates the camera's radiometric UVC mode (frame index 10), extracts
+its native `256x192` 16-bit temperature plane, and serves a false-colour MJPEG
+stream at <http://127.0.0.1:5001>.
 
 ## Requirements
 
@@ -25,6 +25,14 @@ uv sync
 
 # macOS owns the UVC interfaces, so direct USB capture must run elevated.
 sudo .venv/bin/topdon-duo
+```
+
+The Duo's temperature offset tracks its internal sensor temperature. By default,
+the viewer anchors the cold background to 22 °C. Set this to your measured room
+temperature for better absolute readings:
+
+```bash
+sudo .venv/bin/topdon-duo --ambient 21.9
 ```
 
 Then open <http://127.0.0.1:5001>. Keep the default loopback host unless you
@@ -45,9 +53,10 @@ are reattached when possible.
 
 ## Temperature caveat
 
-The camera supplies raw values that convert as `raw / 64 - 273.15`. The display
-is useful for thermal contrast and relative readings. Absolute temperatures are
-not calibrated by this project and should not be treated as measurement-grade.
+The radiometric mode has a validated gain of 1/64 °C per raw count, but its
+per-frame offset depends on the camera's internal temperature. The viewer tracks
+that drift by anchoring the second percentile to `--ambient`. It is useful for
+thermal contrast and approximate readings, but is not measurement-grade.
 
 ## Development
 
