@@ -35,6 +35,13 @@ temperature for better absolute readings:
 sudo .venv/bin/topdon-duo --ambient 21.9
 ```
 
+Use the **Rotate 90° clockwise** button while viewing, or set the initial camera
+orientation on startup:
+
+```bash
+sudo .venv/bin/topdon-duo --ambient 21.9 --rotate 90
+```
+
 Then open <http://127.0.0.1:5001>. Keep the default loopback host unless you
 intentionally want to expose the stream to your local network:
 

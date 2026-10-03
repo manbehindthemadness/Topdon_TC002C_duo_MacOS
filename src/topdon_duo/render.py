@@ -28,12 +28,23 @@ class TemperatureStats:
 
 class ThermalRenderer:
     def __init__(
-        self, scale: int = 3, smoothing: float = 0.25, ambient_celsius: float = 22.0
+        self,
+        scale: int = 3,
+        smoothing: float = 0.25,
+        ambient_celsius: float = 22.0,
+        rotation: int = 0,
     ) -> None:
+        if rotation not in (0, 90, 180, 270):
+            raise ValueError("rotation must be 0, 90, 180, or 270")
         self.scale = scale
         self.smoothing = smoothing
         self.ambient_celsius = ambient_celsius
+        self.rotation = rotation
         self._average_raw: np.ndarray | None = None
+
+    def rotate_clockwise(self) -> int:
+        self.rotation = (self.rotation + 90) % 360
+        return self.rotation
 
     def render(self, frame: bytes) -> tuple[np.ndarray, TemperatureStats]:
         _telemetry, raw, _preview = decode_duo_frame(frame)
@@ -61,6 +72,12 @@ class ThermalRenderer:
                 np.uint8
             )
         heatmap = cv2.applyColorMap(normalized, cv2.COLORMAP_INFERNO)
+        if self.rotation == 90:
+            heatmap = cv2.rotate(heatmap, cv2.ROTATE_90_CLOCKWISE)
+        elif self.rotation == 180:
+            heatmap = cv2.rotate(heatmap, cv2.ROTATE_180)
+        elif self.rotation == 270:
+            heatmap = cv2.rotate(heatmap, cv2.ROTATE_90_COUNTERCLOCKWISE)
         heatmap = cv2.resize(
             heatmap,
             (heatmap.shape[1] * self.scale, heatmap.shape[0] * self.scale),

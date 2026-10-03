@@ -32,6 +32,10 @@ PAGE = """<!doctype html>
     header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
     h1 { font-size: clamp(1.25rem, 3vw, 2rem); margin: 0.75rem 0; }
     #status { color: #90e0aa; font-size: .9rem; }
+    .controls { display: flex; justify-content: flex-end; margin: 0 0 .65rem; }
+    button { color: #edf1f7; background: #242a35; border: 1px solid #3b4454;
+             border-radius: 8px; padding: .55rem .85rem; cursor: pointer; }
+    button:hover { background: #303849; }
     img { display: block; width: 100%; height: auto; border-radius: 12px;
           background: #11151d; box-shadow: 0 16px 48px #0009; }
     footer { color: #8c96a8; margin: .8rem 0; font-size: .85rem; }
@@ -39,10 +43,14 @@ PAGE = """<!doctype html>
 </head>
 <body><main>
   <header><h1>TOPDON TC002C Duo</h1><span id="status">Connecting...</span></header>
+  <div class="controls"><button id="rotate" type="button">Rotate 90° clockwise</button></div>
   <img src="/stream.mjpg" alt="Live thermal camera stream">
   <footer>Native 256x192 radiometric plane · 25 fps camera · ambient-anchored temperatures</footer>
   <script>
     const status = document.querySelector('#status');
+    document.querySelector('#rotate').addEventListener('click', async () => {
+      await fetch('/api/rotate', {method: 'POST'});
+    });
     setInterval(async () => {
       try {
         const r = await fetch('/api/status', {cache: 'no-store'});
@@ -58,10 +66,16 @@ PAGE = """<!doctype html>
 
 class LiveStream:
     def __init__(
-        self, camera: TC002CDuoCamera | None = None, ambient_celsius: float = 22.0
+        self,
+        camera: TC002CDuoCamera | None = None,
+        ambient_celsius: float = 22.0,
+        rotation: int = 0,
     ) -> None:
         self.camera = camera or TC002CDuoCamera()
-        self.renderer = ThermalRenderer(ambient_celsius=ambient_celsius)
+        self.renderer = ThermalRenderer(
+            ambient_celsius=ambient_celsius,
+            rotation=rotation,
+        )
         self.condition = threading.Condition()
         self.jpeg: bytes | None = None
         self.stats: dict[str, float] | None = None
@@ -117,7 +131,15 @@ class LiveStream:
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
 
     def status(self) -> dict[str, object]:
-        return {"frames": self.frames, "stats": self.stats, "error": self.error}
+        return {
+            "frames": self.frames,
+            "stats": self.stats,
+            "error": self.error,
+            "rotation": self.renderer.rotation,
+        }
+
+    def rotate_clockwise(self) -> int:
+        return self.renderer.rotate_clockwise()
 
     def stop(self) -> None:
         self.running.clear()
@@ -143,6 +165,10 @@ def create_app(stream: LiveStream) -> Flask:
     def status():
         return jsonify(stream.status())
 
+    @app.post("/api/rotate")
+    def rotate():
+        return jsonify({"rotation": stream.rotate_clockwise()})
+
     return app
 
 
@@ -156,6 +182,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=22.0,
         help="ambient background anchor in Celsius (default: 22.0)",
+    )
+    parser.add_argument(
+        "--rotate",
+        type=int,
+        choices=(0, 90, 180, 270),
+        default=0,
+        help="initial clockwise rotation in degrees (default: 0)",
     )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--verbose", action="store_true")
@@ -174,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(TC002CDuoCamera.diagnostics(), indent=2))
         return 0
 
-    stream = LiveStream(ambient_celsius=args.ambient)
+    stream = LiveStream(ambient_celsius=args.ambient, rotation=args.rotate)
     app = create_app(stream)
     try:
         stream.start()
