@@ -9,7 +9,10 @@ from topdon_duo.desktop import (
     clamp_ambient,
     draw_control_instructions,
     draw_picker,
+    draw_toolbar,
     save_capture,
+    toolbar_action_at,
+    toolbar_layout,
     trackbar_to_ambient,
 )
 from topdon_duo.render import ThermalRenderer
@@ -30,6 +33,7 @@ def test_save_capture_preserves_raw_and_temperature_data(tmp_path):
         ambient_celsius=21.9,
         rotation=0,
         selected_pixel=(10, 20),
+        display_unit="F",
     )
     assert png_path.exists()
     with np.load(data_path) as data:
@@ -39,6 +43,7 @@ def test_save_capture_preserves_raw_and_temperature_data(tmp_path):
     metadata = json.loads(json_path.read_text())
     assert metadata["selected_pixel"]["x"] == 10
     assert metadata["selected_pixel"]["raw_count"] == 20_000
+    assert metadata["display_unit"] == "F"
 
 
 def test_control_instructions_preserve_shape_and_draw_overlay():
@@ -69,3 +74,27 @@ def test_picker_maps_resized_viewport_to_sensor_pixel():
     picker = MousePicker(x=192, y=144)
     _image, selected = draw_picker(rendered, picker, scale=3, viewport_size=(384, 288))
     assert selected == (128, 96)
+
+
+def test_toolbar_draws_above_image_and_maps_resized_clicks():
+    image = np.zeros((576, 768, 3), dtype=np.uint8)
+    layout = toolbar_layout(image.shape[1])
+    result = draw_toolbar(image, ambient_celsius=21.9, temperature_unit="F")
+    assert result.shape == (576 + layout.height, 768, 3)
+    x0, y0, x1, y1 = layout.buttons["unit"]
+    viewport = (384, result.shape[0] // 2)
+    action = toolbar_action_at(
+        (x0 + x1) // 4,
+        (y0 + y1) // 4,
+        image.shape[1],
+        viewport_size=viewport,
+        canvas_height=result.shape[0],
+    )
+    assert action == "unit"
+
+
+def test_renderer_toggles_fahrenheit_display_conversion():
+    renderer = ThermalRenderer()
+    assert renderer.display_temperature(20.0) == 20.0
+    assert renderer.toggle_temperature_unit() == "F"
+    assert renderer.display_temperature(20.0) == 68.0

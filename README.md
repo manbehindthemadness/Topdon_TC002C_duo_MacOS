@@ -60,12 +60,16 @@ sudo .venv/bin/topdon-duo-desktop --ambient 21.9 --rotate 90
 
 Controls:
 
+- Click the top toolbar to adjust ambient temperature, save, rotate, switch
+  between Celsius and Fahrenheit, show help, or quit.
 - Move the mouse over the image to inspect the exact sensor pixel temperature.
 - Resize the window freely; the image and pixel picker follow its displayed size.
 - Use the ambient slider, `[` / `]`, or the mouse wheel (where delivered by the
   window backend) to adjust the ambient anchor by 0.1 °C per step.
 - Press `s` to save a capture.
 - Press `o` to rotate clockwise.
+- Press `f` to toggle between Celsius and Fahrenheit. Saved radiometric arrays
+  remain in Celsius so captures retain a consistent scientific data format.
 - Press Space to show or hide the on-screen control instructions.
 - Press `q` or Escape to quit.
 

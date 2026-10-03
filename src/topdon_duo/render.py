@@ -41,14 +41,27 @@ class ThermalRenderer:
         smoothing: float = 0.25,
         ambient_celsius: float = 22.0,
         rotation: int = 0,
+        temperature_unit: str = "C",
     ) -> None:
         if rotation not in (0, 90, 180, 270):
             raise ValueError("rotation must be 0, 90, 180, or 270")
+        if temperature_unit not in ("C", "F"):
+            raise ValueError("temperature_unit must be C or F")
         self.scale = scale
         self.smoothing = smoothing
         self.ambient_celsius = ambient_celsius
         self.rotation = rotation
+        self.temperature_unit = temperature_unit
         self._average_raw: np.ndarray | None = None
+
+    def display_temperature(self, celsius: float) -> float:
+        if self.temperature_unit == "F":
+            return celsius * 9.0 / 5.0 + 32.0
+        return celsius
+
+    def toggle_temperature_unit(self) -> str:
+        self.temperature_unit = "F" if self.temperature_unit == "C" else "C"
+        return self.temperature_unit
 
     def rotate_clockwise(self) -> int:
         self.rotation = (self.rotation + 90) % 360
@@ -112,10 +125,13 @@ class ThermalRenderer:
             markerSize=24,
             thickness=2,
         )
+        unit = self.temperature_unit
         label = (
-            f"Min {stats.minimum:.1f} C   Avg {stats.average:.1f} C   "
-            f"Max {stats.maximum:.1f} C   Center {stats.center:.1f} C   "
-            f"Ambient {self.ambient_celsius:.1f} C"
+            f"Min {self.display_temperature(stats.minimum):.1f} {unit}   "
+            f"Avg {self.display_temperature(stats.average):.1f} {unit}   "
+            f"Max {self.display_temperature(stats.maximum):.1f} {unit}   "
+            f"Center {self.display_temperature(stats.center):.1f} {unit}   "
+            f"Ambient {self.display_temperature(self.ambient_celsius):.1f} {unit}"
         )
         cv2.rectangle(heatmap, (0, 0), (heatmap.shape[1], 32), (0, 0, 0), -1)
         cv2.putText(
