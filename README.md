@@ -58,6 +58,10 @@ uv run topdon-duo --diagnose
 Press `Ctrl-C` to stop. The USB interfaces are released and the macOS drivers
 are reattached when possible.
 
+At startup the Duo briefly emits desynchronized data while switching modes. The
+viewer discards implausible frames and waits for 25 consecutive stable frames;
+the page reports this as **Synchronizing camera** instead of displaying garbage.
+
 ## Temperature caveat
 
 The radiometric mode has a validated gain of 1/64 °C per raw count, but its

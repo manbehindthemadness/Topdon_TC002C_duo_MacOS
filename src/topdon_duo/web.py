@@ -14,7 +14,7 @@ from flask import Flask, Response, jsonify, render_template_string
 
 from . import __version__
 from .camera import CameraError, TC002CDuoCamera, platform_warning
-from .render import ThermalRenderer
+from .render import InvalidThermalFrame, ThermalRenderer
 
 LOG = logging.getLogger(__name__)
 
@@ -55,8 +55,9 @@ PAGE = """<!doctype html>
       try {
         const r = await fetch('/api/status', {cache: 'no-store'});
         const s = await r.json();
-        status.textContent = s.error || (s.stats ?
-          `Center ${s.stats.center.toFixed(1)} C · ${s.frames} frames` : 'Starting...');
+        status.textContent = s.error || (s.warming_up ?
+          `Synchronizing camera... ${s.discarded_frames} frames discarded` :
+          `Center ${s.stats.center.toFixed(1)} C · ${s.frames} frames`);
         status.style.color = s.error ? '#ff8d8d' : '#90e0aa';
       } catch (_) { status.textContent = 'Viewer unavailable'; }
     }, 1000);
@@ -80,6 +81,8 @@ class LiveStream:
         self.jpeg: bytes | None = None
         self.stats: dict[str, float] | None = None
         self.frames = 0
+        self.discarded_frames = 0
+        self.warming_up = True
         self.error: str | None = None
         self.running = threading.Event()
         self.thread: threading.Thread | None = None
@@ -93,11 +96,29 @@ class LiveStream:
         self.thread.start()
 
     def _capture(self) -> None:
+        valid_streak = 0
         try:
             for frame in self.camera.frames():
                 if not self.running.is_set():
                     break
-                image, stats = self.renderer.render(frame)
+                try:
+                    image, stats = self.renderer.render(frame)
+                except (InvalidThermalFrame, ValueError) as exc:
+                    valid_streak = 0
+                    self.discarded_frames += 1
+                    LOG.debug("Discarding invalid thermal frame: %s", exc)
+                    continue
+
+                startup_sane = (
+                    stats.minimum >= self.renderer.ambient_celsius - 100.0
+                    and stats.maximum <= self.renderer.ambient_celsius + 100.0
+                )
+                valid_streak = valid_streak + 1 if startup_sane else 0
+                if self.warming_up and valid_streak < 25:
+                    self.discarded_frames += 1
+                    continue
+                self.warming_up = False
+
                 ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 if not ok:
                     continue
@@ -136,6 +157,8 @@ class LiveStream:
             "stats": self.stats,
             "error": self.error,
             "rotation": self.renderer.rotation,
+            "warming_up": self.warming_up,
+            "discarded_frames": self.discarded_frames,
         }
 
     def rotate_clockwise(self) -> int:
