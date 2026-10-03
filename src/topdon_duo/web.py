@@ -171,8 +171,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         stream.start()
     except CameraError as exc:
+        stream.error = str(exc)
+        stream.running.set()
         LOG.error("Unable to start capture: %s", exc)
-        return 2
+        LOG.info("The web status page will remain available for diagnostics")
 
     def stop(_signum=None, _frame=None):
         stream.stop()
