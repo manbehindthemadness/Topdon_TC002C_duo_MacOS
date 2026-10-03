@@ -18,6 +18,22 @@ from .render import RenderedThermalFrame, ThermalRenderer
 
 LOG = logging.getLogger(__name__)
 WINDOW_NAME = "TOPDON TC002C Duo"
+AMBIENT_TRACKBAR = "Ambient x0.1 C"
+AMBIENT_MIN_C = -50.0
+AMBIENT_MAX_C = 100.0
+AMBIENT_STEP_C = 0.1
+
+
+def clamp_ambient(value: float) -> float:
+    return round(min(max(value, AMBIENT_MIN_C), AMBIENT_MAX_C), 1)
+
+
+def ambient_to_trackbar(value: float) -> int:
+    return round((clamp_ambient(value) - AMBIENT_MIN_C) / AMBIENT_STEP_C)
+
+
+def trackbar_to_ambient(position: int) -> float:
+    return clamp_ambient(AMBIENT_MIN_C + position * AMBIENT_STEP_C)
 
 
 @dataclass
@@ -29,7 +45,7 @@ class MousePicker:
     def callback(self, event: int, x: int, y: int, flags: int, _parameter) -> None:
         if event in (cv2.EVENT_MOUSEMOVE, cv2.EVENT_LBUTTONDOWN):
             self.x, self.y = x, y
-        elif event == cv2.EVENT_MOUSEWHEEL:
+        elif event in (cv2.EVENT_MOUSEWHEEL, cv2.EVENT_MOUSEHWHEEL):
             delta = (flags >> 16) & 0xFFFF
             if delta >= 0x8000:
                 delta -= 0x10000
@@ -160,7 +176,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     """Draw a translucent keyboard/mouse help panel over the image."""
     result = image.copy()
     panel_width = min(390, result.shape[1] - 20)
-    panel_height = min(199, result.shape[0] - 20)
+    panel_height = min(224, result.shape[0] - 20)
     x0, y0 = 10, result.shape[0] - panel_height - 10
     x1, y1 = x0 + panel_width, y0 + panel_height
 
@@ -172,7 +188,8 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     lines = (
         ("Controls", (255, 255, 255)),
         ("Mouse move   Inspect pixel temperature", (210, 215, 225)),
-        ("Mouse wheel  Adjust ambient by 0.1 C", (210, 215, 225)),
+        ("Wheel/slider Adjust ambient by 0.1 C", (210, 215, 225)),
+        ("[ / ]        Ambient down / up", (210, 215, 225)),
         ("S            Save PNG + radiometric data", (210, 215, 225)),
         ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
         ("Space        Hide controls", (210, 215, 225)),
@@ -217,22 +234,38 @@ def main(argv: list[str] | None = None) -> int:
     picker = MousePicker()
     show_instructions = False
 
+    def set_ambient(value: float, *, update_trackbar: bool = True) -> None:
+        renderer.ambient_celsius = clamp_ambient(value)
+        if update_trackbar:
+            cv2.setTrackbarPos(
+                AMBIENT_TRACKBAR,
+                WINDOW_NAME,
+                ambient_to_trackbar(renderer.ambient_celsius),
+            )
+
+    def on_ambient_trackbar(position: int) -> None:
+        set_ambient(trackbar_to_ambient(position), update_trackbar=False)
+
     print(
-        "Mouse: inspect a pixel | wheel: ambient +/- 0.1 C | "
+        "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "
         "s: save | o: rotate | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
         cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
         cv2.setMouseCallback(WINDOW_NAME, picker.callback)
+        cv2.createTrackbar(
+            AMBIENT_TRACKBAR,
+            WINDOW_NAME,
+            ambient_to_trackbar(renderer.ambient_celsius),
+            ambient_to_trackbar(AMBIENT_MAX_C),
+            on_ambient_trackbar,
+        )
         initial_window_size_set = False
         for frame in camera.frames():
             ambient_steps = picker.consume_ambient_steps()
             if ambient_steps:
-                renderer.ambient_celsius = round(
-                    renderer.ambient_celsius + ambient_steps * 0.1,
-                    1,
-                )
+                set_ambient(renderer.ambient_celsius + ambient_steps * AMBIENT_STEP_C)
             rendered = renderer.render_detailed(frame)
             if not initial_window_size_set:
                 cv2.resizeWindow(WINDOW_NAME, rendered.image.shape[1], rendered.image.shape[0])
@@ -261,6 +294,10 @@ def main(argv: list[str] | None = None) -> int:
                 picker.x = picker.y = None
             elif key == ord(" "):
                 show_instructions = not show_instructions
+            elif key == ord("["):
+                set_ambient(renderer.ambient_celsius - AMBIENT_STEP_C)
+            elif key == ord("]"):
+                set_ambient(renderer.ambient_celsius + AMBIENT_STEP_C)
             elif key == ord("s"):
                 saved = save_capture(
                     rendered,
