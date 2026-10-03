@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,19 @@ AMBIENT_MAX_C = 100.0
 AMBIENT_STEP_C = 0.1
 TOOLBAR_ROW_HEIGHT = 42
 TOOLBAR_PADDING = 6
+SAVE_DIALOG_SCRIPT = """
+on run argv
+    tell current application to activate
+    set defaultName to item 1 of argv
+    set defaultFolder to item 2 of argv
+    if defaultFolder is "" then
+        set chosenFile to choose file name with prompt "Save thermal capture" default name defaultName
+    else
+        set chosenFile to choose file name with prompt "Save thermal capture" default name defaultName default location (POSIX file defaultFolder)
+    end if
+    return POSIX path of chosenFile
+end run
+"""
 
 
 def clamp_ambient(value: float) -> float:
@@ -71,6 +85,63 @@ class MousePicker:
 class ToolbarLayout:
     height: int
     buttons: dict[str, tuple[int, int, int, int]]
+
+
+class MacSaveDialog:
+    """Non-blocking macOS save panel so USB capture continues behind it."""
+
+    def __init__(self) -> None:
+        self._process: subprocess.Popen[str] | None = None
+
+    @property
+    def is_open(self) -> bool:
+        return self._process is not None
+
+    def open(self, default_directory: Path | None = None) -> bool:
+        if self._process is not None:
+            return False
+        default_name = datetime.now().astimezone().strftime(
+            "TC002C-Duo-%Y%m%d-%H%M%S.png"
+        )
+        directory = ""
+        if default_directory is not None and default_directory.is_dir():
+            directory = str(default_directory.resolve())
+        self._process = subprocess.Popen(
+            [
+                "/usr/bin/osascript",
+                "-e",
+                SAVE_DIALOG_SCRIPT,
+                "--",
+                default_name,
+                directory,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return True
+
+    def poll(self) -> tuple[bool, Path | None]:
+        """Return (finished, selected path); cancellation yields (True, None)."""
+        if self._process is None or self._process.poll() is None:
+            return False, None
+        process, self._process = self._process, None
+        stdout, stderr = process.communicate()
+        if process.returncode == 0 and stdout.strip():
+            return True, Path(stdout.strip())
+        if "User canceled" not in stderr:
+            LOG.error("macOS save dialog failed: %s", stderr.strip() or process.returncode)
+        return True, None
+
+    def close(self) -> None:
+        if self._process is not None and self._process.poll() is None:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait()
+        self._process = None
 
 
 def toolbar_layout(width: int) -> ToolbarLayout:
@@ -181,12 +252,19 @@ def save_capture(
     rotation: int,
     selected_pixel: tuple[int, int] | None = None,
     display_unit: str = "C",
+    base_path: Path | None = None,
 ) -> list[Path]:
     """Save a viewable PNG plus lossless raw/Celsius data and JSON metadata."""
+    directory_existed = output_directory.exists()
     output_directory.mkdir(parents=True, exist_ok=True)
     captured_at = datetime.now().astimezone()
     stamp = captured_at.strftime("%Y%m%d-%H%M%S-%f")
-    base = output_directory / f"TC002C-Duo-{stamp}"
+    if base_path is None:
+        base = output_directory / f"TC002C-Duo-{stamp}"
+    else:
+        base = base_path
+        if base.suffix.lower() in (".png", ".npz", ".json"):
+            base = base.with_suffix("")
     png_path = base.with_suffix(".png")
     data_path = base.with_suffix(".npz")
     json_path = base.with_suffix(".json")
@@ -223,9 +301,11 @@ def save_capture(
         }
     json_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-    paths = [output_directory, png_path, data_path, json_path]
+    paths = [png_path, data_path, json_path]
+    if not directory_existed:
+        paths.insert(0, output_directory)
     _restore_user_ownership(paths)
-    return paths[1:]
+    return [png_path, data_path, json_path]
 
 
 def draw_picker(
@@ -330,7 +410,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ambient", type=float, default=22.0)
     parser.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--scale", type=int, choices=range(1, 7), default=3)
-    parser.add_argument("--output", type=Path, default=Path("captures"))
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="initial directory for the macOS Save dialog",
+    )
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -348,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     camera = TC002CDuoCamera()
     picker = MousePicker()
+    save_dialog = MacSaveDialog()
     show_instructions = False
     last_selected: tuple[int, int] | None = None
 
@@ -362,6 +448,13 @@ def main(argv: list[str] | None = None) -> int:
 
     def on_ambient_trackbar(position: int) -> None:
         set_ambient(trackbar_to_ambient(position), update_trackbar=False)
+
+    def request_save() -> None:
+        try:
+            if not save_dialog.open(args.output):
+                LOG.info("A Save dialog is already open")
+        except OSError as exc:
+            LOG.error("Unable to open the macOS Save dialog: %s", exc)
 
     print(
         "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "
@@ -409,6 +502,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             if selected is not None:
                 last_selected = selected
+
+            save_finished, save_path = save_dialog.poll()
+            if save_finished and save_path is not None:
+                saved = save_capture(
+                    rendered,
+                    save_path.parent,
+                    renderer.ambient_celsius,
+                    renderer.rotation,
+                    last_selected,
+                    renderer.temperature_unit,
+                    base_path=save_path,
+                )
+                print("Saved " + ", ".join(str(path) for path in saved))
             if show_instructions:
                 display = draw_control_instructions(display)
             display = draw_toolbar(
@@ -431,15 +537,7 @@ def main(argv: list[str] | None = None) -> int:
                 elif action == "ambient_up":
                     set_ambient(renderer.ambient_celsius + AMBIENT_STEP_C)
                 elif action == "save":
-                    saved = save_capture(
-                        rendered,
-                        args.output,
-                        renderer.ambient_celsius,
-                        renderer.rotation,
-                        last_selected,
-                        renderer.temperature_unit,
-                    )
-                    print("Saved " + ", ".join(str(path) for path in saved))
+                    request_save()
                 elif action == "rotate":
                     renderer.rotate_clockwise()
                     picker.x = picker.y = None
@@ -469,19 +567,12 @@ def main(argv: list[str] | None = None) -> int:
             elif key == ord("f"):
                 renderer.toggle_temperature_unit()
             elif key == ord("s"):
-                saved = save_capture(
-                    rendered,
-                    args.output,
-                    renderer.ambient_celsius,
-                    renderer.rotation,
-                    last_selected,
-                    renderer.temperature_unit,
-                )
-                print("Saved " + ", ".join(str(path) for path in saved))
+                request_save()
     except CameraError as exc:
         LOG.error("Unable to run desktop viewer: %s", exc)
         return 2
     finally:
+        save_dialog.close()
         camera.close()
         cv2.destroyAllWindows()
     return 0

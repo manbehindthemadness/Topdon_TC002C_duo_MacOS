@@ -66,14 +66,15 @@ Controls:
 - Resize the window freely; the image and pixel picker follow its displayed size.
 - Use the ambient slider, `[` / `]`, or the mouse wheel (where delivered by the
   window backend) to adjust the ambient anchor by 0.1 °C per step.
-- Press `s` to save a capture.
+- Press `s` to open the native macOS Save dialog. The stream continues running
+  while the dialog is open.
 - Press `o` to rotate clockwise.
 - Press `f` to toggle between Celsius and Fahrenheit. Saved radiometric arrays
   remain in Celsius so captures retain a consistent scientific data format.
 - Press Space to show or hide the on-screen control instructions.
 - Press `q` or Escape to quit.
 
-Each capture creates three files in `captures/`:
+Each capture creates three files with the chosen name in the selected folder:
 
 - `.png`: the displayed false-colour image.
 - `.npz`: lossless `uint16` raw counts and `float32` Celsius arrays.

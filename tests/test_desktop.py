@@ -4,6 +4,7 @@ import numpy as np
 from test_camera import make_frame
 
 from topdon_duo.desktop import (
+    MacSaveDialog,
     MousePicker,
     ambient_to_trackbar,
     clamp_ambient,
@@ -26,6 +27,7 @@ def test_detailed_render_keeps_oriented_radiometric_arrays():
 
 
 def test_save_capture_preserves_raw_and_temperature_data(tmp_path):
+    chosen_path = tmp_path / "living-room.png"
     rendered = ThermalRenderer().render_detailed(make_frame())
     png_path, data_path, json_path = save_capture(
         rendered,
@@ -34,7 +36,9 @@ def test_save_capture_preserves_raw_and_temperature_data(tmp_path):
         rotation=0,
         selected_pixel=(10, 20),
         display_unit="F",
+        base_path=chosen_path,
     )
+    assert png_path == chosen_path
     assert png_path.exists()
     with np.load(data_path) as data:
         assert np.array_equal(data["raw_counts"], rendered.raw_counts)
@@ -44,6 +48,30 @@ def test_save_capture_preserves_raw_and_temperature_data(tmp_path):
     assert metadata["selected_pixel"]["x"] == 10
     assert metadata["selected_pixel"]["raw_count"] == 20_000
     assert metadata["display_unit"] == "F"
+
+
+def test_native_save_dialog_returns_selected_path(monkeypatch, tmp_path):
+    chosen_path = tmp_path / "thermal.png"
+
+    class FinishedProcess:
+        returncode = 0
+
+        @staticmethod
+        def poll():
+            return 0
+
+        @staticmethod
+        def communicate():
+            return f"{chosen_path}\n", ""
+
+    monkeypatch.setattr(
+        "topdon_duo.desktop.subprocess.Popen", lambda *_args, **_kwargs: FinishedProcess()
+    )
+    dialog = MacSaveDialog()
+    assert dialog.open(tmp_path)
+    assert dialog.is_open
+    assert dialog.poll() == (True, chosen_path)
+    assert not dialog.is_open
 
 
 def test_control_instructions_preserve_shape_and_draw_overlay():
