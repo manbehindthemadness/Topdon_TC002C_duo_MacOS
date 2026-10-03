@@ -49,6 +49,29 @@ intentionally want to expose the stream to your local network:
 sudo .venv/bin/topdon-duo --host 0.0.0.0 --port 5001
 ```
 
+## Native desktop viewer
+
+The OpenCV desktop viewer shows the temperature under the mouse pointer and can
+save a normal image together with the full radiometric data:
+
+```bash
+sudo .venv/bin/topdon-duo-desktop --ambient 21.9 --rotate 90
+```
+
+Controls:
+
+- Move the mouse over the image to inspect the exact sensor pixel temperature.
+- Press `s` to save a capture.
+- Press `o` to rotate clockwise.
+- Press `q` or Escape to quit.
+
+Each capture creates three files in `captures/`:
+
+- `.png`: the displayed false-colour image.
+- `.npz`: lossless `uint16` raw counts and `float32` Celsius arrays.
+- `.json`: timestamp, temperature statistics, orientation, ambient setting, and
+  the selected pixel reading.
+
 Diagnostics that do not claim the camera can run without `sudo`:
 
 ```bash

@@ -26,6 +26,14 @@ class TemperatureStats:
         }
 
 
+@dataclass(frozen=True)
+class RenderedThermalFrame:
+    image: np.ndarray
+    stats: TemperatureStats
+    temperatures_celsius: np.ndarray
+    raw_counts: np.ndarray
+
+
 class ThermalRenderer:
     def __init__(
         self,
@@ -47,6 +55,19 @@ class ThermalRenderer:
         return self.rotation
 
     def render(self, frame: bytes) -> tuple[np.ndarray, TemperatureStats]:
+        rendered = self.render_detailed(frame)
+        return rendered.image, rendered.stats
+
+    def _orient(self, array: np.ndarray) -> np.ndarray:
+        if self.rotation == 90:
+            return cv2.rotate(array, cv2.ROTATE_90_CLOCKWISE)
+        if self.rotation == 180:
+            return cv2.rotate(array, cv2.ROTATE_180)
+        if self.rotation == 270:
+            return cv2.rotate(array, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        return array.copy()
+
+    def render_detailed(self, frame: bytes) -> RenderedThermalFrame:
         _telemetry, raw, _preview = decode_duo_frame(frame)
 
         if self._average_raw is None:
@@ -55,7 +76,11 @@ class ThermalRenderer:
             cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
 
         averaged = self._average_raw
-        celsius = raw_temperatures(averaged, ambient_celsius=self.ambient_celsius)
+        celsius = self._orient(
+            raw_temperatures(averaged, ambient_celsius=self.ambient_celsius)
+        )
+        oriented_raw = self._orient(raw)
+        oriented_average = self._orient(averaged)
         center_y, center_x = celsius.shape[0] // 2, celsius.shape[1] // 2
         stats = TemperatureStats(
             minimum=float(celsius.min()),
@@ -64,20 +89,14 @@ class ThermalRenderer:
             center=float(celsius[center_y, center_x]),
         )
 
-        low, high = np.percentile(averaged, (1.0, 99.0))
+        low, high = np.percentile(oriented_average, (1.0, 99.0))
         if high <= low:
-            normalized = np.zeros_like(averaged, dtype=np.uint8)
+            normalized = np.zeros_like(oriented_average, dtype=np.uint8)
         else:
-            normalized = np.clip((averaged - low) * (255.0 / (high - low)), 0, 255).astype(
-                np.uint8
-            )
+            normalized = np.clip(
+                (oriented_average - low) * (255.0 / (high - low)), 0, 255
+            ).astype(np.uint8)
         heatmap = cv2.applyColorMap(normalized, cv2.COLORMAP_INFERNO)
-        if self.rotation == 90:
-            heatmap = cv2.rotate(heatmap, cv2.ROTATE_90_CLOCKWISE)
-        elif self.rotation == 180:
-            heatmap = cv2.rotate(heatmap, cv2.ROTATE_180)
-        elif self.rotation == 270:
-            heatmap = cv2.rotate(heatmap, cv2.ROTATE_90_COUNTERCLOCKWISE)
         heatmap = cv2.resize(
             heatmap,
             (heatmap.shape[1] * self.scale, heatmap.shape[0] * self.scale),
@@ -108,7 +127,12 @@ class ThermalRenderer:
             1,
             cv2.LINE_AA,
         )
-        return heatmap, stats
+        return RenderedThermalFrame(
+            image=heatmap,
+            stats=stats,
+            temperatures_celsius=celsius,
+            raw_counts=oriented_raw,
+        )
 
 
 def decode_temperatures(frame: bytes) -> np.ndarray:

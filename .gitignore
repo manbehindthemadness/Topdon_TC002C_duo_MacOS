@@ -2,6 +2,7 @@ TC001_*
 .venv/
 .ruff_cache/
 *.npy
+captures/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
