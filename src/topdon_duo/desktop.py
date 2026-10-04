@@ -334,6 +334,20 @@ def save_capture(
     return [png_path, data_path, json_path]
 
 
+def mouse_viewport_size() -> tuple[int, int] | None:
+    """Return viewport dimensions only when mouse events need image scaling."""
+    # Linux Qt/GTK callbacks already report coordinates in the imshow image,
+    # including its toolbar, even when the window is resized or letterboxed.
+    # Scaling those coordinates again moves the sampler away from the cursor.
+    if sys.platform.startswith("linux"):
+        return None
+    try:
+        _left, _top, width, height = cv2.getWindowImageRect(WINDOW_NAME)
+        return width, height
+    except cv2.error:
+        return None
+
+
 def draw_picker(
     rendered: RenderedThermalFrame,
     picker: MousePicker,
@@ -511,13 +525,7 @@ def main(argv: list[str] | None = None) -> int:
                     rendered.image.shape[0] + layout.height,
                 )
                 initial_window_size_set = True
-            try:
-                _left, _top, viewport_width, viewport_height = cv2.getWindowImageRect(
-                    WINDOW_NAME
-                )
-                viewport_size = (viewport_width, viewport_height)
-            except cv2.error:
-                viewport_size = None
+            viewport_size = mouse_viewport_size()
             display, selected = draw_picker(
                 rendered,
                 picker,

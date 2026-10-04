@@ -1,6 +1,9 @@
 import json
+from unittest.mock import Mock
 
+import cv2
 import numpy as np
+import pytest
 from test_camera import make_frame
 
 from topdon_duo.desktop import (
@@ -12,6 +15,7 @@ from topdon_duo.desktop import (
     draw_control_instructions,
     draw_picker,
     draw_toolbar,
+    mouse_viewport_size,
     save_capture,
     toolbar_action_at,
     toolbar_layout,
@@ -88,8 +92,6 @@ def test_save_dialog_commands_preserve_mac_and_support_linux(tmp_path):
 
 
 def test_linux_save_cancellation_and_nonblocking_poll(monkeypatch, caplog):
-    from unittest.mock import Mock
-
     process = Mock(returncode=1)
     process.poll.side_effect = [None, 1]
     process.communicate.return_value = ("", "")
@@ -132,6 +134,65 @@ def test_picker_maps_resized_viewport_to_sensor_pixel():
     picker = MousePicker(x=192, y=144)
     _image, selected = draw_picker(rendered, picker, scale=3, viewport_size=(384, 288))
     assert selected == (128, 96)
+
+
+@pytest.mark.parametrize("rotation", [0, 90])
+@pytest.mark.parametrize("viewport_scale", [0.5, 1.0, 1.5])
+def test_linux_mouse_coordinates_are_already_image_pixels(monkeypatch, rotation, viewport_scale):
+    monkeypatch.setattr("topdon_duo.desktop.sys.platform", "linux")
+    rendered = ThermalRenderer(scale=3, rotation=rotation).render_detailed(make_frame())
+    layout = toolbar_layout(rendered.image.shape[1])
+    canvas_height = rendered.image.shape[0] + layout.height
+    get_rect = Mock(
+        return_value=(
+            100,
+            200,
+            int(rendered.image.shape[1] * viewport_scale),
+            int(canvas_height * viewport_scale),
+        )
+    )
+    monkeypatch.setattr("topdon_duo.desktop.cv2.getWindowImageRect", get_rect)
+    viewport = mouse_viewport_size()
+    # Qt/GTK have already mapped the physical pointer to these canvas pixels.
+    picker = MousePicker()
+    picker.callback(cv2.EVENT_MOUSEMOVE, 123, 201 + layout.height, 0, None)
+    image, selected = draw_picker(
+        rendered, picker, scale=3, viewport_size=viewport, toolbar_height=layout.height
+    )
+    assert selected == (41, 67)
+    assert tuple(image[201, 123]) == (80, 255, 80)
+    picker.callback(cv2.EVENT_MOUSEMOVE, 123, layout.height - 1, 0, None)
+    assert (
+        draw_picker(
+            rendered, picker, scale=3, viewport_size=viewport, toolbar_height=layout.height
+        )[1]
+        is None
+    )
+
+    x0, y0, x1, y1 = layout.buttons["unit"]
+    picker.callback(cv2.EVENT_LBUTTONUP, (x0 + x1) // 2, (y0 + y1) // 2, 0, None)
+    click_x, click_y = picker.consume_clicks()[0]
+    assert (
+        toolbar_action_at(
+            click_x,
+            click_y,
+            rendered.image.shape[1],
+            viewport_size=viewport,
+            canvas_height=canvas_height,
+        )
+        == "unit"
+    )
+    get_rect.assert_not_called()
+
+
+def test_mac_mouse_coordinates_keep_viewport_scaling(monkeypatch):
+    monkeypatch.setattr("topdon_duo.desktop.sys.platform", "darwin")
+    get_rect = Mock(return_value=(100, 200, 384, 288))
+    monkeypatch.setattr("topdon_duo.desktop.cv2.getWindowImageRect", get_rect)
+    assert mouse_viewport_size() == (384, 288)
+    get_rect.assert_called_once()
+    get_rect.side_effect = cv2.error("Image rectangle unavailable")
+    assert mouse_viewport_size() is None
 
 
 def test_toolbar_draws_above_image_and_maps_resized_clicks():
