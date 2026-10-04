@@ -21,6 +21,7 @@ from .capture_panel import CapturePanel
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
 from .render import RenderedThermalFrame, ThermalRenderer
+from .window_style import set_black_window_backgrounds
 
 LOG = logging.getLogger(__name__)
 WINDOW_NAME = "TOPDON TC002C Duo"
@@ -28,9 +29,11 @@ AMBIENT_TRACKBAR = "Ambient x0.1 C"
 AMBIENT_MIN_C = -50.0
 AMBIENT_MAX_C = 100.0
 AMBIENT_STEP_C = 0.1
-TOOLBAR_ROW_HEIGHT = 42
-TOOLBAR_PADDING = 6
-TOOLBAR_STATUS_HEIGHT = 22
+TOOLBAR_ROW_HEIGHT = 30
+TOOLBAR_BUTTON_HEIGHT = 24
+TOOLBAR_PADDING = 4
+TOOLBAR_STATUS_HEIGHT = 20
+TOOLBAR_FONT_SCALE = 0.36
 TIMELAPSE_DEFAULT_FPM = 60
 TIMELAPSE_MAX_FPM = FRAME_RATE * 60
 SAVE_DIALOG_SCRIPT = """
@@ -201,30 +204,28 @@ class LinuxSaveDialog(MacSaveDialog):
 
 
 def toolbar_layout(width: int) -> ToolbarLayout:
-    """Lay out compact controls, wrapping when the camera is rotated or small."""
+    """Fit compact controls across a single row at the current image width."""
     controls = (
-        ("ambient_down", "Ambient -", 82),
-        ("ambient_up", "Ambient +", 82),
-        ("save", "Save", 58),
-        ("rotate", "Rotate", 68),
-        ("unit", "C / F", 58),
-        ("spots", "Add spots", 100),
-        ("capture", "Capture", 82),
-        ("help", "Help", 56),
-        ("quit", "Quit", 52),
+        ("ambient_down", "Ambient -", 70),
+        ("ambient_up", "Ambient +", 70),
+        ("rotate", "Rotate", 54),
+        ("unit", "C / F", 50),
+        ("spots", "Add spots", 84),
+        ("capture", "Capture", 64),
+        ("help", "Help", 42),
+        ("quit", "Quit", 38),
     )
     buttons: dict[str, tuple[int, int, int, int]] = {}
-    x = TOOLBAR_PADDING
-    row = 0
-    for action, _label, button_width in controls:
-        if x > TOOLBAR_PADDING and x + button_width > width - TOOLBAR_PADDING:
-            row += 1
-            x = TOOLBAR_PADDING
-        y = TOOLBAR_PADDING + row * TOOLBAR_ROW_HEIGHT
-        buttons[action] = (x, y, x + button_width, y + 30)
-        x += button_width + TOOLBAR_PADDING
+    available_width = width - (len(controls) + 1) * TOOLBAR_PADDING
+    total_weight = sum(button_width for _action, _label, button_width in controls)
+    weight = 0
+    for index, (action, _label, button_width) in enumerate(controls):
+        x0 = TOOLBAR_PADDING * (index + 1) + round(available_width * weight / total_weight)
+        weight += button_width
+        x1 = TOOLBAR_PADDING * (index + 1) + round(available_width * weight / total_weight)
+        buttons[action] = (x0, TOOLBAR_PADDING, x1, TOOLBAR_PADDING + TOOLBAR_BUTTON_HEIGHT)
     return ToolbarLayout(
-        height=TOOLBAR_PADDING * 2 + (row + 1) * TOOLBAR_ROW_HEIGHT + TOOLBAR_STATUS_HEIGHT,
+        height=TOOLBAR_PADDING * 2 + TOOLBAR_ROW_HEIGHT + TOOLBAR_STATUS_HEIGHT,
         buttons=buttons,
     )
 
@@ -240,7 +241,6 @@ def draw_toolbar(
 ) -> np.ndarray:
     layout = toolbar_layout(image.shape[1])
     canvas = np.zeros((image.shape[0] + layout.height, image.shape[1], 3), np.uint8)
-    canvas[: layout.height] = (24, 27, 34)
     canvas[layout.height :] = image
     ambient_display = ambient_celsius
     if temperature_unit == "F":
@@ -248,7 +248,6 @@ def draw_toolbar(
     labels = {
         "ambient_down": f"- {ambient_display:.1f}{temperature_unit}",
         "ambient_up": f"{ambient_display:.1f}{temperature_unit} +",
-        "save": "Save",
         "rotate": "Rotate",
         "unit": f"Unit: {temperature_unit}",
         "spots": "Clear spots" if placing_spots else "Add spots",
@@ -264,8 +263,14 @@ def draw_toolbar(
         cv2.rectangle(canvas, (x0, y0), (x1, y1), (105, 112, 128), 1)
         label = labels[action]
         (text_width, text_height), _baseline = cv2.getTextSize(
-            label, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1
+            label, cv2.FONT_HERSHEY_SIMPLEX, TOOLBAR_FONT_SCALE, 1
         )
+        font_scale = TOOLBAR_FONT_SCALE
+        if text_width > x1 - x0 - TOOLBAR_PADDING * 2:
+            font_scale *= max(1, x1 - x0 - TOOLBAR_PADDING * 2) / text_width
+            (text_width, text_height), _baseline = cv2.getTextSize(
+                label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1
+            )
         cv2.putText(
             canvas,
             label,
@@ -274,7 +279,7 @@ def draw_toolbar(
                 y0 + (y1 - y0 + text_height) // 2,
             ),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.42,
+            font_scale,
             (235, 238, 244),
             1,
             cv2.LINE_AA,
@@ -550,7 +555,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
         ("P / Add spots  Place spots; again clears", (210, 215, 225)),
         ("Wheel/slider Adjust ambient by 0.1 C", (210, 215, 225)),
         ("[ / ]        Ambient down / up", (210, 215, 225)),
-        ("S            Save PNG + radiometric data", (210, 215, 225)),
+        ("S            Save image data", (210, 215, 225)),
         ("C            Open Capture controls", (210, 215, 225)),
         ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
         ("F            Toggle Celsius / Fahrenheit", (210, 215, 225)),
@@ -709,12 +714,12 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "
-        "p: add/clear spots | s: save | c: Capture controls | "
+        "p: add/clear spots | s: save image data | c: Capture controls | "
         "o: rotate | f: C/F | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
-        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL)
         cv2.setMouseCallback(WINDOW_NAME, picker.callback)
         cv2.createTrackbar(
             AMBIENT_TRACKBAR,
@@ -723,6 +728,7 @@ def main(argv: list[str] | None = None) -> int:
             ambient_to_trackbar(AMBIENT_MAX_C),
             on_ambient_trackbar,
         )
+        set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
         for frame in camera.frames():
             for command in capture_panel.poll():
@@ -733,6 +739,8 @@ def main(argv: list[str] | None = None) -> int:
                     set_timelapse_fpm(int(command["value"]))
                 elif action == "cursor":
                     capture_cursor = bool(command["value"])
+                elif action == "image":
+                    request_save()
                 elif action in ("video", "timelapse"):
                     set_timelapse_fpm(int(command["frames_per_minute"]))
                     capture_cursor = bool(command["capture_cursor"])
@@ -740,7 +748,7 @@ def main(argv: list[str] | None = None) -> int:
             ambient_steps = picker.consume_ambient_steps()
             if ambient_steps:
                 set_ambient(renderer.ambient_celsius + ambient_steps * AMBIENT_STEP_C)
-            rendered = renderer.render_detailed(frame, show_center_marker=not spots.placing)
+            rendered = renderer.render_detailed(frame)
             layout = toolbar_layout(rendered.image.shape[1])
             if not initial_window_size_set:
                 cv2.resizeWindow(
@@ -849,8 +857,6 @@ def main(argv: list[str] | None = None) -> int:
                     set_ambient(renderer.ambient_celsius - AMBIENT_STEP_C)
                 elif action == "ambient_up":
                     set_ambient(renderer.ambient_celsius + AMBIENT_STEP_C)
-                elif action == "save":
-                    request_save()
                 elif action == "capture":
                     open_capture()
                 elif action == "rotate":

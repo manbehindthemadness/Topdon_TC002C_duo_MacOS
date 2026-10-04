@@ -88,8 +88,8 @@ The controls are available from the toolbar as well as the keyboard:
 | Place fixed sample spots | **Add spots** or `P`, then click image locations |
 | Clear all sample spots | **Clear spots** or `P` again |
 | Adjust ambient temperature | Toolbar, `[` / `]`, slider, or mouse wheel when supported |
-| Save a capture | **Save** or `S` |
-| Open video and timelapse controls | **Capture** or `C` |
+| Save image data | **Capture** → **Save image data**, or `S` |
+| Open image, video and timelapse controls | **Capture** or `C` |
 | Rotate clockwise | **Rotate** or `O` |
 | Toggle Celsius/Fahrenheit | **Unit** or `F` |
 | Show control help | **Help** or Space |
@@ -99,8 +99,7 @@ Sample spots use green crosshairs with a one-pixel stroke and live temperature
 readings in the selected unit. They remain on the same thermal pixels when the
 window is resized or the view is rotated. Placement stays enabled until you
 press **Clear spots** or `P` again.
-The center crosshair is hidden while sample spots are enabled and returns when
-they are cleared.
+The center temperature appears in the statistics without a fixed center crosshair.
 The mouse sampler uses the same thin green crosshair and hides its marker and
 temperature reading when the pointer leaves the image.
 
@@ -115,8 +114,9 @@ single chosen filename produces three matching files:
 Radiometric data remains in Celsius even when the viewer is displaying
 Fahrenheit.
 
-Open **Capture** to access video and timelapse controls in a separate popup
-window. **Record video** or **Record timelapse** opens a Save dialog for an `.mp4`
+Open **Capture** to access image, video and timelapse controls in a separate popup
+window. **Save image data** saves the PNG, raw/Celsius arrays, and JSON metadata
+described above. **Record video** or **Record timelapse** opens a Save dialog for an `.mp4`
 filename. Recording starts after you select the filename; press **Stop video**
 or **Stop timelapse** in the popup to finish. While choosing a filename, the
 button becomes **Cancel**. The popup and main toolbar show recording status.

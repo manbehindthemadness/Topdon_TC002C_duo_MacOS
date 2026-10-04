@@ -95,6 +95,8 @@ def viewer(monkeypatch, tmp_path):
             )
         elif action == "capture_cursor":
             panel.events.append({"action": "cursor", "value": not panel.state["capture_cursor"]})
+        elif action == "image":
+            panel.events.append({"action": "image"})
         else:
             x0, y0, x1, y1 = layout.buttons[action]
             callback(cv2.EVENT_LBUTTONUP, (x0 + x1) // 2, (y0 + y1) // 2, 0, None)
@@ -105,7 +107,7 @@ def viewer(monkeypatch, tmp_path):
 
         def wait_key(_delay):
             action = next(actions)
-            if action in ("video", "timelapse"):
+            if action in ("video", "timelapse", "image"):
                 click_control(action)
                 return -1
             return ord(action) if isinstance(action, str) else action
@@ -176,6 +178,9 @@ def test_recording_controls_save_spots_and_optional_cursor(
     viewer.panel.open.assert_called_once()
     viewer.panel.close.assert_called_once()
     assert set(viewer.callbacks) == {desktop.AMBIENT_TRACKBAR}
+    desktop.cv2.namedWindow.assert_called_once_with(
+        desktop.WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL
+    )
 
 
 @pytest.mark.parametrize("mode", ["video", "timelapse"])
@@ -213,10 +218,25 @@ def test_closing_and_reopening_capture_popup_keeps_recording_active(viewer, monk
 def test_toolbar_has_single_capture_control_and_no_recording_settings():
     buttons = desktop.toolbar_layout(768).buttons
     assert "capture" in buttons
+    assert "save" not in buttons
     assert (
         not {"video", "timelapse", "capture_cursor", "timelapse_down", "timelapse_up"}
         & buttons.keys()
     )
+
+
+def test_popup_save_image_data_opens_dialog_and_saves_radiometric_files(viewer, monkeypatch):
+    viewer.dialog.selected = viewer.dialog.selected.with_suffix(".png")
+    monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events(["image", -1, -1, "q"]))
+    assert desktop.main([]) == 0
+    assert viewer.dialog.open_calls == [(None, {})]
+    path = viewer.dialog.selected
+    assert path.exists()
+    assert path.with_suffix(".json").exists()
+    with np.load(path.with_suffix(".npz")) as data:
+        assert data["raw_counts"].shape == (192, 256)
+        assert data["temperatures_celsius"].shape == (192, 256)
+    desktop.cv2.VideoWriter.assert_not_called()
 
 
 def test_cancelled_save_dialog_does_not_start_encoder(viewer, monkeypatch):

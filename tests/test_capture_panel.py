@@ -29,6 +29,9 @@ window = CaptureWindow(messages.append)
 window.show()
 app.processEvents()
 assert window.windowTitle() == "Capture"
+assert window.save_image.text() == "Save image data"
+window.save_image.click()
+assert messages[-1] == {"action": "image"}
 assert window.rate.value() == 60
 assert window.rate.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
 assert not window.findChildren(QSlider)
@@ -48,6 +51,7 @@ assert not window.rate.isEnabled()
 assert not window.video.isEnabled()
 assert window.timelapse.text() == "Stop timelapse"
 assert window.cursor.isEnabled()
+assert window.save_image.isEnabled()
 app.processEvents()
 window.grab().save(sys.argv[1])
 window.update_state({"pending_recording": "video", "frames_per_minute": 60})

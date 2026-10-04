@@ -359,7 +359,7 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_clears(monkeypat
     def record_spots(image, rendered, spots, scale, unit):
         states.append((spots.placing, spots.pixels.copy()))
         center = rendered.image[rendered.image.shape[0] // 2, rendered.image.shape[1] // 2]
-        assert bool(np.all(center == 255)) == (not spots.placing)
+        assert not np.all(center == 255)
         return draw_spots(image, rendered, spots, scale, unit)
 
     monkeypatch.setattr(desktop, "draw_sample_spots", record_spots)

@@ -30,10 +30,15 @@ class CaptureWindow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
-        heading = QLabel("Video and timelapse")
+        heading = QLabel("Image data, video and timelapse")
         heading.setStyleSheet("font-size: 18px; font-weight: bold")
         layout.addWidget(heading)
-        instructions = QLabel("Choose a save location to start an MP4 recording.")
+        self.save_image = QPushButton("Save image data")
+        self.save_image.clicked.connect(lambda: self._send({"action": "image"}))
+        layout.addWidget(self.save_image)
+        instructions = QLabel(
+            "Save a PNG with thermal data, or choose a location for an MP4 recording."
+        )
         instructions.setWordWrap(True)
         layout.addWidget(instructions)
         form = QFormLayout()
