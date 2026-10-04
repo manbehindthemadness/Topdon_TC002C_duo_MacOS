@@ -30,7 +30,8 @@ from .render import (
 )
 from .view_panel import ViewPanel
 from .view_settings import VIEW_DEFAULTS
-from .window_style import set_black_window_backgrounds
+from .window_preferences import load_main_window_size, save_main_window_size
+from .window_style import set_black_window_backgrounds, window_resize_size
 
 LOG = logging.getLogger(__name__)
 WINDOW_NAME = "TOPDON TC002C Duo"
@@ -739,6 +740,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    saved_window_size = load_main_window_size()
+    last_window_size = None
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(message)s",
@@ -971,11 +974,11 @@ def main(argv: list[str] | None = None) -> int:
             view_panel.update(view_state())
             layout = toolbar_layout(rendered.image.shape[1])
             if not initial_window_size_set:
-                cv2.resizeWindow(
-                    WINDOW_NAME,
+                width, height = saved_window_size or (
                     rendered.image.shape[1],
                     rendered.image.shape[0] + layout.height,
                 )
+                cv2.resizeWindow(WINDOW_NAME, width, height)
                 initial_window_size_set = True
             viewport_size = mouse_viewport_size()
             display, selected = draw_picker(
@@ -1117,6 +1120,15 @@ def main(argv: list[str] | None = None) -> int:
                 break
             cv2.imshow(WINDOW_NAME, display)
             key = cv2.waitKey(1) & 0xFF
+            current_size = window_resize_size(WINDOW_NAME)
+            if current_size is not None:
+                last_window_size = current_size
+            try:
+                if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) == 0:
+                    break
+            except cv2.error:
+                if last_window_size is not None:
+                    break
             if key in (ord("q"), 27):
                 break
             if key == ord("o"):
@@ -1141,6 +1153,11 @@ def main(argv: list[str] | None = None) -> int:
         LOG.error("Unable to run desktop viewer: %s", exc)
         return 2
     finally:
+        if last_window_size is not None:
+            try:
+                save_main_window_size(last_window_size)
+            except OSError as exc:
+                LOG.warning("Could not save main window size: %s", exc)
         stop_recording()
         capture_panel.close()
         view_panel.close()

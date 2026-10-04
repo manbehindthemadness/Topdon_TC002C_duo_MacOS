@@ -153,8 +153,11 @@ image. You can toggle it during a recording. The toolbar and help panel stay out
 of the video. Rotating during recording fits the image into the original video
 dimensions with black borders, preserving its aspect ratio.
 
-The **Camera** popup shows one control per row, with a title, editable value and
-slider for range settings. On/off settings are grouped together below the display
+The main thermal image window remembers its resized dimensions across viewer
+restarts. The **Camera** popup also remembers its window size across closes and viewer restarts,
+and groups display, AI enhancement, and camera adjustments.
+Each control has a title and editable value; only numeric ranges have sliders.
+Choice and on/off controls use dropdowns. On/off settings are grouped below the display
 and camera adjustments. All available inputs stay enabled. The single
 **Advanced / Auto** checkbox is reserved for future automatic control behavior. Hardware rows include ambient and reflected temperature,
 distance, emissivity, humidity, optical transmission, center overlay, brightness,

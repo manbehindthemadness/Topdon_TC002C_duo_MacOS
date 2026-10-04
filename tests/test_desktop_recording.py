@@ -12,10 +12,12 @@ from topdon_duo import desktop
 @pytest.fixture
 def viewer(monkeypatch, tmp_path):
     monkeypatch.setattr(desktop.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 30
     monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)
     monkeypatch.setattr(desktop, "mouse_viewport_size", lambda: None)
+    monkeypatch.setattr(desktop, "window_resize_size", lambda _name: None)
     pointer = Mock()
     pointer.over_image.return_value = True
     monkeypatch.setattr(desktop, "PointerMonitor", lambda _name: pointer)
@@ -127,6 +129,48 @@ def viewer(monkeypatch, tmp_path):
         panel=panel,
         key_events=key_events,
     )
+
+
+def test_main_window_size_is_saved_and_restored_on_next_run(viewer, monkeypatch):
+    from topdon_duo.window_preferences import load_main_window_size
+
+    monkeypatch.setattr(desktop, "window_resize_size", lambda _name: (930, 710))
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    assert load_main_window_size() == (930, 710)
+    desktop.cv2.resizeWindow.reset_mock()
+    assert desktop.main([]) == 0
+    desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, 930, 710)
+
+
+def test_native_close_keeps_last_size_when_window_has_already_disappeared(viewer, monkeypatch):
+    from topdon_duo.window_preferences import load_main_window_size
+
+    calls = []
+
+    def size(_name):
+        calls.append(1)
+        if len(calls) == 1:
+            return (870, 660)
+        return None
+
+    monkeypatch.setattr(desktop, "window_resize_size", size)
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: int(len(calls) == 1))
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: -1)
+    assert desktop.main([]) == 0
+    assert len(calls) == 2
+    assert load_main_window_size() == (870, 660)
+
+
+def test_corrupt_main_window_preferences_fall_back_to_image_size(viewer, monkeypatch, tmp_path):
+    path = tmp_path / "config/topdon-duo/main-window.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("invalid json")
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    layout = desktop.toolbar_layout(768)
+    desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, 768, 576 + layout.height)
 
 
 @pytest.mark.parametrize("mode", ["video", "timelapse"])

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import ctypes as C
 import sys
+from functools import lru_cache
 from pathlib import Path
 
-from .pointer import PointerMonitor
+import cv2
+
+from .pointer import PointerMonitor, Rect
 
 QT_STYLESHEET = b"""
 QWidget { background-color: #000000; color: #eeeeee; }
@@ -17,6 +20,84 @@ QSlider::handle:horizontal {
 }
 QSlider::sub-page:horizontal { background: #777777; }
 """
+
+
+class _QtPoint(C.Structure):
+    _fields_ = [("x", C.c_int), ("y", C.c_int)]
+
+
+class _QtRect(C.Structure):
+    # QRect stores inclusive corner coordinates, rather than width and height.
+    _fields_ = [("left", C.c_int), ("top", C.c_int), ("right", C.c_int), ("bottom", C.c_int)]
+
+
+@lru_cache(maxsize=1)
+def _qt_window_size_functions():
+    for line in Path("/proc/self/maps").read_text().splitlines():
+        path = line.split(maxsplit=5)[-1]
+        if "libQt5Widgets" not in Path(path).name:
+            continue
+        library = C.CDLL(path)
+        for namespace in ("14QtOpenCVPython", ""):
+            prefix = f"_ZN{namespace}"
+            point_ref = "ERKNS_6QPointE" if namespace else "ERK6QPoint"
+            try:
+                at = getattr(library, prefix + "12QApplication10topLevelAt" + point_ref)
+                bounds = getattr(library, f"_ZNK{namespace}7QWidget12contentsRectEv")
+            except AttributeError:
+                continue
+            at.argtypes, at.restype = [C.POINTER(_QtPoint)], C.c_void_p
+            bounds.argtypes, bounds.restype = [C.c_void_p], _QtRect
+            return at, bounds
+    return None
+
+
+def window_resize_size(window_name: str) -> tuple[int, int] | None:
+    """Return dimensions suitable for resizeWindow, including unused image margins."""
+    try:
+        left, top, width, height = cv2.getWindowImageRect(window_name)
+        if width <= 0 or height <= 0:
+            return None
+        if sys.platform.startswith("linux"):
+            functions = _qt_window_size_functions()
+            if functions:
+                at, bounds = functions
+                widget = at(C.byref(_QtPoint(left + width // 2, top + height // 2)))
+                if widget:
+                    rect = bounds(widget)
+                    return rect.right - rect.left + 1, rect.bottom - rect.top + 1
+                return None  # Retain the last full size while another window covers it.
+        elif sys.platform == "darwin":
+            monitor = PointerMonitor(window_name)
+            pool = None
+            try:
+                if monitor._objc is not None:
+                    message = monitor._message
+                    pool = message(monitor._objc.objc_getClass(b"NSAutoreleasePool"), "new")
+                    app = message(
+                        monitor._objc.objc_getClass(b"NSApplication"), "sharedApplication"
+                    )
+                    windows = message(app, "windows")
+                    for index in range(message(windows, "count", C.c_ulong)):
+                        window = message(
+                            windows, "objectAtIndex:", arguments=(C.c_ulong,), values=(index,)
+                        )
+                        if (
+                            message(message(window, "title"), "UTF8String", C.c_char_p)
+                            != window_name.encode()
+                        ):
+                            continue
+                        content = message(window, "contentView")
+                        rect = message(content, "bounds", Rect)
+                        slider_height = message(content, "sliderHeight", C.c_int)
+                        return round(rect.size.width), round(rect.size.height - slider_height)
+            finally:
+                if pool is not None:
+                    monitor._message(pool, "drain", None)
+                monitor.close()
+        return width, height
+    except (cv2.error, OSError, AttributeError, ValueError):
+        return None
 
 
 def _qt_black_backgrounds() -> bool:

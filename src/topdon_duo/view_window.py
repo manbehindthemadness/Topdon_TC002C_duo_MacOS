@@ -1,7 +1,8 @@
 """Camera and display controls in a separate Qt process."""
 
-from PySide6.QtCore import QSignalBlocker, Qt, QTimer
+from PySide6.QtCore import QSettings, QSignalBlocker, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -25,6 +26,13 @@ from .view_settings import (
     UPSCALING_MODES,
     VIEW_DEFAULTS,
 )
+
+
+class NoWheelSlider(QSlider):
+    """Let the surrounding scroll area handle mouse-wheel input."""
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()
 
 
 class ControlRow(QWidget):
@@ -64,12 +72,10 @@ class ControlRow(QWidget):
         self.input.setAccessibleName(title)
         line.addWidget(self.input)
         self.slider = None
-        if not self.is_switch:
-            self.slider = QSlider(Qt.Horizontal)
+        if not self.options:
+            self.slider = NoWheelSlider(Qt.Horizontal)
             self.slider.setAccessibleName(f"{title} slider")
-            self.slider.setRange(
-                0, len(self.options) - 1 if self.options else round((maximum - minimum) / step)
-            )
+            self.slider.setRange(0, round((maximum - minimum) / step))
             self.slider.valueChanged.connect(self._slider_changed)
             self.slider.sliderReleased.connect(self._emit)
             line.addWidget(self.slider, 1)
@@ -104,7 +110,7 @@ class ControlRow(QWidget):
             self.timer.start()
 
     def _slider_changed(self, position):
-        value = self.options[position][0] if self.options else self.minimum + position * self.step
+        value = self.minimum + position * self.step
         self._set_value(value)
         if self.input.isEnabled() and not self.slider.isSliderDown():
             self.timer.start()
@@ -130,7 +136,9 @@ class ViewWindow(QWidget):
         self.hardware_rows = {}
         self.setWindowTitle("Camera")
         self.setMinimumWidth(570)
-        self.resize(620, 780)
+        self._settings = QSettings(
+            QSettings.IniFormat, QSettings.UserScope, "topdon-duo", "desktop"
+        )
         layout = QVBoxLayout(self)
         heading = QLabel("Camera")
         heading.setStyleSheet("font-size: 20px; font-weight: bold")
@@ -179,11 +187,17 @@ class ViewWindow(QWidget):
                     "image_source",
                     "temperature_unit",
                     "image_filter",
+                    "color_palette",
+                ),
+                (),
+            ),
+            (
+                "AI enhancement",
+                (
                     "upsampling",
                     "enhancement_input",
                     "enhancement_amount",
                     "anime4k_passes",
-                    "color_palette",
                 ),
                 (),
             ),
@@ -259,6 +273,17 @@ class ViewWindow(QWidget):
             buttons.addWidget(button)
         layout.addLayout(buttons)
         self.update_state(VIEW_DEFAULTS)
+        size = self._settings.value("camera/window_size", QSize(620, 780))
+        self.resize(size if isinstance(size, QSize) and size.isValid() else QSize(620, 780))
+        QApplication.instance().aboutToQuit.connect(self._save_window_size)
+
+    def _save_window_size(self) -> None:
+        self._settings.setValue("camera/window_size", self.size())
+        self._settings.sync()
+
+    def closeEvent(self, event) -> None:
+        self._save_window_size()
+        super().closeEvent(event)
 
     def _reset_display(self):
         for row in self.rows.values():

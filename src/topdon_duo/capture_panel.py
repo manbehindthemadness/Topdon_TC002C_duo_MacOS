@@ -119,12 +119,20 @@ class CapturePanel:
         process, self._process = self._process, None
         if process is not None:
             if process.poll() is None:
-                process.terminate()
+                # EOF lets Qt quit normally and flush persistent window settings.
+                try:
+                    process.stdin.close()
+                except OSError:
+                    pass
                 try:
                     process.wait(timeout=1)
                 except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
+                    process.terminate()
+                    try:
+                        process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
             for stream in (process.stdin, process.stdout, process.stderr):
                 stream.close()
         self._outgoing = b""

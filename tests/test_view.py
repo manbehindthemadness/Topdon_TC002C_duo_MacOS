@@ -21,12 +21,16 @@ viewer = viewer_fixture
 def test_view_popup_emits_settings_and_syncs_without_feedback(tmp_path):
     script = """
 import sys
+from pathlib import Path
+from PySide6.QtCore import QSettings, QSize
 from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton
 from topdon_duo.view_window import ViewWindow
 from topdon_duo.view_settings import VIEW_DEFAULTS
 from topdon_duo.hardware_controls import HARDWARE_CONTROLS
 
 app = QApplication([])
+QSettings.setPath(QSettings.IniFormat, QSettings.UserScope,
+                  str(Path(sys.argv[1]).parent / "config"))
 messages = []
 window = ViewWindow(messages.append)
 window.show()
@@ -37,6 +41,7 @@ assert window.findChildren(QCheckBox) == [window.advanced_auto]
 assert window.advanced_auto.text() == "Advanced / Auto"
 for row in (*window.rows.values(), *window.hardware_rows.values()):
     assert row.input.isEnabled()
+    assert (row.slider is None) == bool(row.options)
     if row.slider is not None:
         assert row.slider.isEnabled()
 window.advanced_auto.click()
@@ -88,10 +93,16 @@ window.update_state({**VIEW_DEFAULTS, "hardware": {
     "palette": {"value": 11.0, "enabled": True, "available": True},
     "ambient": {"value": 30, "enabled": False, "available": True}}})
 assert window.hardware_rows["palette"].input.currentData() == 11
-assert window.hardware_rows["palette"].slider.value() == 3
+assert window.hardware_rows["palette"].slider is None
 assert row.input.isEnabled()
 
 body_layout = row.parentWidget().layout()
+headings = {body_layout.itemAt(i).widget().text(): i
+            for i in range(body_layout.count())
+            if isinstance(body_layout.itemAt(i).widget(), QLabel)}
+for name in ("upsampling", "enhancement_input", "enhancement_amount", "anime4k_passes"):
+    assert headings["AI enhancement"] < body_layout.indexOf(window.rows[name])
+    assert body_layout.indexOf(window.rows[name]) < headings["Camera adjustments"]
 switch_heading = next(body_layout.itemAt(i).widget() for i in range(body_layout.count())
                       if isinstance(body_layout.itemAt(i).widget(), QLabel)
                       and body_layout.itemAt(i).widget().text() == "On / off settings")
@@ -108,7 +119,13 @@ assert messages[-1] == {"action": "reset"}
 assert not window.rows["color_palette"].timer.isActive()
 app.processEvents()
 window.grab().save(sys.argv[1])
+window.resize(760, 880)
+app.processEvents()
+saved_size = window.size()
 window.close()
+reopened = ViewWindow(messages.append)
+assert reopened.size() == saved_size == QSize(760, 880)
+reopened.close()
 """
     result = subprocess.run(
         [sys.executable, "-c", script, str(tmp_path / "view-popup.png")],
