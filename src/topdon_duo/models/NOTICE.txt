@@ -1,0 +1,17 @@
+ACNet legacy HDN0, HDN1, HDN2 and HDN3
+
+Upstream: https://github.com/TianZerL/Anime4KCPP
+Source version: v3.2.0, commit 50c5d1b99965d804eeecfab9b48acfcaffddee3d
+Parameters: core/include/AC/Core/Model/Param/ACNet.p
+License: MIT; full copyright and license text in LICENSE-MIT.txt.
+
+These ONNX files were exported from public upstream parameters by
+tools/export_acnet.py. They implement nine Conv3x3 + ReLU stages with replicated
+edge padding, followed by a stride-2 ConvTranspose2x2, using 4,784 parameters.
+Input: float32 grayscale NCHW [1,1,H,W], normalized to 0..1.
+Output: float32 [1,1,2H,2W], clipped to 0..1 and rounded to uint8 by the viewer.
+Each model is approximately 21 KB. No vendor binaries are included.
+
+ACNet display enhancement is separate from temperature measurements and is
+not a claim of recovered sensor resolution or identical phone TISR processing.
+The inspected regular Android TISR path selects rule-based Anime4K09 instead.

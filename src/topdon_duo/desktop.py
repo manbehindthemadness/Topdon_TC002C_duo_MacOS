@@ -866,6 +866,14 @@ def main(argv: list[str] | None = None) -> int:
             message = hardware.error
         elif hardware.measurement_active:
             message += " · Camera temperatures (approximate)"
+        if renderer.upsampling != "off":
+            if not renderer.enhancement_amount:
+                message += " · Enhancement amount 0 (original image)"
+            elif renderer.upsampler.error:
+                message += f" · {renderer.upsampler.error}; showing unenhanced image"
+            else:
+                algorithm = "Anime4K09" if renderer.upsampling == "anime4k09" else "ACNet"
+                message += f" · {algorithm} 2× · {renderer.upsampler.elapsed_ms:.0f} ms"
         return {
             **renderer.view_settings(),
             "hardware": hardware.state(),

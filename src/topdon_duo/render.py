@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from .camera import IMAGE_OFFSET, decode_duo_frame, raw_temperatures
+from .upsampling import VisionUpsampler
 from .view_settings import VIEW_DEFAULTS, validate_view_setting
 
 READOUT_HEIGHT = 32
@@ -103,6 +104,7 @@ class ThermalRenderer:
         self.camera_preview = False
         self.camera_color = False
         self.hardware_settings = {}
+        self.upsampler = VisionUpsampler()
 
     def display_temperature(self, celsius: float) -> float:
         if self.temperature_unit == "F":
@@ -139,7 +141,24 @@ class ThermalRenderer:
 
     def set_view_setting(self, name: str, value: object) -> None:
         validate_view_setting(name, value)
+        if name == "upsampling" and value != self.upsampling:
+            self.upsampler.reset()
         setattr(self, name, value)
+
+    def _enhance_image(self, image: np.ndarray, native_size: tuple[int, int]) -> np.ndarray:
+        if self.upsampling in ("off", "anime4k09") or not self.enhancement_amount:
+            return image
+        enhanced = self.upsampler.apply(
+            self._enhancement_input(image, native_size),
+            self.upsampling,
+            amount=self.enhancement_amount,
+        )
+        return image if self.upsampler.error else enhanced
+
+    def _enhancement_input(self, image: np.ndarray, native_size: tuple[int, int]) -> np.ndarray:
+        if self.enhancement_input == "native" and image.shape[1::-1] != native_size:
+            return cv2.resize(image, native_size, interpolation=cv2.INTER_AREA)
+        return image
 
     def _orient(self, array: np.ndarray) -> np.ndarray:
         if self.rotation == 90:
@@ -196,6 +215,7 @@ class ThermalRenderer:
         )
         oriented_raw = self._orient(raw)
         oriented_average = self._orient(averaged)
+        native_size = (oriented_raw.shape[1], oriented_raw.shape[0])
         center_y, center_x = celsius.shape[0] // 2, celsius.shape[1] // 2
         stats = TemperatureStats(
             minimum=float(celsius.min()),
@@ -225,16 +245,31 @@ class ThermalRenderer:
                 yuyv = np.frombuffer(frame, dtype=np.uint8, offset=IMAGE_OFFSET * 2).reshape(
                     *preview.shape, 2
                 )
-                heatmap = self._filter_image(
-                    self._orient(cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2))
+                heatmap = self._enhance_image(
+                    self._filter_image(self._orient(cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2))),
+                    native_size,
                 )
             else:
-                heatmap = self._colorize(self._filter_image(image_plane))
+                heatmap = self._colorize(
+                    self._enhance_image(self._filter_image(image_plane), native_size)
+                )
         else:
-            heatmap = self._colorize(self._filter_image(normalized))
+            heatmap = self._colorize(
+                self._enhance_image(self._filter_image(normalized), native_size)
+            )
+        if self.upsampling == "anime4k09" and self.enhancement_amount:
+            # The phone processes palette-converted display pixels, not raw temperatures.
+            heatmap = self.upsampler.apply(
+                self._enhancement_input(heatmap, native_size),
+                self.upsampling,
+                self.enhancement_amount,
+                int(self.anime4k_passes),
+            )
         interpolation = cv2.INTER_NEAREST
         if self.antialiasing:
             interpolation = cv2.INTER_AREA if self.scale == 1 and use_preview else cv2.INTER_CUBIC
+            if heatmap.shape[1] > oriented_raw.shape[1] * self.scale:
+                interpolation = cv2.INTER_AREA
         heatmap = cv2.resize(
             heatmap,
             (oriented_raw.shape[1] * self.scale, oriented_raw.shape[0] * self.scale),

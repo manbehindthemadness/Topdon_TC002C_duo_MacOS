@@ -45,11 +45,17 @@ assert all(row.input.isEnabled() for row in window.rows.values())
 assert all(row.input.isEnabled() for row in window.hardware_rows.values())
 
 for name, value in [("image_source", "raw"), ("temperature_unit", "F"),
-                    ("image_filter", "median"), ("color_palette", "white_hot"),
+                    ("image_filter", "median"), ("upsampling", "acnet-legacy-hdn2"),
+                    ("upsampling", "anime4k09"), ("enhancement_input", "preview"),
+                    ("color_palette", "white_hot"),
                     ("mirror_horizontal", True), ("mirror_vertical", True),
                     ("antialiasing", False)]:
     control = window.controls[name]
     control.setCurrentIndex(control.findData(value))
+    window.rows[name]._emit()
+    assert messages[-1] == {"action": "setting", "name": name, "value": value}
+for name, value in [("enhancement_amount", 0.5), ("anime4k_passes", 2)]:
+    window.controls[name].setValue(value)
     window.rows[name]._emit()
     assert messages[-1] == {"action": "setting", "name": name, "value": value}
 count = len(messages)
@@ -211,6 +217,13 @@ def test_mirrored_spots_stay_on_physical_pixels_through_rotations(
         ("mirror_horizontal", "true"),
         ("color_palette", "bad"),
         ("image_filter", 2),
+        ("upsampling", "unknown-model"),
+        ("enhancement_input", "invalid"),
+        ("enhancement_amount", float("nan")),
+        ("enhancement_amount", 1.1),
+        ("anime4k_passes", 2.5),
+        ("anime4k_passes", 0),
+        ("anime4k_passes", True),
         ("unknown", True),
     ],
 )

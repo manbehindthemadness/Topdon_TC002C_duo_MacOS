@@ -163,6 +163,28 @@ Use **Restore camera settings** to restore all original camera values. Quitting 
 Original payloads are saved under `$XDG_STATE_HOME/topdon-duo/camera-baselines`
 (default `~/.local/state/topdon-duo/camera-baselines`) before controls are enabled.
 
+**Camera → Upsampling algorithm** offers **Anime4K09 2×** (the algorithm selected
+by the inspected Android phone app), plus **ACNet 2×** with no, light, medium,
+or strong denoising. It defaults to Off. **Enhancement input size** selects
+native sensor size (the default, 256×192 → 512×384) or the full preview.
+**Enhancement amount** blends ACNet output with ordinary interpolation, or
+adjusts Anime4K09's gradient strength; 0 gives the original image and 1 gives
+full enhancement. **Anime4K09 passes** offers 1–5 passes; the phone uses 3.
+
+Anime4K09 uses a portable CPU port of the public OpenCL rules with the phone's
+parameters. ACNet uses four bundled ONNX models through the existing OpenCV CPU
+engine. Neither needs downloads, compilation, or extra runtime dependencies.
+Models load when selected and are reused across frames.
+The Camera status shows processing time or a fallback error.
+Enhancement also appears in saved images and recordings, while the temperature
+grid, spot positions, and temperature readings keep their original resolution.
+The existing display scale controls the final image size; enhancement runs at 2×
+before that final resize. Native mode downsamples enlarged previews before
+enhancement. Full preview mode retains their complete input resolution.
+Processing may reduce the live frame rate, especially for the full 512×384 preview.
+The portable Anime4K09 port has been checked against the public kernel rules;
+identical results to a phone GPU have not been established.
+
 When a hardware temperature-correction row is edited, measurements use the
 camera count conversion (`raw / 64 - 50`) instead of the software ambient anchor;
 readings remain approximate. Camera image controls preserve its preview intensity,

@@ -18,9 +18,11 @@ from .capture_window import run_window
 from .hardware_controls import HARDWARE_CONTROLS
 from .view_settings import (
     COLOR_PALETTES,
+    ENHANCEMENT_INPUTS,
     IMAGE_FILTERS,
     IMAGE_SOURCES,
     TEMPERATURE_UNITS,
+    UPSCALING_MODES,
     VIEW_DEFAULTS,
 )
 
@@ -154,10 +156,16 @@ class ViewWindow(QWidget):
             "image_source": ("Image source", tuple(IMAGE_SOURCES.items())),
             "temperature_unit": ("Temperature unit", tuple(TEMPERATURE_UNITS.items())),
             "image_filter": ("Image filter", tuple(IMAGE_FILTERS.items())),
+            "upsampling": ("Upsampling algorithm", tuple(UPSCALING_MODES.items())),
+            "enhancement_input": ("Enhancement input size", tuple(ENHANCEMENT_INPUTS.items())),
             "color_palette": ("Display color gradient", tuple(COLOR_PALETTES.items())),
             "mirror_horizontal": ("Mirror left / right", ((False, "Off"), (True, "On"))),
             "mirror_vertical": ("Mirror top / bottom", ((False, "Off"), (True, "On"))),
             "antialiasing": ("Antialiasing", ((False, "Off"), (True, "On"))),
+        }
+        numeric_options = {
+            "enhancement_amount": ("Enhancement amount", 0, 1, 0.01),
+            "anime4k_passes": ("Anime4K09 passes", 1, 5, 1),
         }
         hardware_switches = tuple(
             name
@@ -167,7 +175,16 @@ class ViewWindow(QWidget):
         for title, display_names, hardware_names in (
             (
                 "Display controls",
-                ("image_source", "temperature_unit", "image_filter", "color_palette"),
+                (
+                    "image_source",
+                    "temperature_unit",
+                    "image_filter",
+                    "upsampling",
+                    "enhancement_input",
+                    "enhancement_amount",
+                    "anime4k_passes",
+                    "color_palette",
+                ),
                 (),
             ),
             (
@@ -185,17 +202,31 @@ class ViewWindow(QWidget):
             heading.setStyleSheet("font-size: 16px; font-weight: bold")
             rows.addWidget(heading)
             for name in display_names:
-                row_title, options = display_options[name]
+                if name in numeric_options:
+                    row_title, minimum, maximum, step = numeric_options[name]
+                    arguments = {"minimum": minimum, "maximum": maximum, "step": step}
+                else:
+                    row_title, options = display_options[name]
+                    arguments = {"options": options}
                 row = ControlRow(
                     row_title,
                     lambda value, name=name: self._send(
                         {"action": "setting", "name": name, "value": value}
                     ),
-                    options=options,
+                    **arguments,
                 )
                 self.rows[name] = row
                 self.controls[name] = row.input
                 rows.addWidget(row)
+                if name == "enhancement_amount":
+                    row.setToolTip("0 gives the original image; 1 gives full enhancement.")
+                elif name == "anime4k_passes":
+                    row.setToolTip("Used by Anime4K09 only. The phone's setting is 3 passes.")
+                elif name == "enhancement_input":
+                    row.setToolTip(
+                        "Native uses the phone's input size. Full preview retains all supplied "
+                        "pixels and takes more processing time."
+                    )
             for name in hardware_names:
                 spec = HARDWARE_CONTROLS[name]
                 row = ControlRow(

@@ -66,5 +66,51 @@ This succeeded at 256x192 -> 512x384, using CPU FMA. One inference took
 39.247 ms; that single run is not a sustained frame-rate benchmark.
 The input was downsampled from a saved, already rendered fan preview, so this
 does not demonstrate recovered sensor detail or reproduce the phone pipeline.
-Source and models are available locally; no enhancement has been integrated
-into the viewer yet. Preserve raw temperature data during any integration.
+Viewer integration
+------------------
+Camera -> Upsampling algorithm offers Anime4K09 and all four legacy HDN variants,
+default Off. Bundled ONNX models use the existing OpenCV CPU backend on both platforms,
+so the viewer does not require an Anime4KCPP native build, a model download, or
+the ONNX Python package. The ONNX package is only needed to regenerate models.
+The MIT license and provenance ship beside the four models in topdon_duo/models.
+
+tools/export_acnet.py converts pinned public source parameters into nine
+Conv3x3/ReLU stages with replicated edge padding and a stride-2 ConvTranspose2x2.
+Independent upstream CPU golden images check all four variants, including borders
+and output ordering. The initial HDN2 comparison was pixel-identical; regression
+tests allow one uint8 level across CPU architectures and OpenCV builds.
+
+The network processes the filtered intensity plane before display
+colorization, or luminance with resized chroma for a hardware color preview.
+Enhancement input size defaults to native sensor dimensions (256x192), with a
+Full preview option that preserves the complete 512x384 camera preview. Native
+mode matches the Android callback's input/output sizes; downsampling an enlarged
+preview is not proof of identical native samples from the phone's stream.
+Final display geometry and measurement grids stay unchanged, so spots and saved
+raw counts are independent of model output. Saved rendered images and recordings
+include enhancement. Saved still-image JSON metadata records the selected
+upsampling setting.
+
+Anime4K09 implementation
+-----------------------
+anime4k09.py ports the public v2.5.0 OpenCL getGray/getGradient/pushGradient rules
+to NumPy/OpenCV, using 2x linear resize, 3 passes, gradient strength 0.5, color
+strength 0, clamp-to-edge sampling and UNORM8 intermediate quantization.
+Processing occurs after palette conversion, as on the inspected Android path.
+The original MIT license is included as models/LICENSE-ANIME4K09.txt.
+An independent scalar C++ harness of the original public OpenCL kernels checks
+edge passes within one uint8 level. The port is not claimed bit-identical to
+phone GPU arithmetic, nor has the iOS implementation been identified.
+
+Enhancement amount (0..1, default 1) scales Anime4K09 gradient strength or blends
+ACNet output with cubic interpolation. Zero bypasses processing and retains the
+original image. Anime4K09 passes (1..5, default 3) affect only Anime4K09.
+These are synchronous CPU paths; the phone's GPU performance does not carry
+over to the portable implementation. Fewer passes and native input reduce cost.
+
+Models are loaded lazily and reused. Failed loading/inference falls back to the
+unenhanced image and reports a Camera status error; selecting Off clears it.
+The synchronous CPU path avoids displaying a previous frame's enhanced image
+alongside current measurements. Full preview processing can reduce frame rate.
+On the local Linux machine, short OpenCV CPU inference runs took approximately
+22-34 ms at 256x192 and 78-85 ms at 512x384. These are not macOS benchmarks.

@@ -1,0 +1,13 @@
+acnet-native-reference.npz contains an edge-heavy deterministic 16x12 uint8
+grayscale input and four independently generated 32x24 expected outputs.
+Input: numpy.default_rng(423).integers(0,256,(12,16),dtype=uint8), then first
+row=0, last row=255, first column=32, last column=220.
+
+Reference engine: Anime4KCPP v3.2.0, commit
+50c5d1b99965d804eeecfab9b48acfcaffddee3d; ac_cli, CPU FMA, factor=2,
+models acnet-legacy-hdn0 through acnet-legacy-hdn3.
+Command: ac_cli -i input.png -o output.png -m acnet-legacy-hdnN -p cpu -f 2
+
+Reference outputs test weight/channel ordering, spatial output ordering and
+replicated borders independently of our ONNX conversion. One uint8 level of
+tolerance covers floating-point/rounding variation between CPU architectures.
