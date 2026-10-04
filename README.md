@@ -95,12 +95,18 @@ The controls are available from the toolbar as well as the keyboard:
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
 
-Sample spots use green crosshairs with a one-pixel stroke and live temperature
+Sample spots use crosshairs with a one-pixel stroke and live temperature
 readings in the selected unit. They remain on the same thermal pixels when the
 window is resized or the view is rotated. Placement stays enabled until you
 press **Clear spots** or `P` again.
 The center temperature appears in the statistics without a fixed center crosshair.
-The mouse sampler uses the same thin green crosshair and hides its marker and
+Crosshairs invert the thermal pixels beneath them, with a one-pixel black or white
+outline. Temperature labels use white text with a two-pixel black outline to stay
+readable across hot/cold boundaries and busy backgrounds. Nearby labels move
+automatically to avoid each other and the crosshairs, with a connecting line
+for every reading. The mouse readout also avoids fixed spot labels.
+
+The mouse sampler uses the same thin crosshair and hides its marker and
 temperature reading when the pointer leaves the image.
 
 Saving opens the native macOS Save dialog or Ubuntu's Zenity Save dialog without pausing camera capture. A

@@ -444,6 +444,124 @@ def image_position_at(
     return x, y
 
 
+def _draw_contrasting_overlay(
+    image: np.ndarray, mask: np.ndarray, text_mask: np.ndarray
+) -> np.ndarray:
+    """Draw inverted crosshairs and stable white labels with a black outline."""
+    result = image.copy()
+    x, y, width, height = cv2.boundingRect(cv2.max(mask, text_mask))
+    if width == 0 or height == 0:
+        return result
+    # Limit compositing to the overlay bounds, including the two-pixel text outline.
+    x0, y0 = max(0, x - 2), max(0, y - 2)
+    x1, y1 = min(image.shape[1], x + width + 2), min(image.shape[0], y + height + 2)
+    region = image[y0:y1, x0:x1]
+    mask = mask[y0:y1, x0:x1]
+    text_mask = text_mask[y0:y1, x0:x1]
+    inverted = 255 - region
+    # Inversion alone disappears on middle gray. A black/white halo also
+    # separates the strokes from busy thermal detail without hiding a whole box.
+    luminance = cv2.cvtColor(inverted, cv2.COLOR_BGR2GRAY)
+    halo_color = np.where(luminance >= 128, 0, 255).astype(np.uint8)
+    halo_mask = cv2.dilate(mask, np.ones((3, 3), dtype=np.uint8))
+    halo_alpha = (halo_mask.astype(np.float32) / 255.0)[..., None]
+    outlined = region * (1.0 - halo_alpha) + halo_color[..., None] * halo_alpha
+    alpha = (mask.astype(np.float32) / 255.0)[..., None]
+    composited = outlined * (1.0 - alpha) + inverted * alpha
+    # Keep each digit a consistent color even when it straddles hot/cold detail.
+    text_outline = cv2.dilate(text_mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    outline_alpha = (text_outline.astype(np.float32) / 255.0)[..., None]
+    text_alpha = (text_mask.astype(np.float32) / 255.0)[..., None]
+    composited *= 1.0 - outline_alpha
+    result[y0:y1, x0:x1] = np.rint(composited * (1.0 - text_alpha) + 255.0 * text_alpha).astype(
+        np.uint8
+    )
+    return result
+
+
+def _place_temperature_label(
+    text: str,
+    anchor: tuple[int, int],
+    image_shape: tuple[int, ...],
+    occupied: list[tuple[int, int, int, int]],
+) -> tuple[tuple[int, int], tuple[int, int, int, int]]:
+    """Try nearby positions first, reserving the text outline and a small gap."""
+    (width, height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 1)
+    padding = 3
+    box_width, box_height = width + padding * 2, height + baseline + padding * 2
+    image_height, image_width = image_shape[:2]
+    ax, ay = anchor
+    best = None
+    seen = set()
+    row_step = box_height + 4
+    for ring in range(max(image_height, image_width) // row_step + 1):
+        above = ay - 8 - height - padding - ring * row_step
+        below = ay + 8 + ring * row_step
+        right = ax + 8 + ring * (box_width + 4)
+        left = ax - 8 - box_width - ring * (box_width + 4)
+        for x, y in (
+            (right, above),
+            (right, below),
+            (left, above),
+            (left, below),
+            (ax - box_width // 2, above),
+            (ax - box_width // 2, below),
+            (right, ay - box_height // 2),
+            (left, ay - box_height // 2),
+        ):
+            x = max(0, min(x, image_width - box_width))
+            y = max(0, min(y, image_height - box_height))
+            if (x, y) in seen:
+                continue
+            seen.add((x, y))
+            rect = (x, y, x + box_width, y + box_height)
+            overlap = sum(
+                max(0, min(rect[2], other[2]) - max(x, other[0]))
+                * max(0, min(rect[3], other[3]) - max(y, other[1]))
+                for other in occupied
+            )
+            origin = (x + padding, y + height + padding)
+            if overlap == 0:
+                return origin, rect
+            distance = (x + box_width / 2 - ax) ** 2 + (y + box_height / 2 - ay) ** 2
+            score = (overlap, distance)
+            if best is None or score < best[0]:
+                best = (score, origin, rect)
+    # When the image is completely crowded, choose the least obstructed position.
+    assert best is not None
+    return best[1], best[2]
+
+
+def _spot_label_layout(
+    rendered: RenderedThermalFrame, spots: SampleSpots, scale: int, temperature_unit: str
+) -> tuple[
+    list[tuple[str, tuple[int, int], tuple[int, int, int, int]]], list[tuple[int, int, int, int]]
+]:
+    anchors = [(x * scale + scale // 2, y * scale + scale // 2) for x, y in spots.pixels]
+    occupied = [(x - 6, y - 6, x + 7, y + 7) for x, y in anchors]
+    labels = []
+    for (sensor_x, sensor_y), anchor in zip(spots.pixels, anchors):
+        temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
+        if temperature_unit == "F":
+            temperature = temperature * 9.0 / 5.0 + 32.0
+        text = f"{temperature:.2f} {temperature_unit}"
+        origin, rect = _place_temperature_label(text, anchor, rendered.image.shape, occupied)
+        occupied.append(rect)
+        labels.append((text, origin, rect))
+    return labels, occupied
+
+
+def _draw_label_leader(
+    mask: np.ndarray, anchor: tuple[int, int], rect: tuple[int, int, int, int]
+) -> None:
+    """Connect every temperature label to its sampled pixel."""
+    endpoint = (
+        min(max(anchor[0], rect[0]), rect[2] - 1),
+        min(max(anchor[1], rect[1]), rect[3] - 1),
+    )
+    cv2.line(mask, anchor, endpoint, 255, 1, cv2.LINE_AA)
+
+
 def draw_sample_spots(
     image: np.ndarray,
     rendered: RenderedThermalFrame,
@@ -451,46 +569,34 @@ def draw_sample_spots(
     scale: int,
     temperature_unit: str = "C",
 ) -> np.ndarray:
-    image = image.copy()
-    color = (80, 255, 80)
-    for sensor_x, sensor_y in spots.pixels:
-        image_x = sensor_x * scale + scale // 2
-        image_y = sensor_y * scale + scale // 2
-        temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
-        if temperature_unit == "F":
-            temperature = temperature * 9.0 / 5.0 + 32.0
-        text = f"{temperature:.2f} {temperature_unit}"
-        (text_width, text_height), baseline = cv2.getTextSize(
-            text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    text_mask = np.zeros_like(mask)
+    labels, _occupied = _spot_label_layout(rendered, spots, scale, temperature_unit)
+    for (sensor_x, sensor_y), (text, origin, rect) in zip(spots.pixels, labels):
+        anchor = (sensor_x * scale + scale // 2, sensor_y * scale + scale // 2)
+        _draw_label_leader(mask, anchor, rect)
+        cv2.putText(
+            text_mask,
+            text,
+            origin,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.52,
+            255,
+            1,
+            cv2.LINE_AA,
         )
-        text_x = max(2, min(image_x + 8, image.shape[1] - text_width - 2))
-        text_y = image_y - 8
-        if text_y < text_height + 2:
-            text_y = image_y + text_height + 8
-        text_y = min(text_y, image.shape[0] - baseline - 2)
-        for thickness, text_color in ((3, (0, 0, 0)), (1, color)):
-            cv2.putText(
-                image,
-                text,
-                (text_x, text_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                text_color,
-                thickness,
-                cv2.LINE_AA,
-            )
-    # Draw markers last so nearby labels cannot hide the sampled pixels.
+    # Union the markers so overlapping spots are inverted only once.
     for sensor_x, sensor_y in spots.pixels:
         cv2.drawMarker(
-            image,
+            mask,
             (sensor_x * scale + scale // 2, sensor_y * scale + scale // 2),
-            color,
+            255,
             markerType=cv2.MARKER_CROSS,
             markerSize=9,
             thickness=1,
             line_type=cv2.LINE_8,
         )
-    return image
+    return _draw_contrasting_overlay(image, mask, text_mask)
 
 
 def draw_picker(
@@ -501,6 +607,7 @@ def draw_picker(
     toolbar_height: int = 0,
     temperature_unit: str = "C",
     pointer_over_image: bool | None = None,
+    spots: SampleSpots | None = None,
 ) -> tuple[np.ndarray, tuple[int, int] | None]:
     image = rendered.image.copy()
     if pointer_over_image is False or picker.x is None or picker.y is None:
@@ -515,39 +622,33 @@ def draw_picker(
     if temperature_unit == "F":
         temperature = temperature * 9.0 / 5.0 + 32.0
 
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    text_mask = np.zeros_like(mask)
     cv2.drawMarker(
-        image,
+        mask,
         (image_x, image_y),
-        (80, 255, 80),
+        255,
         markerType=cv2.MARKER_CROSS,
         markerSize=9,
         thickness=1,
         line_type=cv2.LINE_8,
     )
     text = f"({sensor_x}, {sensor_y}) {temperature:.2f} {temperature_unit}"
-    text_x = min(image_x + 12, max(5, image.shape[1] - 190))
-    text_y = max(20, image_y - 12)
+    _, occupied = _spot_label_layout(rendered, spots or SampleSpots(), scale, temperature_unit)
+    occupied.append((image_x - 6, image_y - 6, image_x + 7, image_y + 7))
+    origin, rect = _place_temperature_label(text, (image_x, image_y), image.shape, occupied)
+    _draw_label_leader(mask, (image_x, image_y), rect)
     cv2.putText(
-        image,
+        text_mask,
         text,
-        (text_x, text_y),
+        origin,
         cv2.FONT_HERSHEY_SIMPLEX,
         0.52,
-        (0, 0, 0),
-        3,
-        cv2.LINE_AA,
-    )
-    cv2.putText(
-        image,
-        text,
-        (text_x, text_y),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.52,
-        (80, 255, 80),
+        255,
         1,
         cv2.LINE_AA,
     )
-    return image, (sensor_x, sensor_y)
+    return _draw_contrasting_overlay(image, mask, text_mask), (sensor_x, sensor_y)
 
 
 def draw_control_instructions(image: np.ndarray) -> np.ndarray:
@@ -779,6 +880,7 @@ def main(argv: list[str] | None = None) -> int:
                 viewport_size=viewport_size,
                 toolbar_height=layout.height,
                 temperature_unit=renderer.temperature_unit,
+                spots=spots,
                 pointer_over_image=pointer_monitor.over_image(
                     rendered.image.shape[0], layout.height
                 ),

@@ -52,21 +52,30 @@ def test_readout_preserves_entire_heatmap_and_top_row_sampling(rotation, unit, t
 
     layout = toolbar_layout(rendered.image.shape[1])
     display = draw_toolbar(rendered.image, 22.0, unit, stats=rendered.stats)
-    assert np.array_equal(display[layout.height - READOUT_HEIGHT:], annotated)
+    assert np.array_equal(display[layout.height - READOUT_HEIGHT :], annotated)
     for viewport_scale in (1, 0.5, 2):
         viewport = (
             round(display.shape[1] * viewport_scale),
             round(display.shape[0] * viewport_scale),
         )
         _image, selected = draw_picker(
-            rendered, MousePicker(x=0, y=round(layout.height * viewport_scale)),
-            renderer.scale, viewport_size=viewport, toolbar_height=layout.height,
+            rendered,
+            MousePicker(x=0, y=round(layout.height * viewport_scale)),
+            renderer.scale,
+            viewport_size=viewport,
+            toolbar_height=layout.height,
         )
         assert selected == (0, 0)
-        assert image_position_at(
-            0, round((layout.height - 2) * viewport_scale),
-            rendered.image.shape, viewport, layout.height,
-        ) is None
+        assert (
+            image_position_at(
+                0,
+                round((layout.height - 2) * viewport_scale),
+                rendered.image.shape,
+                viewport,
+                layout.height,
+            )
+            is None
+        )
 
 
 def test_save_capture_preserves_raw_and_temperature_data(tmp_path):
@@ -178,9 +187,10 @@ def test_mouse_picker_matches_thin_spot_marker():
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     image, selected = draw_picker(rendered, MousePicker(x=123, y=201), scale=3)
     assert selected == (41, 67)
-    assert tuple(image[201, 123]) == (80, 255, 80)
-    assert tuple(image[204, 123]) == (80, 255, 80)
-    assert np.array_equal(image[204, 124], rendered.image[204, 124])
+    assert np.array_equal(image[201, 123], 255 - rendered.image[201, 123])
+    assert np.array_equal(image[204, 123], 255 - rendered.image[204, 123])
+    assert tuple(image[204, 124]) in ((0, 0, 0), (255, 255, 255))
+    assert np.array_equal(image[204, 125], rendered.image[204, 125])
     assert np.array_equal(image[207, 123], rendered.image[207, 123])
 
 
@@ -198,7 +208,7 @@ def test_mouse_picker_hides_on_window_exit_without_mouse_event_and_reappears(mon
     image, selected = draw_picker(rendered, picker, scale=3, pointer_over_image=True)
     assert selected == (41, 67)
     assert not np.array_equal(image, rendered.image)
-    assert put_text.call_count == 2
+    assert put_text.call_count == 1
 
 
 @pytest.mark.parametrize("position", [(100, 0), (-1, 200), (768, 200), None])
@@ -241,7 +251,7 @@ def test_linux_mouse_coordinates_are_already_image_pixels(monkeypatch, rotation,
         rendered, picker, scale=3, viewport_size=viewport, toolbar_height=layout.height
     )
     assert selected == (41, 67)
-    assert tuple(image[201, 123]) == (80, 255, 80)
+    assert np.array_equal(image[201, 123], 255 - rendered.image[201, 123])
     picker.callback(cv2.EVENT_MOUSEMOVE, 123, layout.height - 1, 0, None)
     assert (
         draw_picker(
@@ -354,7 +364,7 @@ def test_spots_stay_on_same_sensor_pixels_through_four_rotations():
     assert spots.pixels == []
 
 
-def test_spots_draw_thin_green_markers_and_live_readings(monkeypatch):
+def test_spots_draw_inverted_markers_and_live_readings(monkeypatch):
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     spots = SampleSpots(placing=True, pixels=[(41, 67), (80, 90)])
     original = rendered.image.copy()
@@ -363,13 +373,14 @@ def test_spots_draw_thin_green_markers_and_live_readings(monkeypatch):
     for temperature, unit, expected in ((20, "C", "20.00 C"), (25, "F", "77.00 F")):
         frame = replace(rendered, temperatures_celsius=np.full((192, 256), temperature))
         result = draw_sample_spots(rendered.image, frame, spots, 3, unit)
-        assert [call.args[1] for call in put_text.call_args_list] == [expected] * 4
+        assert [call.args[1] for call in put_text.call_args_list] == [expected] * 2
         put_text.reset_mock()
         for x, y in spots.pixels:
             ix, iy = x * 3 + 1, y * 3 + 1
-            assert tuple(result[iy, ix]) == (80, 255, 80)
-            assert tuple(result[iy + 3, ix]) == (80, 255, 80)
-            assert np.array_equal(result[iy + 3, ix + 1], original[iy + 3, ix + 1])
+            assert np.array_equal(result[iy, ix], 255 - original[iy, ix])
+            assert np.array_equal(result[iy + 3, ix], 255 - original[iy + 3, ix])
+            assert tuple(result[iy + 3, ix + 1]) in ((0, 0, 0), (255, 255, 255))
+            assert np.array_equal(result[iy + 3, ix + 2], original[iy + 3, ix + 2])
     assert np.array_equal(rendered.image, original)
 
 
@@ -440,3 +451,106 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_clears(monkeypat
     ]
     camera.close.assert_called_once()
     pointer_monitor.close.assert_called_once()
+
+
+@pytest.mark.parametrize("color", [(0, 0, 0), (255, 255, 255), (127, 127, 127), (20, 180, 240)])
+@pytest.mark.parametrize("sampler", ["fixed", "mouse"])
+def test_sampler_contrast_on_dark_bright_gray_and_colored_backgrounds(color, sampler):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    background = np.full_like(rendered.image, color)
+    rendered = replace(rendered, image=background)
+    if sampler == "fixed":
+        # Duplicate/overlapping spots must not cancel the inversion.
+        image = draw_sample_spots(background, rendered, SampleSpots(pixels=[(41, 67)] * 2), 3)
+        ix, iy = 124, 202
+    else:
+        ix, iy = 123, 201
+        image, selected = draw_picker(rendered, MousePicker(x=ix, y=iy), 3)
+        assert selected == (41, 67)
+    assert np.array_equal(image[iy, ix], 255 - background[iy, ix])
+    assert tuple(image[iy + 3, ix + 1]) in ((0, 0, 0), (255, 255, 255))
+    assert np.max(np.abs(image[iy, ix].astype(int) - image[iy + 3, ix + 1])) >= 128
+    # Labels keep white interiors on every background, including hot/cold edges.
+    label_region = image[: iy - 5, ix + 8 :]
+    assert np.any(np.all(label_region == 255, axis=2))
+    assert np.array_equal(image[-1, -1], background[-1, -1])
+    assert np.all(background == color)
+
+
+def label_bounds(call):
+    text, (x, y) = call.args[1:3]
+    (width, height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 1)
+    return x - 3, y - height - 3, x + width + 3, y + baseline + 3
+
+
+def rectangles_overlap(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+@pytest.mark.parametrize(
+    "pixels",
+    [
+        [(30, 41), (37, 41), (46, 41)],
+        [(0, 0), (1, 0), (2, 0), (255, 0), (255, 191), (0, 191)],
+        [(128, 96)] * 8,
+    ],
+)
+@pytest.mark.parametrize("unit", ["C", "F"])
+def test_spot_labels_avoid_each_other_markers_and_image_edges(monkeypatch, pixels, unit):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    spots = SampleSpots(pixels=pixels)
+    put_text = Mock(wraps=cv2.putText)
+    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    image = draw_sample_spots(rendered.image, rendered, spots, 3, unit)
+    boxes = [label_bounds(call) for call in put_text.call_args_list]
+    assert len(boxes) == len(pixels)
+    markers = [(x * 3 + 1 - 6, y * 3 + 1 - 6, x * 3 + 1 + 7, y * 3 + 1 + 7) for x, y in pixels]
+    for index, box in enumerate(boxes):
+        assert 0 <= box[0] < box[2] <= image.shape[1]
+        assert 0 <= box[1] < box[3] <= image.shape[0]
+        assert all(not rectangles_overlap(box, other) for other in boxes[index + 1 :])
+        assert all(not rectangles_overlap(box, marker) for marker in markers)
+    # Placement is deterministic as frames update.
+    put_text.reset_mock()
+    draw_sample_spots(rendered.image, rendered, spots, 3, unit)
+    assert [label_bounds(call) for call in put_text.call_args_list] == boxes
+
+
+def test_mouse_reading_avoids_fixed_spot_labels(monkeypatch):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    spots = SampleSpots(pixels=[(30, 41), (37, 41), (46, 41)])
+    put_text = Mock(wraps=cv2.putText)
+    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    draw_sample_spots(rendered.image, rendered, spots, 3)
+    fixed_boxes = [label_bounds(call) for call in put_text.call_args_list]
+    put_text.reset_mock()
+    _, selected = draw_picker(rendered, MousePicker(x=112, y=124), 3, spots=spots)
+    assert selected == (37, 41)
+    mouse_box = label_bounds(put_text.call_args)
+    assert all(not rectangles_overlap(mouse_box, box) for box in fixed_boxes)
+
+
+def test_all_labels_including_first_have_connecting_lines(monkeypatch):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    # These overlapping anchors place readings just below/right and left of
+    # the crosshair, both within the old 16-pixel cutoff for connecting lines.
+    spots = SampleSpots(pixels=[(41, 67)] * 3)
+    line = Mock(wraps=cv2.line)
+    monkeypatch.setattr("topdon_duo.desktop.cv2.line", line)
+    draw_sample_spots(rendered.image, rendered, spots, 3)
+    assert line.call_count == 3
+    for call in line.call_args_list:
+        start, end = call.args[1:3]
+        assert start == (124, 202)
+        assert 0 < max(abs(end[0] - start[0]), abs(end[1] - start[1])) <= 16
+
+
+def test_displaced_mouse_label_has_connecting_line(monkeypatch):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    spots = SampleSpots(pixels=[(41, 67)])
+    line = Mock(wraps=cv2.line)
+    monkeypatch.setattr("topdon_duo.desktop.cv2.line", line)
+    _, selected = draw_picker(rendered, MousePicker(x=124, y=202), 3, spots=spots)
+    assert selected == (41, 67)
+    line.assert_called_once()
+    assert line.call_args.args[1] == (124, 202)

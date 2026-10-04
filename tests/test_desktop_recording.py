@@ -170,9 +170,12 @@ def test_recording_controls_save_spots_and_optional_cursor(
     assert len(frames) >= 3
     header = desktop.READOUT_HEIGHT
     assert all(frame.shape == (576 + header, 768, 3) for frame in frames)  # Toolbar excluded.
-    assert all(tuple(frame[202 + header, 124]) == (80, 255, 80) for frame in frames)
-    assert bool(np.all(frames[0][301 + header, 333] == (80, 255, 80))) == capture_cursor
-    assert bool(np.all(frames[-1][301 + header, 333] == (80, 255, 80))) == (not capture_cursor)
+    thermal = desktop.ThermalRenderer(scale=3).render_detailed(make_frame()).image
+    assert all(np.array_equal(frame[202 + header, 124], 255 - thermal[202, 124])
+               for frame in frames)
+    cursor_color = 255 - thermal[301, 333]
+    assert np.array_equal(frames[0][301 + header, 333], cursor_color) == capture_cursor
+    assert np.array_equal(frames[-1][301 + header, 333], cursor_color) == (not capture_cursor)
     assert not np.array_equal(
         viewer.displayed[6][-176, 50], frames[0][400 + header, 50]
     )  # Help excluded.
