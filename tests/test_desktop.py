@@ -25,7 +25,7 @@ from topdon_duo.desktop import (
     toolbar_layout,
     trackbar_to_ambient,
 )
-from topdon_duo.render import ThermalRenderer
+from topdon_duo.render import READOUT_HEIGHT, ThermalRenderer, draw_temperature_readout
 
 
 def test_detailed_render_keeps_oriented_radiometric_arrays():
@@ -33,6 +33,40 @@ def test_detailed_render_keeps_oriented_radiometric_arrays():
     assert rendered.temperatures_celsius.shape == (256, 192)
     assert rendered.raw_counts.shape == (256, 192)
     assert rendered.image.shape == (768, 576, 3)
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+@pytest.mark.parametrize("unit", ["C", "F"])
+def test_readout_preserves_entire_heatmap_and_top_row_sampling(rotation, unit, tmp_path):
+    renderer = ThermalRenderer(rotation=rotation, temperature_unit=unit)
+    rendered = renderer.render_detailed(make_frame())
+    # A uniform sensor frame must stay uniform, including the formerly covered rows.
+    assert np.all(rendered.image == rendered.image[-1, 0])
+    annotated = draw_temperature_readout(rendered.image, rendered.stats, 22.0, unit)
+    assert np.array_equal(annotated[READOUT_HEIGHT:], rendered.image)
+    assert np.any(annotated[:READOUT_HEIGHT])
+    web_image, _stats = renderer.render(make_frame())
+    assert np.array_equal(web_image, annotated)
+    png_path, *_ = save_capture(rendered, tmp_path, 22.0, rotation, display_unit=unit)
+    assert np.array_equal(cv2.imread(str(png_path)), annotated)
+
+    layout = toolbar_layout(rendered.image.shape[1])
+    display = draw_toolbar(rendered.image, 22.0, unit, stats=rendered.stats)
+    assert np.array_equal(display[layout.height - READOUT_HEIGHT:], annotated)
+    for viewport_scale in (1, 0.5, 2):
+        viewport = (
+            round(display.shape[1] * viewport_scale),
+            round(display.shape[0] * viewport_scale),
+        )
+        _image, selected = draw_picker(
+            rendered, MousePicker(x=0, y=round(layout.height * viewport_scale)),
+            renderer.scale, viewport_size=viewport, toolbar_height=layout.height,
+        )
+        assert selected == (0, 0)
+        assert image_position_at(
+            0, round((layout.height - 2) * viewport_scale),
+            rendered.image.shape, viewport, layout.height,
+        ) is None
 
 
 def test_save_capture_preserves_raw_and_temperature_data(tmp_path):

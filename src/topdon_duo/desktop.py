@@ -20,7 +20,13 @@ from .camera import FRAME_RATE, SENSOR_HEIGHT, SENSOR_WIDTH, CameraError, TC002C
 from .capture_panel import CapturePanel
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
-from .render import RenderedThermalFrame, ThermalRenderer
+from .render import (
+    READOUT_HEIGHT,
+    RenderedThermalFrame,
+    TemperatureStats,
+    ThermalRenderer,
+    draw_temperature_readout,
+)
 from .window_style import set_black_window_backgrounds
 
 LOG = logging.getLogger(__name__)
@@ -225,7 +231,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
         x1 = TOOLBAR_PADDING * (index + 1) + round(available_width * weight / total_weight)
         buttons[action] = (x0, TOOLBAR_PADDING, x1, TOOLBAR_PADDING + TOOLBAR_BUTTON_HEIGHT)
     return ToolbarLayout(
-        height=TOOLBAR_PADDING * 2 + TOOLBAR_ROW_HEIGHT + TOOLBAR_STATUS_HEIGHT,
+        height=TOOLBAR_PADDING * 2 + TOOLBAR_ROW_HEIGHT + TOOLBAR_STATUS_HEIGHT + READOUT_HEIGHT,
         buttons=buttons,
     )
 
@@ -238,10 +244,15 @@ def draw_toolbar(
     recording_mode: str | None = None,
     pending_recording: str | None = None,
     status: str = "Ready",
+    stats: TemperatureStats | None = None,
 ) -> np.ndarray:
     layout = toolbar_layout(image.shape[1])
     canvas = np.zeros((image.shape[0] + layout.height, image.shape[1], 3), np.uint8)
     canvas[layout.height :] = image
+    if stats is not None:
+        canvas[layout.height - READOUT_HEIGHT :] = draw_temperature_readout(
+            image, stats, ambient_celsius, temperature_unit
+        )
     ambient_display = ambient_celsius
     if temperature_unit == "F":
         ambient_display = ambient_celsius * 9.0 / 5.0 + 32.0
@@ -292,7 +303,7 @@ def draw_toolbar(
     cv2.putText(
         canvas,
         status,
-        (6, layout.height - 7),
+        (6, layout.height - READOUT_HEIGHT - 7),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.4,
         (210, 215, 225),
@@ -357,7 +368,10 @@ def save_capture(
     data_path = base.with_suffix(".npz")
     json_path = base.with_suffix(".json")
 
-    if not cv2.imwrite(str(png_path), rendered.image):
+    capture_image = draw_temperature_readout(
+        rendered.image, rendered.stats, ambient_celsius, display_unit
+    )
+    if not cv2.imwrite(str(png_path), capture_image):
         raise OSError(f"could not write {png_path}")
     np.savez_compressed(
         data_path,
@@ -512,7 +526,7 @@ def draw_picker(
     )
     text = f"({sensor_x}, {sensor_y}) {temperature:.2f} {temperature_unit}"
     text_x = min(image_x + 12, max(5, image.shape[1] - 190))
-    text_y = max(52, image_y - 12)
+    text_y = max(20, image_y - 12)
     cv2.putText(
         image,
         text,
@@ -780,7 +794,11 @@ def main(argv: list[str] | None = None) -> int:
                         if kind in ("video", "timelapse"):
                             recorder.start(
                                 save_path,
-                                rendered.image.shape,
+                                (
+                                    rendered.image.shape[0] + READOUT_HEIGHT,
+                                    rendered.image.shape[1],
+                                    3,
+                                ),
                                 kind,
                                 frames_per_minute=timelapse_fpm,
                             )
@@ -811,7 +829,14 @@ def main(argv: list[str] | None = None) -> int:
                     renderer.temperature_unit,
                 )
                 try:
-                    recorder.write(recording_view)
+                    recorder.write(
+                        draw_temperature_readout(
+                            recording_view,
+                            rendered.stats,
+                            renderer.ambient_celsius,
+                            renderer.temperature_unit,
+                        )
+                    )
                 except (OSError, cv2.error) as exc:
                     stop_recording()
                     notify(f"Recording failed: {exc}")
@@ -842,6 +867,7 @@ def main(argv: list[str] | None = None) -> int:
                 recording_mode=recorder.mode,
                 pending_recording=pending_save_kind if pending_save_kind != "image" else None,
                 status=status,
+                stats=rendered.stats,
             )
 
             quit_requested = False

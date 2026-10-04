@@ -168,11 +168,14 @@ def test_recording_controls_save_spots_and_optional_cursor(
     assert viewer.dialog.open_calls == [(None, {"suffix": ".mp4", "kind": mode})]
     frames = viewer.writer.frames
     assert len(frames) >= 3
-    assert all(frame.shape == (576, 768, 3) for frame in frames)  # Toolbar excluded.
-    assert all(tuple(frame[202, 124]) == (80, 255, 80) for frame in frames)
-    assert bool(np.all(frames[0][301, 333] == (80, 255, 80))) == capture_cursor
-    assert bool(np.all(frames[-1][301, 333] == (80, 255, 80))) == (not capture_cursor)
-    assert not np.array_equal(viewer.displayed[6][-176, 50], frames[0][400, 50])  # Help excluded.
+    header = desktop.READOUT_HEIGHT
+    assert all(frame.shape == (576 + header, 768, 3) for frame in frames)  # Toolbar excluded.
+    assert all(tuple(frame[202 + header, 124]) == (80, 255, 80) for frame in frames)
+    assert bool(np.all(frames[0][301 + header, 333] == (80, 255, 80))) == capture_cursor
+    assert bool(np.all(frames[-1][301 + header, 333] == (80, 255, 80))) == (not capture_cursor)
+    assert not np.array_equal(
+        viewer.displayed[6][-176, 50], frames[0][400 + header, 50]
+    )  # Help excluded.
     viewer.writer.release.assert_called_once()
     viewer.camera.close.assert_called_once()
     viewer.panel.open.assert_called_once()

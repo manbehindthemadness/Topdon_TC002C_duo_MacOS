@@ -9,6 +9,8 @@ import numpy as np
 
 from .camera import decode_duo_frame, raw_temperatures
 
+READOUT_HEIGHT = 32
+
 
 @dataclass(frozen=True)
 class TemperatureStats:
@@ -32,6 +34,41 @@ class RenderedThermalFrame:
     stats: TemperatureStats
     temperatures_celsius: np.ndarray
     raw_counts: np.ndarray
+
+
+def draw_temperature_readout(
+    image: np.ndarray,
+    stats: TemperatureStats,
+    ambient_celsius: float,
+    temperature_unit: str = "C",
+) -> np.ndarray:
+    """Prepend the temperature readout without covering any thermal pixels."""
+
+    def display(celsius: float) -> float:
+        return celsius * 9.0 / 5.0 + 32.0 if temperature_unit == "F" else celsius
+
+    label = (
+        f"Min {display(stats.minimum):.1f} {temperature_unit}   "
+        f"Avg {display(stats.average):.1f} {temperature_unit}   "
+        f"Max {display(stats.maximum):.1f} {temperature_unit}   "
+        f"Center {display(stats.center):.1f} {temperature_unit}   "
+        f"Ambient {display(ambient_celsius):.1f} {temperature_unit}"
+    )
+    canvas = np.zeros((image.shape[0] + READOUT_HEIGHT, image.shape[1], 3), np.uint8)
+    canvas[READOUT_HEIGHT:] = image
+    text_width = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 1)[0][0]
+    font_scale = 0.52 * min(1.0, max(1, image.shape[1] - 20) / text_width)
+    cv2.putText(
+        canvas,
+        label,
+        (10, 22),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        font_scale,
+        (255, 255, 255),
+        1,
+        cv2.LINE_AA,
+    )
+    return canvas
 
 
 class ThermalRenderer:
@@ -69,7 +106,10 @@ class ThermalRenderer:
 
     def render(self, frame: bytes) -> tuple[np.ndarray, TemperatureStats]:
         rendered = self.render_detailed(frame)
-        return rendered.image, rendered.stats
+        image = draw_temperature_readout(
+            rendered.image, rendered.stats, self.ambient_celsius, self.temperature_unit
+        )
+        return image, rendered.stats
 
     def _orient(self, array: np.ndarray) -> np.ndarray:
         if self.rotation == 90:
@@ -116,25 +156,6 @@ class ThermalRenderer:
             interpolation=cv2.INTER_CUBIC,
         )
 
-        unit = self.temperature_unit
-        label = (
-            f"Min {self.display_temperature(stats.minimum):.1f} {unit}   "
-            f"Avg {self.display_temperature(stats.average):.1f} {unit}   "
-            f"Max {self.display_temperature(stats.maximum):.1f} {unit}   "
-            f"Center {self.display_temperature(stats.center):.1f} {unit}   "
-            f"Ambient {self.display_temperature(self.ambient_celsius):.1f} {unit}"
-        )
-        cv2.rectangle(heatmap, (0, 0), (heatmap.shape[1], 32), (0, 0, 0), -1)
-        cv2.putText(
-            heatmap,
-            label,
-            (10, 22),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.52,
-            (255, 255, 255),
-            1,
-            cv2.LINE_AA,
-        )
         return RenderedThermalFrame(
             image=heatmap,
             stats=stats,
