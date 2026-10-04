@@ -21,9 +21,10 @@ viewer = viewer_fixture
 def test_view_popup_emits_settings_and_syncs_without_feedback(tmp_path):
     script = """
 import sys
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton
 from topdon_duo.view_window import ViewWindow
 from topdon_duo.view_settings import VIEW_DEFAULTS
+from topdon_duo.hardware_controls import HARDWARE_CONTROLS
 
 app = QApplication([])
 messages = []
@@ -31,25 +32,74 @@ window = ViewWindow(messages.append)
 window.show()
 app.processEvents()
 assert messages == []
-assert window.controls["antialiasing"].isChecked()
-for name, value in [("image_source", "raw"), ("image_filter", "median"),
-                    ("color_palette", "white_hot")]:
+assert window.windowTitle() == "Camera"
+assert window.findChildren(QCheckBox) == [window.advanced_auto]
+assert window.advanced_auto.text() == "Advanced / Auto"
+for row in (*window.rows.values(), *window.hardware_rows.values()):
+    assert row.input.isEnabled()
+    if row.slider is not None:
+        assert row.slider.isEnabled()
+window.advanced_auto.click()
+assert not messages
+assert all(row.input.isEnabled() for row in window.rows.values())
+assert all(row.input.isEnabled() for row in window.hardware_rows.values())
+
+for name, value in [("image_source", "raw"), ("temperature_unit", "F"),
+                    ("image_filter", "median"), ("color_palette", "white_hot"),
+                    ("mirror_horizontal", True), ("mirror_vertical", True),
+                    ("antialiasing", False)]:
     control = window.controls[name]
     control.setCurrentIndex(control.findData(value))
+    window.rows[name]._emit()
     assert messages[-1] == {"action": "setting", "name": name, "value": value}
-for name in ("mirror_horizontal", "mirror_vertical", "antialiasing"):
-    window.controls[name].click()
-    assert messages[-1] == {"action": "setting", "name": name,
-                            "value": window.controls[name].isChecked()}
 count = len(messages)
 window.update_state({**VIEW_DEFAULTS, "status": "Camera preview"})
 assert len(messages) == count
 assert window.controls["image_source"].currentData() == "preview"
-assert not window.controls["mirror_horizontal"].isChecked()
+assert window.controls["mirror_horizontal"].currentData() is False
+assert window.controls["mirror_horizontal"].isEnabled()
 assert window.status.text() == "Camera preview"
-from PySide6.QtWidgets import QPushButton
+assert set(window.hardware_rows) == set(HARDWARE_CONTROLS)
+
+row = window.hardware_rows["ambient"]
+window.update_state({**VIEW_DEFAULTS, "hardware": {
+    "ambient": {"value": 30, "enabled": False, "available": True}}})
+assert len(messages) == count
+assert row.input.value() == 30
+assert row.input.isEnabled() and row.slider.isEnabled()
+row.input.setValue(27.5)
+assert row.slider.value() == 775
+row._emit()
+assert messages[-1] == {"action": "hardware", "name": "ambient",
+                        "value": 27.5, "enabled": True}
+row.slider.setValue(800)
+assert row.input.value() == 30
+window._restore_hardware()
+assert messages[-1] == {"action": "restore_hardware"}
+assert not row.timer.isActive()
+
+window.update_state({**VIEW_DEFAULTS, "hardware": {
+    "palette": {"value": 11.0, "enabled": True, "available": True},
+    "ambient": {"value": 30, "enabled": False, "available": True}}})
+assert window.hardware_rows["palette"].input.currentData() == 11
+assert window.hardware_rows["palette"].slider.value() == 3
+assert row.input.isEnabled()
+
+body_layout = row.parentWidget().layout()
+switch_heading = next(body_layout.itemAt(i).widget() for i in range(body_layout.count())
+                      if isinstance(body_layout.itemAt(i).widget(), QLabel)
+                      and body_layout.itemAt(i).widget().text() == "On / off settings")
+for control in (*window.rows.values(), *window.hardware_rows.values()):
+    if control.is_switch:
+        assert body_layout.indexOf(control) > body_layout.indexOf(switch_heading)
+        assert control.slider is None
+    else:
+        assert body_layout.indexOf(control) < body_layout.indexOf(switch_heading)
+
+window.rows["color_palette"].timer.start()
 next(b for b in window.findChildren(QPushButton) if b.text().startswith("Reset")).click()
 assert messages[-1] == {"action": "reset"}
+assert not window.rows["color_palette"].timer.isActive()
 app.processEvents()
 window.grab().save(sys.argv[1])
 window.close()

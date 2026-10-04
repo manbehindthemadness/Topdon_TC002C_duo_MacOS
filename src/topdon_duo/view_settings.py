@@ -1,5 +1,6 @@
 """Shared display options for the renderer and its separate Qt popup."""
 
+TEMPERATURE_UNITS = {"C": "Celsius", "F": "Fahrenheit"}
 IMAGE_SOURCES = {"preview": "Camera preview", "raw": "Raw thermal image"}
 IMAGE_FILTERS = {
     "none": "None",
@@ -19,6 +20,7 @@ COLOR_PALETTES = {
     "black_hot": "Black hot",
 }
 VIEW_DEFAULTS = {
+    "temperature_unit": "C",
     "image_source": "preview",
     "mirror_horizontal": False,
     "mirror_vertical": False,
@@ -30,6 +32,7 @@ VIEW_DEFAULTS = {
 
 def validate_view_setting(name: str, value: object) -> None:
     options = {
+        "temperature_unit": TEMPERATURE_UNITS,
         "image_source": IMAGE_SOURCES,
         "image_filter": IMAGE_FILTERS,
         "color_palette": COLOR_PALETTES,

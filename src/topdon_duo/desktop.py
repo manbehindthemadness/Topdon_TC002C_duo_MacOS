@@ -18,6 +18,7 @@ import numpy as np
 
 from .camera import FRAME_RATE, SENSOR_HEIGHT, SENSOR_WIDTH, CameraError, TC002CDuoCamera
 from .capture_panel import CapturePanel
+from .hardware_controls import HardwareControls
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
 from .render import (
@@ -224,7 +225,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
         ("ambient_up", "Ambient +", 70),
         ("rotate", "Rotate", 54),
         ("unit", "C / F", 50),
-        ("view", "View", 55),
+        ("view", "Camera", 65),
         ("spots", "Add spots", 84),
         ("capture", "Capture", 64),
         ("help", "Help", 42),
@@ -270,7 +271,7 @@ def draw_toolbar(
         "ambient_up": f"{ambient_display:.1f}{temperature_unit} +",
         "rotate": "Rotate",
         "unit": f"Unit: {temperature_unit}",
-        "view": "View",
+        "view": "Camera",
         "spots": "Clear spots" if placing_spots else "Add spots",
         "capture": "Capture",
         "help": "Help",
@@ -688,7 +689,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
         ("C            Open Capture controls", (210, 215, 225)),
         ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
         ("F            Toggle Celsius / Fahrenheit", (210, 215, 225)),
-        ("V            Open display settings", (210, 215, 225)),
+        ("V            Open Camera controls", (210, 215, 225)),
         ("Space        Hide controls", (210, 215, 225)),
         ("Q / Esc      Quit", (210, 215, 225)),
     )
@@ -756,6 +757,7 @@ def main(argv: list[str] | None = None) -> int:
     recorder = VideoRecorder()
     capture_panel = CapturePanel()
     view_panel = ViewPanel()
+    hardware = HardwareControls(camera)
     actual_image_source = renderer.image_source
     pending_save_kind: str | None = None
     capture_cursor = False
@@ -860,13 +862,25 @@ def main(argv: list[str] | None = None) -> int:
         message = "Camera preview" if actual_image_source == "preview" else "Raw thermal image"
         if renderer.image_source == "preview" and actual_image_source == "raw":
             message = "Camera preview unavailable; showing the raw thermal image."
-        return {**renderer.view_settings(), "status": message}
+        if hardware.error:
+            message = hardware.error
+        elif hardware.measurement_active:
+            message += " · Camera temperatures (approximate)"
+        return {
+            **renderer.view_settings(),
+            "hardware": hardware.state(),
+            "status": message,
+        }
 
     def open_view() -> None:
         try:
+            try:
+                hardware.load()
+            except CameraError as exc:
+                hardware.error = str(exc)
             view_panel.open(view_state())
         except OSError as exc:
-            notify(f"Could not open View: {exc}")
+            notify(f"Could not open Camera: {exc}")
 
     def capture_state() -> dict:
         return {
@@ -887,7 +901,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "
         "p: add/clear spots | s: save image data | c: Capture controls | "
-        "o: rotate | f: C/F | v: display settings | Space: controls | q/Esc: quit"
+        "o: rotate | f: C/F | v: Camera controls | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
@@ -907,13 +921,22 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     if command.get("action") == "setting":
                         set_view_setting(command["name"], command["value"])
+                    elif command.get("action") == "hardware":
+                        hardware.set(command["name"], command["value"], command["enabled"])
+                        hardware.error = ""
+                        renderer._average_raw = None
+                    elif command.get("action") == "restore_hardware":
+                        hardware.restore()
+                        hardware.error = ""
+                        renderer._average_raw = None
                     elif command.get("action") == "reset":
                         for name, value in VIEW_DEFAULTS.items():
                             set_view_setting(name, value)
                     elif command.get("action") == "error":
-                        notify(f"View window failed: {command.get('message', '')}")
-                except (KeyError, ValueError) as exc:
-                    notify(f"Display setting rejected: {exc}")
+                        notify(f"Camera window failed: {command.get('message', '')}")
+                except (KeyError, ValueError, TypeError, CameraError) as exc:
+                    hardware.error = f"Camera setting rejected: {exc}"
+                    notify(hardware.error)
             for command in capture_panel.poll():
                 action = command.get("action")
                 if action == "error":
@@ -931,6 +954,10 @@ def main(argv: list[str] | None = None) -> int:
             ambient_steps = picker.consume_ambient_steps()
             if ambient_steps:
                 set_ambient(renderer.ambient_celsius + ambient_steps * AMBIENT_STEP_C)
+            renderer.native_temperatures = hardware.measurement_active
+            renderer.camera_preview = hardware.preview_active
+            renderer.camera_color = "palette" in hardware.enabled
+            renderer.hardware_settings = hardware.state() if hardware.original else {}
             rendered = renderer.render_detailed(frame)
             actual_image_source = rendered.image_source
             view_panel.update(view_state())
@@ -1111,6 +1138,10 @@ def main(argv: list[str] | None = None) -> int:
         view_panel.close()
         pointer_monitor.close()
         save_dialog.close()
+        try:
+            hardware.restore()
+        except (CameraError, ValueError) as exc:
+            LOG.error("Could not restore camera settings: %s", exc)
         camera.close()
         cv2.destroyAllWindows()
     return 0

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from .camera import decode_duo_frame, raw_temperatures
+from .camera import IMAGE_OFFSET, decode_duo_frame, raw_temperatures
 from .view_settings import VIEW_DEFAULTS, validate_view_setting
 
 READOUT_HEIGHT = 32
@@ -99,6 +99,10 @@ class ThermalRenderer:
         self.rotation = rotation
         self.temperature_unit = temperature_unit
         self._average_raw: np.ndarray | None = None
+        self.native_temperatures = False
+        self.camera_preview = False
+        self.camera_color = False
+        self.hardware_settings = {}
 
     def display_temperature(self, celsius: float) -> float:
         if self.temperature_unit == "F":
@@ -125,7 +129,13 @@ class ThermalRenderer:
         return image, rendered.stats
 
     def view_settings(self) -> dict:
-        return {name: getattr(self, name) for name in VIEW_DEFAULTS}
+        settings = {name: getattr(self, name) for name in VIEW_DEFAULTS}
+        if self.hardware_settings:
+            settings["hardware"] = self.hardware_settings
+            settings["temperature_conversion"] = (
+                "camera" if self.native_temperatures else "software_ambient"
+            )
+        return settings
 
     def set_view_setting(self, name: str, value: object) -> None:
         validate_view_setting(name, value)
@@ -177,7 +187,13 @@ class ThermalRenderer:
             cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
 
         averaged = self._average_raw
-        celsius = self._orient(raw_temperatures(averaged, ambient_celsius=self.ambient_celsius))
+        celsius = self._orient(
+            raw_temperatures(
+                averaged,
+                ambient_celsius=self.ambient_celsius,
+                offset=50 if self.native_temperatures else None,
+            )
+        )
         oriented_raw = self._orient(raw)
         oriented_average = self._orient(averaged)
         center_y, center_x = celsius.shape[0] // 2, celsius.shape[1] // 2
@@ -190,7 +206,9 @@ class ThermalRenderer:
 
         # Image processing and measurement data remain independent. Some modes
         # leave the preview empty; those retain the radiometric visualization.
-        use_preview = self.image_source == "preview" and bool(np.any(preview))
+        use_preview = self.image_source == "preview" and (
+            self.camera_preview or bool(np.any(preview))
+        )
         image_plane = self._orient(preview) if use_preview else oriented_average
         low, high = np.percentile(image_plane, (1.0, 99.0))
         if high <= low:
@@ -201,7 +219,19 @@ class ThermalRenderer:
                 .round()
                 .astype(np.uint8)
             )
-        heatmap = self._colorize(self._filter_image(normalized))
+        if use_preview and self.camera_preview:
+            # Keep actual camera intensities so brightness/contrast remain visible.
+            if self.camera_color:
+                yuyv = np.frombuffer(frame, dtype=np.uint8, offset=IMAGE_OFFSET * 2).reshape(
+                    *preview.shape, 2
+                )
+                heatmap = self._filter_image(
+                    self._orient(cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2))
+                )
+            else:
+                heatmap = self._colorize(self._filter_image(image_plane))
+        else:
+            heatmap = self._colorize(self._filter_image(normalized))
         interpolation = cv2.INTER_NEAREST
         if self.antialiasing:
             interpolation = cv2.INTER_AREA if self.scale == 1 and use_preview else cv2.INTER_CUBIC

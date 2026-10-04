@@ -81,9 +81,9 @@ orientation.
 The viewer uses the camera's processed preview when it is populated, including
 its full 512×384 plane on supported Linux frames. Temperatures and sample spots
 still use the native 256×192 measurement plane. Empty previews fall back to the
-raw thermal visualization. Open **View** or press `V` to choose the camera preview
+raw thermal visualization. Open **Camera** or press `V` to choose the camera preview
 or raw image, or start with `--image-source raw`. The popup also offers left/right and top/bottom
-mirroring, image filters, antialiasing, and color palettes. Changes apply live;
+mirroring, temperature units, image filters, antialiasing, and color palettes. Changes apply live;
 mirroring keeps existing spots on the same physical sensor pixels. Filters and
 color changes affect the picture while temperatures retain the measurement data.
 The selected view also applies to saved images and recordings; this does not establish whether TISR is active.
@@ -102,7 +102,7 @@ The controls are available from the toolbar as well as the keyboard:
 | Open image, video and timelapse controls | **Capture** or `C` |
 | Rotate clockwise | **Rotate** or `O` |
 | Toggle Celsius/Fahrenheit | **Unit** or `F` |
-| Open display settings | **View** or `V` |
+| Open camera controls | **Camera** or `V` |
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
 
@@ -153,6 +153,23 @@ image. You can toggle it during a recording. The toolbar and help panel stay out
 of the video. Rotating during recording fits the image into the original video
 dimensions with black borders, preserving its aspect ratio.
 
+The **Camera** popup shows one control per row, with a title, editable value and
+slider for range settings. On/off settings are grouped together below the display
+and camera adjustments. All available inputs stay enabled. The single
+**Advanced / Auto** checkbox is reserved for future automatic control behavior. Hardware rows include ambient and reflected temperature,
+distance, emissivity, humidity, optical transmission, center overlay, brightness,
+contrast, noise reduction mode and levels, detail enhancement, and camera palettes.
+Use **Restore camera settings** to restore all original camera values. Quitting also restores camera overrides.
+Original payloads are saved under `$XDG_STATE_HOME/topdon-duo/camera-baselines`
+(default `~/.local/state/topdon-duo/camera-baselines`) before controls are enabled.
+
+When a hardware temperature-correction row is edited, measurements use the
+camera count conversion (`raw / 64 - 50`) instead of the software ambient anchor;
+readings remain approximate. Camera image controls preserve its preview intensity,
+and camera palettes use its YUYV color output. The display gradient still applies
+to raw images and grayscale previews. Unsupported or unvalidated hardware switches
+are omitted.
+
 ## Web viewer
 
 Start the local server:
@@ -187,10 +204,28 @@ indicate missing permissions.
 
 ## Temperature accuracy
 
-The radiometric mode uses a validated gain of 1/64 °C per raw count. Its
-per-frame offset varies with the camera's internal temperature, so this project
-anchors the cold-background percentile to `--ambient`. The result is useful for
-thermal contrast and approximate readings, but it is not measurement-grade.
+By default the viewer scales raw counts by 1/64 and anchors the cold-background
+percentile to `--ambient` in software. The toolbar ambient adjustment does not
+send that setting to the camera; use the **Camera** popup's hardware ambient row
+for that. These readings are approximate and are not measurement-grade.
+
+Live hardware experiments found that ambient temperature, distance and emissivity
+can be set on the camera, and that mode-8 counts converted with `raw / 64 - 50`
+usually agree closely with the camera's telemetry. Editing a hardware correction
+row selects this conversion; restoring camera settings returns to the software
+ambient anchor.
+
+## Hardware research
+
+[Hardware investigation notes](docs/hardware-research.txt) record over 60 live
+control trials, the verified USB protocol, preserved settings, six captured
+stream formats, processing controls, and unresolved features. The official
+Android app's TC002C Duo TISR switch was traced to host-side enhancement using
+Anime4KCPP/ACNet; the generic SDK's ignored super-resolution field is a separate
+interface. The app's iOS implementation has not been inspected.
+
+Large captures, original configuration payloads and extracted research material
+remain local under the gitignored `diagnostics/telemetry-research/` directory.
 
 ## Development
 

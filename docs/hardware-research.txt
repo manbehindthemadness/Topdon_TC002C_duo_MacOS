@@ -1,0 +1,322 @@
+TC002C Duo hardware and TISR investigation
+========================================
+Research date: 2026-10-04
+Scope: this connected camera and firmware, Linux USB capture, and static
+inspection of TOPDON's official Android APK. No iOS app inspection or trace.
+
+Results and application opportunities
+------------------------------------
+* Ambient temperature, distance and emissivity are hardware corrections.
+  Reflected temperature and optical transmission also change the radiometric
+  output. Humidity is writable; a useful effect was not established at 1 m.
+* Hardware preview processing includes brightness, contrast, denoising, detail
+  enhancement, 15 palette selections, and mirrors. Measurements must remain
+  separate from display enhancement.
+* Six stream formats were captured. Temperature-only capture reduces each frame
+  from 496,160 to 98,440 bytes; preview-only capture is 393,216 bytes.
+* TOPDON advertises TISR: native 256x192 enhanced to 512x384. The official
+  Android TC002C Duo activity's TISR switch activates HOST display processing.
+  Its normal 2x path reaches Anime4KCPP/ACNet through libASupCPPCore.so. The
+  generic camera SDK's AI-super-resolution field is a different interface and
+  its write was ignored here. This does not negate the advertised TISR feature.
+* The phone polls hardware initialization status before streaming. This gives
+  us a concrete startup-readiness condition, rather than a guessed delay.
+* The toolbar ambient adjustment remains a software background anchor. The
+  subsequently implemented Camera popup supplies the verified hardware rows;
+  editing a hardware correction selects raw/64 - 50 conversion, and restoring
+  camera settings returns to the software anchor. Readings remain approximate.
+  See README.md for current application behavior; these notes document research.
+
+Evidence, preservation and limits
+--------------------------------
+63 configuration trials were run, including repeated status-validation trials,
+plus two manual-shutter transfer probes. Every reversible configuration trial
+used saved complete payloads and restoration. Readback failure counts as an
+unsupported/ignored trial, not a successful setting change.
+
+The preserved experimental starting state was 30 C ambient, 1.00 m distance,
+0.80 emissivity. Earlier phone defaults were 22 C, 0.25 m, 0.95; do not substitute
+those defaults for the actual starting state. Hardware capability data reports
+a 30 cm minimum distance. All six saved configuration blocks were compared
+byte-for-byte after testing. Stream reopening also restores initial active
+pixel ordering after corridor tests.
+
+Local evidence resides under diagnostics/telemetry-research/ (gitignored):
+  original-settings-restoration-baseline.json
+  pre-write-thermometry-configuration.bin
+  pre-write-stream-configuration.bin
+  pre-write-usb-configurations.json
+  hardware-functionality/original-{selector}-{command}.bin
+  hardware-functionality/image-control-roundtrips.json       (31 trials)
+  hardware-functionality/measurement-control-roundtrips.json (17 trials)
+  hardware-functionality/stream-control-roundtrips.json      (11 trials)
+  hardware-functionality/additional-range-tests.json         (2 trials)
+  hardware-functionality/command-status-tests.json           (2 config trials
+                                                            + shutter probe)
+  hardware-functionality/manual-shutter.json
+  hardware-functionality/auto-shutter-read-probe.json
+  hardware-functionality/native-temperature-formula.json
+  hardware-functionality/*restoration.json
+  hardware-functionality/*-frame.bin, *.npz and capture statistics
+
+These tests establish transport behavior and observed scene effects. They do
+not establish absolute thermometry accuracy, fresh power-cycle persistence,
+all firmware variants, high-temperature accuracy, or an exhaustive command map.
+Factory reset, firmware flashing, calibration coefficients, cover/black-body
+calibration and bad-pixel writes were not exercised.
+
+Identity
+--------
+USB VID:PID: 2bdf:0102; extension unit 10, interface 0; UVC protocol 2.0.
+Device ID: TM32-3RG/UIT20260122AACHEA6951739
+Firmware: APP_209031_BUILD_20250917
+FPGA: FPGA_010108_BUILD_20250414
+Thermometry algorithm: THERM_ALG  20301 BUILD 20220423
+Serial: EA6951739; module: 0953060200.
+
+The TM32 identity and matching HCUSBSDK control structures identify a HIKMICRO
+module/protocol family. Related TM32 documentation is a research lead, not a
+complete datasheet match for this precise TOPDON firmware/module variant.
+
+Verified USB control sequence
+-----------------------------
+All requests below use wIndex=0x0A00. A configuration command is selected with:
+  SET_CUR: bmRequestType=0x21, bRequest=1, wValue=0x0500,
+           payload=[data_selector, command]
+  GET_LEN: bmRequestType=0xA1, bRequest=0x85,
+           wValue=data_selector << 8, requested length=4
+           This camera returns TWO bytes; accept 2 or 4, bound the decoded size.
+  GET_CUR: bmRequestType=0xA1, bRequest=0x81,
+           wValue=data_selector << 8, returned configuration length
+
+To update a known configuration:
+  read and preserve the complete original payload;
+  select -> GET_LEN -> SET_CUR(full modified payload);
+  poll fresh selections and GET_CUR until the complete payload matches;
+  verify changed frame data; restore the original complete payload afterward.
+Do not insert GET_CUR between command selection and the actual SET_CUR write.
+Readbacks can lag. USB transfer completion alone does not prove application.
+Unsupported getters may return stale data from a previous selection, so a
+plausible response is insufficient to validate a new command.
+
+Protocol version uses selector 4 directly: GET_LEN then GET_CUR -> "2.0\0".
+Command state uses selector 6 directly: GET_LEN then GET_CUR, one-byte status.
+0=success, 1=not ready, 2=wrong state, 4=out of range, 8=invalid value,
+9=unsupported subfunction. Other SDK codes are in USB_COMMAND_STATE.
+IMPORTANT: our ignored AI-super-resolution write still returned state 0.
+Use both status AND readback/frame validation.
+
+Configuration blocks and wire offsets
+-------------------------------------
+Offsets are relative to configuration bytes, not SDK host C structures.
+All integers below are little-endian. Preserve every unlisted field.
+Do not infer wire layouts from a different SDK version's struct size.
+
+selector 2 / command 1: brightness, 2 bytes, value at byte 1 (0..100).
+selector 2 / command 2: contrast,   2 bytes, value at byte 1 (0..100).
+selector 2 / command 5: enhancement, 79 bytes:
+  0 channel
+  1 noise mode: 0 off, 1 general, 2 expert (capability mask=7)
+  2 general noise level; 3 spatial; 4 temporal (0..100)
+  5 palette: tested original 1 and alternatives 2,10..22
+  6 detail enable; 7 detail level (0..100)
+  20 edge enable, 21 edge level: enabling was ignored
+  22 wide-temperature-work: tested value 2 ignored
+  23 ISP AGC mode: tested value 0 ignored
+  24 AI super resolution: enabling ignored, capability flag=0
+  68 raw radiometric denoise: disabling ignored
+  78 auto-shutter enable: not tested; phone uses a separate serial command
+  Burn protection and other unlisted fields were preserved, not modified.
+
+selector 2 / command 6: video adjustment, 31 bytes:
+  0 channel; 1 mirror; 2 frequency; 3 corridor rotation
+  mirror 0 original, 1 both axes, 2 horizontal, 3 vertical.
+  Both raw temperatures and preview follow these mirrors.
+  Zoom and cursor capabilities are absent. Bad-pixel capability exists but
+  bad-pixel/calibration fields were not written.
+
+selector 3 / command 1: thermometry, 80 bytes:
+  5 temperature unit: 1 C, 2 F, 3 K
+  6 range: original 2, candidate high range 3
+  16 uint32 emissivity percent (0.80 -> 80)
+  21 uint32 distance centimeters (1.00 m -> 100)
+  25 reflected-temperature enable; 26 uint32 (C+100)*10
+  31 stream overlay flag
+  40 uint32 optical transmission percent
+  44 center display flag
+  69 uint32 relative humidity, percent*10
+  75 ambient enable: 1 disabled, 2 enabled
+  76 uint32 ambient temperature, (C+100)*100 (30 C -> 13000)
+
+Distance capability reports 30..9900 cm; emissivity 1..100 percent.
+Capability limits require independent validation before UI range exposure.
+
+selector 3 / command 5: stream configuration, 14 bytes.
+All saved bytes restored after mode changes. Width/height and 50 fps writes
+were ignored in this negotiated 25 fps capture path.
+
+Observed correction effects
+---------------------------
+Compared with nearby baseline captures using raw/64 - 50:
+  emissivity 0.95: approximately +2.02 C median; 0.50: -8.19 C
+  distance 0.30 m: approximately +0.73 C; 5.00 m: -1.91 C
+  ambient 20 C: approximately +2.94 C; 40 C: -3.60 C
+  reflected 15 C enabled: approximately +3.76 C; 35 C: -1.66 C
+  optical transmission 95%: approximately +0.38 C
+These are this scene's changes, with possible scene drift, not correction
+formulas or accuracy measurements. Humidity changes had little/no observable
+median effect at 1 m. Fahrenheit selection did not convert the stream's raw
+plane or telemetry out of Celsius. Display units belong in host presentation.
+
+Range capability entries advertise ID 2 (-20..150 C) and ID 3 (0..550 C).
+ID 1 was ignored. ID 3 read back successfully, but initial post-reopen frames
+were frozen and header telemetry inconsistent. ID 9 was ignored. ID 3 must not
+be exposed as a validated operational high range yet. Restoring ID 2 returned
+live data. Overlay-off was ignored; center-display-on was accepted without an
+established text overlay effect.
+
+Preview processing and orientation
+----------------------------------
+Brightness 30/70 visibly shifted preview intensities. Contrast, noise controls
+and detail settings accepted full-payload roundtrips. Turning noise processing
+off increased measured preview temporal variation; this was not a controlled
+SNR benchmark. Temperature-plane correlation stayed >0.998 in image-only tests.
+Color palettes add real U/V chroma to the YUYV preview. Our existing luma-only
+preview decoder discards that color, so hardware palette integration needs
+proper YUYV conversion rather than applying a second palette to luma.
+
+Corridor quirk: saved original corridor=1, but a newly opened stream has normal
+pixel ordering. Writing the original block activates 90-degree rotation with
+unchanged header dimensions. A normal reshape then makes stripes. Correct
+portrait reshape plus inverse transpose/flip recovered >0.998 correlation.
+Reopening restores normal active ordering while preserving the saved bytes.
+Prefer current software orientation until this state distinction is handled.
+Isolated mirror tests used corridor=0 and recovered raw/preview correlations
+around 0.998/0.999 after inverse mirroring.
+
+Captured stream modes
+---------------------
+mode   bytes/frame   established layout
+ 2        98,440     136-byte header + 256x192 uint16 temperature plane
+ 3       100,352     98,304-byte sensor-count plane + 2,048 trailing bytes;
+                    temperature conversion NOT established
+ 6       395,880     2,668-byte header + 512x384 YUYV preview
+ 8       496,160     4,640-byte header + 98,304 temperatures + 393,216 YUYV
+ 9       495,616     mode-3-style sensor data followed by 393,216 YUYV;
+                    counts differ from calibrated mode-8 temperatures
+10       393,216     pure 512x384 YUYV preview, no header
+
+These six modes agree with stream capability mask 0x3A6. Production's current
+assembler assumes mode 8 magic and frame length and must be adapted for others.
+Native thermometry remains 256x192; preview dimensions do not imply independent
+512x384 temperature measurements.
+
+Mode-8 header offsets (from beginning of assembled frame):
+  0 magic 0x70827773
+  4 header length excluding magic (4636)
+  128 four float32 correction values: distance cm, a currently unknown value
+      observed as 1200, emissivity percent, ambient C
+  144 three float32 scene summaries: min C, max C, average C
+  4636 marker 0xAABBCCDD
+  4640 radiometric uint16 data
+  102944 preview YUYV data
+Earlier float quadruple interpretations must not label the unknown second
+float as a verified humidity value.
+
+Native conversion raw/64 - 50 matched header min/max/average with typical
+median differences of roughly 0.02..0.2 C. Some captures had larger deviations
+and an outlier >5 C; timing, scene changes and invalid pixels need handling.
+There was no calibrated temperature reference. The phone callback adds 14272
+to counts before downstream temperature handling; that is consistent with
+conversion to Kelvin*64 (14272/64=223), not new thermal information.
+
+TISR: official Android implementation
+------------------------------------
+Official APK obtained through TOPDON's public TC002C Duo download endpoint:
+  TopInfraredV6.00.005_0812_1604.apk
+  SHA256 c7c6ad29e7fc75cf60187c067312bb4192ba9301991fb834f8ac557bfb32f8a0
+No APK execution occurred. Focused DEX decompilation and native symbol inspection
+were used. Some large methods fail decompilation; treat incomplete methods as
+unknown rather than reliable code.
+
+Directly established call path for normal TC002C Duo TISR:
+  com.topdon.hik.activity.TC02CDuoThermalActivity.switchAmplify
+    -> initialize SupHelp.initA4KCPP; toggle AmplifyLevel.OFF/MIDDLE
+    -> HikSurfaceView.setOpenAmplify
+    -> HikSurfaceView.refresh: palette conversion, rotation/mirror,
+       OpencvTools.supImage on display pixels
+    -> com.example.suplib.wrapper.SupHelp.runImage
+    -> An4K.loadImageMat / process / saveImageToMat
+    -> libASupCPPCore.so, which exports Anime4KCPP CPU/OpenCL ACNet symbols
+
+The display scale is 2 when this path is active. The helper's constructor
+parameters include a 2.0 zoom factor and GPU selection. Exact native
+configuration/model mapping still needs validation. The APK also contains
+NCNN up2x models and an MNN ai.mnn model. The Duo activity restricts its separate
+MNN/ESRGAN high-mode popup to deviceType==96. Presence of those assets does not
+prove they are the ordinary TC002C Duo TISR implementation.
+
+The inspected phone callback expects a 256x192 YUYV preview, whereas our
+negotiated stream contains a 512x384 preview. Do not blindly add another 2x
+scale to our 512x384 data and call it the advertised 512x384 TISR. Reproduce the
+appropriate input size, processing and output size and compare the same scene.
+This is Android evidence, not proof of the iOS app's internal algorithm.
+
+Useful next integration: build an optional host enhancement using a compatible
+open-source Anime4KCPP/ACNet implementation, benchmark against our existing
+filters on preserved captures, and leave saved raw measurements untouched.
+Do not redistribute extracted vendor binaries/models as part of the application.
+
+Startup and shutter leads
+-------------------------
+selector 1 / command 4 returns three-byte hardware status, observed 01 02 02.
+The official phone waits for byDeviceInitialStatus==2, polling every 200 ms,
+before it starts capture. Add bounded readiness polling and useful diagnostics
+when implementing this path; fresh replug behavior still needs validation.
+Java release calls stop channel, logout and cleanup. No explicit custom
+shutdown command was established; native cleanup remains untraced.
+
+Manual shutter: selector 2 / command 4 accepts a one-byte transfer. Both 0 and
+1 probes completed; the latter returned command status 0. Configuration bytes
+remained unchanged. A conclusive mechanical/NUC event was not established.
+Do not conflate this with cover calibration.
+
+Phone auto-shutter uses USB_SetSystemSerialData:
+  selector 1 / command 24, 11-byte payload, little-endian:
+  byte 0 mode (1 read, 2 write), uint16 flag at 1,
+  uint32 device command at 3, uint32 value at 7.
+  Phone write: mode=2, flag=0, command=0x2001, value=0/1.
+A read-mode probe (mode=1, flag=0, command=0x2001) returned eleven zero bytes,
+which did not echo the requested command or establish the original value.
+Therefore no auto-shutter configuration writes were performed. The startup
+clicking behavior cannot yet be attributed to this control.
+
+Phone cover calibration command 0xF026/value 2 and SDK expert correction exist
+but were not invoked. Other capability-only leads include calibration-file
+access, diagnostic logs and dead-pixel handling. Region/fusion getters sometimes
+returned stale data; support was not demonstrated and must not be advertised.
+
+Suggested implementation order
+------------------------------
+1. Hardware readiness + full-payload preservation/readback control transport.
+2. Hardware emissivity/distance/ambient controls, separately named from the
+   existing software ambient anchor. Verify native temperature conversion
+   before removing that anchor or combining corrections.
+3. Host TISR-compatible display enhancement, with fixed native measurement
+   coordinates and raw saves. Compare the scene from the phone screenshots.
+4. Hardware brightness/contrast/noise/detail and YUYV color conversion.
+5. Lower-bandwidth stream formats when required; retain mode 8 for telemetry.
+6. Longer-settling range trials and auto-shutter readback/persistence work.
+
+Public primary sources
+----------------------
+TOPDON product specification and TISR description:
+https://www.topdon.com/products/TC002C-Duo
+TOPDON official manual:
+https://web-file.topdon.com/topdon-web/information_download/TC002C-Duo-User-Manual-EN.pdf
+Official APK used as local primary evidence:
+https://web-file.topdon.com/topdon-web/information_app_file/TopInfraredV6.00.005_0812_1604.apk
+Related HCUSBSDK header/source repository (not TOPDON-specific documentation):
+https://github.com/No-9527149/hikmicro/tree/4ed05d6acd68d2be7e14d75941321fee93799031
+Related open-source enhancement implementation:
+https://github.com/TianZerL/Anime4KCPP
