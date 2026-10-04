@@ -27,6 +27,8 @@ from .render import (
     ThermalRenderer,
     draw_temperature_readout,
 )
+from .view_panel import ViewPanel
+from .view_settings import VIEW_DEFAULTS
 from .window_style import set_black_window_backgrounds
 
 LOG = logging.getLogger(__name__)
@@ -120,6 +122,12 @@ class SampleSpots:
 
     def rotate_clockwise(self, sensor_height: int) -> None:
         self.pixels = [(sensor_height - 1 - y, x) for x, y in self.pixels]
+
+    def mirror(self, width: int, height: int, horizontal: bool, vertical: bool) -> None:
+        self.pixels = [
+            (width - 1 - x if horizontal else x, height - 1 - y if vertical else y)
+            for x, y in self.pixels
+        ]
 
 
 class MacSaveDialog:
@@ -216,6 +224,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
         ("ambient_up", "Ambient +", 70),
         ("rotate", "Rotate", 54),
         ("unit", "C / F", 50),
+        ("view", "View", 55),
         ("spots", "Add spots", 84),
         ("capture", "Capture", 64),
         ("help", "Help", 42),
@@ -261,6 +270,7 @@ def draw_toolbar(
         "ambient_up": f"{ambient_display:.1f}{temperature_unit} +",
         "rotate": "Rotate",
         "unit": f"Unit: {temperature_unit}",
+        "view": "View",
         "spots": "Clear spots" if placing_spots else "Add spots",
         "capture": "Capture",
         "help": "Help",
@@ -380,6 +390,8 @@ def save_capture(
         ambient_celsius=np.float32(ambient_celsius),
         raw_gain_divisor=np.float32(64.0),
         rotation_degrees=np.int16(rotation),
+        mirror_horizontal=np.bool_(rendered.display_settings.get("mirror_horizontal", False)),
+        mirror_vertical=np.bool_(rendered.display_settings.get("mirror_vertical", False)),
     )
 
     metadata: dict[str, object] = {
@@ -389,6 +401,8 @@ def save_capture(
         "ambient_celsius": ambient_celsius,
         "rotation_degrees": rotation,
         "display_unit": display_unit,
+        "image_source": rendered.image_source,
+        "display_settings": rendered.display_settings,
         "temperature_stats_celsius": rendered.stats.as_dict(),
         "radiometric_file": data_path.name,
         "image_file": png_path.name,
@@ -655,7 +669,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     """Draw a translucent keyboard/mouse help panel over the image."""
     result = image.copy()
     panel_width = min(390, result.shape[1] - 20)
-    panel_height = min(299, result.shape[0] - 20)
+    panel_height = min(324, result.shape[0] - 20)
     x0, y0 = 10, result.shape[0] - panel_height - 10
     x1, y1 = x0 + panel_width, y0 + panel_height
 
@@ -674,6 +688,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
         ("C            Open Capture controls", (210, 215, 225)),
         ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
         ("F            Toggle Celsius / Fahrenheit", (210, 215, 225)),
+        ("V            Open display settings", (210, 215, 225)),
         ("Space        Hide controls", (210, 215, 225)),
         ("Q / Esc      Quit", (210, 215, 225)),
     )
@@ -696,6 +711,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ambient", type=float, default=22.0)
     parser.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--scale", type=int, choices=range(1, 7), default=3)
+    parser.add_argument(
+        "--image-source",
+        choices=("preview", "raw"),
+        default="preview",
+        help="camera preview (default, when available) or raw thermal visualization",
+    )
     parser.add_argument(
         "--timelapse-fpm",
         type=int,
@@ -725,6 +746,7 @@ def main(argv: list[str] | None = None) -> int:
         scale=args.scale,
         ambient_celsius=args.ambient,
         rotation=args.rotate,
+        image_source=args.image_source,
     )
     camera = TC002CDuoCamera()
     picker = MousePicker()
@@ -733,6 +755,8 @@ def main(argv: list[str] | None = None) -> int:
     save_dialog = LinuxSaveDialog() if sys.platform.startswith("linux") else MacSaveDialog()
     recorder = VideoRecorder()
     capture_panel = CapturePanel()
+    view_panel = ViewPanel()
+    actual_image_source = renderer.image_source
     pending_save_kind: str | None = None
     capture_cursor = False
     timelapse_fpm = args.timelapse_fpm
@@ -806,10 +830,43 @@ def main(argv: list[str] | None = None) -> int:
         nonlocal last_selected
         # Rotate the stored sensor coordinates with the image, preserving samples.
         sensor_height = SENSOR_HEIGHT if renderer.rotation in (0, 180) else SENSOR_WIDTH
+        sensor_width = SENSOR_WIDTH if renderer.rotation in (0, 180) else SENSOR_HEIGHT
+        spots.mirror(
+            sensor_width, sensor_height, renderer.mirror_horizontal, renderer.mirror_vertical
+        )
         spots.rotate_clockwise(sensor_height)
+        spots.mirror(
+            sensor_height, sensor_width, renderer.mirror_horizontal, renderer.mirror_vertical
+        )
         renderer.rotate_clockwise()
         picker.x = picker.y = None
         last_selected = None
+
+    def set_view_setting(name: str, value: object) -> None:
+        nonlocal last_selected
+        previous = renderer.view_settings()
+        renderer.set_view_setting(name, value)
+        if name in ("mirror_horizontal", "mirror_vertical") and previous[name] != value:
+            width, height = (
+                (SENSOR_WIDTH, SENSOR_HEIGHT)
+                if renderer.rotation in (0, 180)
+                else (SENSOR_HEIGHT, SENSOR_WIDTH)
+            )
+            spots.mirror(width, height, name == "mirror_horizontal", name == "mirror_vertical")
+            picker.x = picker.y = None
+            last_selected = None
+
+    def view_state() -> dict:
+        message = "Camera preview" if actual_image_source == "preview" else "Raw thermal image"
+        if renderer.image_source == "preview" and actual_image_source == "raw":
+            message = "Camera preview unavailable; showing the raw thermal image."
+        return {**renderer.view_settings(), "status": message}
+
+    def open_view() -> None:
+        try:
+            view_panel.open(view_state())
+        except OSError as exc:
+            notify(f"Could not open View: {exc}")
 
     def capture_state() -> dict:
         return {
@@ -830,7 +887,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "
         "p: add/clear spots | s: save image data | c: Capture controls | "
-        "o: rotate | f: C/F | Space: controls | q/Esc: quit"
+        "o: rotate | f: C/F | v: display settings | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
@@ -846,6 +903,17 @@ def main(argv: list[str] | None = None) -> int:
         set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
         for frame in camera.frames():
+            for command in view_panel.poll():
+                try:
+                    if command.get("action") == "setting":
+                        set_view_setting(command["name"], command["value"])
+                    elif command.get("action") == "reset":
+                        for name, value in VIEW_DEFAULTS.items():
+                            set_view_setting(name, value)
+                    elif command.get("action") == "error":
+                        notify(f"View window failed: {command.get('message', '')}")
+                except (KeyError, ValueError) as exc:
+                    notify(f"Display setting rejected: {exc}")
             for command in capture_panel.poll():
                 action = command.get("action")
                 if action == "error":
@@ -864,6 +932,8 @@ def main(argv: list[str] | None = None) -> int:
             if ambient_steps:
                 set_ambient(renderer.ambient_celsius + ambient_steps * AMBIENT_STEP_C)
             rendered = renderer.render_detailed(frame)
+            actual_image_source = rendered.image_source
+            view_panel.update(view_state())
             layout = toolbar_layout(rendered.image.shape[1])
             if not initial_window_size_set:
                 cv2.resizeWindow(
@@ -991,6 +1061,8 @@ def main(argv: list[str] | None = None) -> int:
                     rotate_view()
                 elif action == "spots":
                     spots.toggle()
+                elif action == "view":
+                    open_view()
                 elif action == "unit":
                     renderer.toggle_temperature_unit()
                 elif action == "help":
@@ -1024,6 +1096,8 @@ def main(argv: list[str] | None = None) -> int:
                 set_ambient(renderer.ambient_celsius + AMBIENT_STEP_C)
             elif key == ord("f"):
                 renderer.toggle_temperature_unit()
+            elif key == ord("v"):
+                open_view()
             elif key == ord("s"):
                 request_save()
             elif key == ord("c"):
@@ -1034,6 +1108,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         stop_recording()
         capture_panel.close()
+        view_panel.close()
         pointer_monitor.close()
         save_dialog.close()
         camera.close()

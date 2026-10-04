@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
 
 from .camera import decode_duo_frame, raw_temperatures
+from .view_settings import VIEW_DEFAULTS, validate_view_setting
 
 READOUT_HEIGHT = 32
 
@@ -34,6 +35,8 @@ class RenderedThermalFrame:
     stats: TemperatureStats
     temperatures_celsius: np.ndarray
     raw_counts: np.ndarray
+    image_source: str = "raw"
+    display_settings: dict = field(default_factory=dict)
 
 
 def draw_temperature_readout(
@@ -79,11 +82,17 @@ class ThermalRenderer:
         ambient_celsius: float = 22.0,
         rotation: int = 0,
         temperature_unit: str = "C",
+        image_source: str = "preview",
     ) -> None:
         if rotation not in (0, 90, 180, 270):
             raise ValueError("rotation must be 0, 90, 180, or 270")
         if temperature_unit not in ("C", "F"):
             raise ValueError("temperature_unit must be C or F")
+        if image_source not in ("preview", "raw"):
+            raise ValueError("image_source must be preview or raw")
+        for name, value in VIEW_DEFAULTS.items():
+            setattr(self, name, value)
+        self.image_source = image_source
         self.scale = scale
         self.smoothing = smoothing
         self.ambient_celsius = ambient_celsius
@@ -100,6 +109,10 @@ class ThermalRenderer:
         self.temperature_unit = "F" if self.temperature_unit == "C" else "C"
         return self.temperature_unit
 
+    def toggle_image_source(self) -> str:
+        self.image_source = "raw" if self.image_source == "preview" else "preview"
+        return self.image_source
+
     def rotate_clockwise(self) -> int:
         self.rotation = (self.rotation + 90) % 360
         return self.rotation
@@ -111,17 +124,52 @@ class ThermalRenderer:
         )
         return image, rendered.stats
 
+    def view_settings(self) -> dict:
+        return {name: getattr(self, name) for name in VIEW_DEFAULTS}
+
+    def set_view_setting(self, name: str, value: object) -> None:
+        validate_view_setting(name, value)
+        setattr(self, name, value)
+
     def _orient(self, array: np.ndarray) -> np.ndarray:
         if self.rotation == 90:
-            return cv2.rotate(array, cv2.ROTATE_90_CLOCKWISE)
-        if self.rotation == 180:
-            return cv2.rotate(array, cv2.ROTATE_180)
-        if self.rotation == 270:
-            return cv2.rotate(array, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        return array.copy()
+            result = cv2.rotate(array, cv2.ROTATE_90_CLOCKWISE)
+        elif self.rotation == 180:
+            result = cv2.rotate(array, cv2.ROTATE_180)
+        elif self.rotation == 270:
+            result = cv2.rotate(array, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        else:
+            result = array.copy()
+        if self.mirror_horizontal or self.mirror_vertical:
+            code = (
+                -1
+                if self.mirror_horizontal and self.mirror_vertical
+                else (1 if self.mirror_horizontal else 0)
+            )
+            result = cv2.flip(result, code)
+        return result
+
+    def _filter_image(self, gray: np.ndarray) -> np.ndarray:
+        if self.image_filter == "bilateral":
+            return cv2.bilateralFilter(gray, 5, 30, 3)
+        if self.image_filter == "median":
+            return cv2.medianBlur(gray, 3)
+        if self.image_filter == "gaussian":
+            return cv2.GaussianBlur(gray, (3, 3), 0.8)
+        if self.image_filter == "sharpen":
+            blur = cv2.GaussianBlur(gray, (3, 3), 0.8)
+            return cv2.addWeighted(gray, 1.7, blur, -0.7, 0)
+        return gray
+
+    def _colorize(self, gray: np.ndarray) -> np.ndarray:
+        if self.color_palette in ("white_hot", "black_hot"):
+            if self.color_palette == "black_hot":
+                gray = 255 - gray
+            return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        return cv2.applyColorMap(gray, getattr(cv2, f"COLORMAP_{self.color_palette.upper()}"))
 
     def render_detailed(self, frame: bytes) -> RenderedThermalFrame:
-        _telemetry, raw, _preview = decode_duo_frame(frame)
+        _telemetry, raw, preview = decode_duo_frame(frame)
 
         if self._average_raw is None:
             self._average_raw = raw.astype(np.float32)
@@ -129,9 +177,7 @@ class ThermalRenderer:
             cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
 
         averaged = self._average_raw
-        celsius = self._orient(
-            raw_temperatures(averaged, ambient_celsius=self.ambient_celsius)
-        )
+        celsius = self._orient(raw_temperatures(averaged, ambient_celsius=self.ambient_celsius))
         oriented_raw = self._orient(raw)
         oriented_average = self._orient(averaged)
         center_y, center_x = celsius.shape[0] // 2, celsius.shape[1] // 2
@@ -142,18 +188,27 @@ class ThermalRenderer:
             center=float(celsius[center_y, center_x]),
         )
 
-        low, high = np.percentile(oriented_average, (1.0, 99.0))
+        # Image processing and measurement data remain independent. Some modes
+        # leave the preview empty; those retain the radiometric visualization.
+        use_preview = self.image_source == "preview" and bool(np.any(preview))
+        image_plane = self._orient(preview) if use_preview else oriented_average
+        low, high = np.percentile(image_plane, (1.0, 99.0))
         if high <= low:
-            normalized = np.zeros_like(oriented_average, dtype=np.uint8)
+            normalized = np.zeros_like(image_plane, dtype=np.uint8)
         else:
-            normalized = np.clip(
-                (oriented_average - low) * (255.0 / (high - low)), 0, 255
-            ).astype(np.uint8)
-        heatmap = cv2.applyColorMap(normalized, cv2.COLORMAP_INFERNO)
+            normalized = (
+                np.clip((image_plane.astype(np.float32) - low) * (255.0 / (high - low)), 0, 255)
+                .round()
+                .astype(np.uint8)
+            )
+        heatmap = self._colorize(self._filter_image(normalized))
+        interpolation = cv2.INTER_NEAREST
+        if self.antialiasing:
+            interpolation = cv2.INTER_AREA if self.scale == 1 and use_preview else cv2.INTER_CUBIC
         heatmap = cv2.resize(
             heatmap,
-            (heatmap.shape[1] * self.scale, heatmap.shape[0] * self.scale),
-            interpolation=cv2.INTER_CUBIC,
+            (oriented_raw.shape[1] * self.scale, oriented_raw.shape[0] * self.scale),
+            interpolation=interpolation,
         )
 
         return RenderedThermalFrame(
@@ -161,6 +216,8 @@ class ThermalRenderer:
             stats=stats,
             temperatures_celsius=celsius,
             raw_counts=oriented_raw,
+            image_source="preview" if use_preview else "raw",
+            display_settings=self.view_settings(),
         )
 
 

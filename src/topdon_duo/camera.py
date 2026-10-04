@@ -136,13 +136,23 @@ def decode_duo_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if magic != FRAME_MAGIC:
         raise ValueError(f"invalid Duo frame magic: 0x{magic:08x}")
     telemetry = values[:HEADER_U16].copy()
-    temperatures = values[
-        TEMPERATURE_OFFSET : TEMPERATURE_OFFSET + SENSOR_PIXELS
-    ].reshape(SENSOR_HEIGHT, SENSOR_WIDTH).copy()
-    preview = (
-        values[IMAGE_OFFSET : IMAGE_OFFSET + SENSOR_PIXELS]
-        .astype(np.uint8)
+    temperatures = (
+        values[TEMPERATURE_OFFSET : TEMPERATURE_OFFSET + SENSOR_PIXELS]
         .reshape(SENSOR_HEIGHT, SENSOR_WIDTH)
+        .copy()
+    )
+    # Linux also exposes a complete 512x384 YUY2 grayscale preview. Each
+    # little-endian word contains luminance in its low byte and chroma above.
+    large_pixels = SENSOR_PIXELS * 4
+    preview_pixels = (
+        large_pixels if len(frame) == (IMAGE_OFFSET + large_pixels) * 2 else SENSOR_PIXELS
+    )
+    preview_scale = 2 if preview_pixels == large_pixels else 1
+    preview_words = np.frombuffer(frame, dtype="<u2", count=preview_pixels, offset=IMAGE_OFFSET * 2)
+    preview = (
+        (preview_words & 0xFF)
+        .astype(np.uint8)
+        .reshape(SENSOR_HEIGHT * preview_scale, SENSOR_WIDTH * preview_scale)
     )
     return telemetry, temperatures, preview
 
@@ -349,9 +359,7 @@ class TC002CDuoCamera:
         read_size = max(16_384, self.mode.max_payload_size)
         while self._running.is_set():
             try:
-                packet = bytes(
-                    self.device.read(BULK_ENDPOINT, read_size, timeout=self.timeout_ms)
-                )
+                packet = bytes(self.device.read(BULK_ENDPOINT, read_size, timeout=self.timeout_ms))
             except usb.core.USBTimeoutError:
                 continue
             except usb.core.USBError as exc:

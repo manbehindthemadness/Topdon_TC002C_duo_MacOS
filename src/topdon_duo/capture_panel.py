@@ -9,6 +9,9 @@ import sys
 
 
 class CapturePanel:
+    window_module = "topdon_duo.capture_window"
+    window_label = "Capture"
+
     def __init__(self) -> None:
         self._process: subprocess.Popen | None = None
         self._incoming = b""
@@ -32,7 +35,7 @@ class CapturePanel:
         for name in ("QT_QPA_PLATFORM_PLUGIN_PATH", "QT_QPA_FONTDIR"):
             env.pop(name, None)
         self._process = subprocess.Popen(
-            [sys.executable, "-m", "topdon_duo.capture_window"],
+            [sys.executable, "-m", self.window_module],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -104,7 +107,10 @@ class CapturePanel:
             stderr = self._stderr.decode(errors="replace").strip()
             if self._process.returncode:
                 messages.append(
-                    {"action": "error", "message": stderr or "Capture window closed unexpectedly"}
+                    {
+                        "action": "error",
+                        "message": stderr or f"{self.window_label} window closed unexpectedly",
+                    }
                 )
             self.close()
         return messages

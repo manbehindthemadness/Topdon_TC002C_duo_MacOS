@@ -111,9 +111,9 @@ class CaptureWindow(QWidget):
             self.activateWindow()
 
 
-def main() -> int:
+def run_window(window_type, title: str) -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("Capture")
+    app.setApplicationName(title)
 
     def send(message: dict) -> None:
         try:
@@ -121,7 +121,7 @@ def main() -> int:
         except BrokenPipeError:
             app.quit()
 
-    window = CaptureWindow(send)
+    window = window_type(send)
     os.set_blocking(sys.stdin.fileno(), False)
     incoming = b""
 
@@ -150,6 +150,10 @@ def main() -> int:
     timer.start(30)
     window.show()
     return app.exec()
+
+
+def main() -> int:
+    return run_window(CaptureWindow, "Capture")
 
 
 if __name__ == "__main__":

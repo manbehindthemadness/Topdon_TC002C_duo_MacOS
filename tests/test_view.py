@@ -1,0 +1,171 @@
+import subprocess
+import sys
+from unittest.mock import Mock
+
+import cv2
+import numpy as np
+import pytest
+from test_camera import make_frame
+from test_capture_panel import popup_environment
+from test_desktop_recording import viewer as viewer_fixture
+from test_render import frame_with_preview
+
+from topdon_duo import desktop
+from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS
+from topdon_duo.render import ThermalRenderer
+from topdon_duo.view_settings import COLOR_PALETTES, IMAGE_FILTERS, VIEW_DEFAULTS
+
+viewer = viewer_fixture
+
+
+def test_view_popup_emits_settings_and_syncs_without_feedback(tmp_path):
+    script = """
+import sys
+from PySide6.QtWidgets import QApplication
+from topdon_duo.view_window import ViewWindow
+from topdon_duo.view_settings import VIEW_DEFAULTS
+
+app = QApplication([])
+messages = []
+window = ViewWindow(messages.append)
+window.show()
+app.processEvents()
+assert messages == []
+assert window.controls["antialiasing"].isChecked()
+for name, value in [("image_source", "raw"), ("image_filter", "median"),
+                    ("color_palette", "white_hot")]:
+    control = window.controls[name]
+    control.setCurrentIndex(control.findData(value))
+    assert messages[-1] == {"action": "setting", "name": name, "value": value}
+for name in ("mirror_horizontal", "mirror_vertical", "antialiasing"):
+    window.controls[name].click()
+    assert messages[-1] == {"action": "setting", "name": name,
+                            "value": window.controls[name].isChecked()}
+count = len(messages)
+window.update_state({**VIEW_DEFAULTS, "status": "Camera preview"})
+assert len(messages) == count
+assert window.controls["image_source"].currentData() == "preview"
+assert not window.controls["mirror_horizontal"].isChecked()
+assert window.status.text() == "Camera preview"
+from PySide6.QtWidgets import QPushButton
+next(b for b in window.findChildren(QPushButton) if b.text().startswith("Reset")).click()
+assert messages[-1] == {"action": "reset"}
+app.processEvents()
+window.grab().save(sys.argv[1])
+window.close()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path / "view-popup.png")],
+        env=popup_environment(),
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("palette", COLOR_PALETTES)
+@pytest.mark.parametrize("image_filter", IMAGE_FILTERS)
+def test_filters_and_palettes_leave_measurements_unchanged(palette, image_filter):
+    frame, _ = frame_with_preview()
+    base = ThermalRenderer(scale=2).render_detailed(frame)
+    renderer = ThermalRenderer(scale=2)
+    renderer.set_view_setting("color_palette", palette)
+    renderer.set_view_setting("image_filter", image_filter)
+    rendered = renderer.render_detailed(frame)
+    assert rendered.image.shape == base.image.shape
+    assert rendered.stats == base.stats
+    assert np.array_equal(rendered.raw_counts, base.raw_counts)
+    assert np.array_equal(rendered.temperatures_celsius, base.temperatures_celsius)
+    if palette in ("white_hot", "black_hot"):
+        assert np.array_equal(rendered.image[..., 0], rendered.image[..., 1])
+        assert np.array_equal(rendered.image[..., 1], rendered.image[..., 2])
+
+
+def test_antialiasing_and_filters_change_display():
+    frame, _ = frame_with_preview()
+    renderer = ThermalRenderer(scale=3)
+    smooth = renderer.render_detailed(frame)
+    renderer.set_view_setting("antialiasing", False)
+    nearest = renderer.render_detailed(frame)
+    assert not np.array_equal(smooth.image, nearest.image)
+    renderer.set_view_setting("image_filter", "gaussian")
+    filtered = renderer.render_detailed(frame)
+    assert not np.array_equal(filtered.image, nearest.image)
+    assert filtered.stats == nearest.stats == smooth.stats
+
+
+@pytest.mark.parametrize("horizontal,vertical", [(True, False), (False, True), (True, True)])
+def test_mirrored_spots_stay_on_physical_pixels_through_rotations(
+    viewer, monkeypatch, horizontal, vertical
+):
+    words = np.frombuffer(make_frame(), dtype="<u2").copy()
+    words[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS] = np.arange(SENSOR_PIXELS) + 10_000
+    viewer.camera.frames.return_value = [words.tobytes()] * 30
+    panel = Mock()
+    panel.events = []
+
+    def poll():
+        events, panel.events = panel.events, []
+        return events
+
+    panel.poll.side_effect = poll
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    observed = []
+    original_draw = desktop.draw_sample_spots
+
+    def draw(image, rendered, spots, scale, unit):
+        for x, y in spots.pixels:
+            observed.append(int(rendered.raw_counts[y, x]))
+        return original_draw(image, rendered, spots, scale, unit)
+
+    monkeypatch.setattr(desktop, "draw_sample_spots", draw)
+    step = 0
+
+    def key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            return ord("p")
+        if step == 2:
+            callback = viewer.set_mouse.call_args.args[1]
+            callback(cv2.EVENT_LBUTTONUP, 124, 202 + desktop.toolbar_layout(768).height, 0, None)
+        if step == 3:
+            panel.events = [
+                {"action": "setting", "name": "mirror_horizontal", "value": horizontal},
+                {"action": "setting", "name": "mirror_vertical", "value": vertical},
+            ]
+            return ord("v")
+        if step in (5, 6, 7, 8):
+            return ord("o")
+        if step == 10:
+            panel.events = [{"action": "reset"}]
+        if step == 12:
+            return ord("q")
+        return -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", key)
+    assert desktop.main([]) == 0
+    assert observed and set(observed) == {10_000 + 67 * 256 + 41}
+    panel.open.assert_called_once()
+    panel.close.assert_called_once()
+    assert all(
+        panel.update.call_args.args[0][name] == value for name, value in VIEW_DEFAULTS.items()
+    )
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("mirror_horizontal", "true"),
+        ("color_palette", "bad"),
+        ("image_filter", 2),
+        ("unknown", True),
+    ],
+)
+def test_invalid_view_settings_are_rejected(name, value):
+    renderer = ThermalRenderer()
+    with pytest.raises(ValueError):
+        renderer.set_view_setting(name, value)
+    assert renderer.view_settings() == VIEW_DEFAULTS
