@@ -1,0 +1,2 @@
+# Allow the active local desktop user to access this camera via libusb.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="2bdf", ATTR{idProduct}=="0102", TAG+="uaccess"

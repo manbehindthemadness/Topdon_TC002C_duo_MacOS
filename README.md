@@ -1,7 +1,7 @@
-# TOPDON TC002C Duo for macOS
+# TOPDON TC002C Duo for macOS and Ubuntu
 
 An experimental native thermal-camera viewer for the TOPDON TC002C Duo on
-Apple Silicon Macs. It reads the camera directly over USB, extracts the native
+Apple Silicon Macs and Ubuntu Linux. It reads the camera directly over USB, extracts the native
 `256x192` 16-bit radiometric plane, and provides both an OpenCV desktop app and
 a browser-based MJPEG viewer.
 
@@ -12,18 +12,58 @@ a browser-based MJPEG viewer.
 - Resizable and rotatable desktop view
 - Adjustable ambient-temperature calibration
 - Celsius and Fahrenheit display modes
-- Native macOS Save dialog
+- Native macOS Save dialog and GTK Save dialog on Ubuntu
 - PNG preview plus lossless NPZ radiometric data and JSON metadata
 - Optional local web viewer
 
 ## Requirements
 
-- Apple Silicon Mac running macOS
+- Apple Silicon Mac running macOS, or Ubuntu 24.04+ with a graphical desktop
 - Python 3.12 or newer
 - [uv](https://docs.astral.sh/uv/)
 - TOPDON TC002C Duo (`2bdf:0102`)
 
 ## Quick start
+
+### Ubuntu
+
+The original macOS setup remains available below. On Ubuntu, install the runtime
+libraries and GTK save dialog, then create a local Python environment:
+
+```bash
+cd /usr/src/Topdon_TC002C_duo_MacOS
+sudo apt install python3-venv libusb-1.0-0 libgl1 libxcb-xinerama0 zenity
+python3 -m venv .venv
+.venv/bin/python -m pip install uv
+.venv/bin/uv sync --dev
+```
+
+Allow the active local desktop user to access this camera without running the
+viewer as root:
+
+```bash
+sudo install -m 644 packaging/udev/70-topdon-duo.rules /etc/udev/rules.d/70-topdon-duo.rules
+sudo udevadm control --reload-rules
+```
+
+Unplug and reconnect the camera, then run:
+
+```bash
+.venv/bin/topdon-duo --diagnose
+.venv/bin/topdon-duo-desktop --ambient 21.9 --rotate 90
+# Alternatively, start the browser viewer:
+.venv/bin/topdon-duo --ambient 21.9 --rotate 90
+```
+
+Linux's `uvcvideo` driver is temporarily detached only from this camera's two
+interfaces while capture runs, then reattached when the viewer closes. Close
+other apps using the camera before starting. The udev rule applies to the active
+local desktop session; remote/headless users need USB permissions configured
+separately. Live capture has been checked on Ubuntu 24.04. Linux assembly uses
+the negotiated full frame size and rejects incomplete frames; the macOS
+assembler and radiometric decoding remain unchanged.
+
+### macOS
 
 ```bash
 git clone https://github.com/manbehindthemadness/Topdon_TC002C_duo_MacOS.git
@@ -52,7 +92,7 @@ The controls are available from the toolbar as well as the keyboard:
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
 
-Saving opens the native macOS Save dialog without pausing camera capture. A
+Saving opens the native macOS Save dialog or Ubuntu's Zenity Save dialog without pausing camera capture. A
 single chosen filename produces three matching files:
 
 - `.png` — the false-colour image
@@ -68,13 +108,14 @@ Fahrenheit.
 Start the local server:
 
 ```bash
-sudo .venv/bin/topdon-duo --ambient 21.9 --rotate 90
+# macOS: prefix with sudo. Ubuntu with the udev rule: run as your regular user.
+.venv/bin/topdon-duo --ambient 21.9 --rotate 90
 ```
 
 Then open <http://127.0.0.1:5001>. To make it available on your local network:
 
 ```bash
-sudo .venv/bin/topdon-duo --host 0.0.0.0 --port 5001
+.venv/bin/topdon-duo --host 0.0.0.0 --port 5001
 ```
 
 Only use `0.0.0.0` when you intend to expose the viewer to other devices on the
@@ -89,7 +130,10 @@ uv run topdon-duo --diagnose
 ```
 
 If capture cannot open the camera, disconnect other apps using it, reconnect the
-device, wait a moment for macOS to enumerate it, and run the viewer with `sudo`.
+device, and wait a moment for it to enumerate. On macOS, run the viewer with
+`sudo`. On Ubuntu, install the udev rule above and reconnect the camera. Discovery
+can still list interfaces without write access; unavailable USB strings can
+indicate missing permissions.
 
 ## Temperature accuracy
 

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -106,20 +107,27 @@ class MacSaveDialog:
         directory = ""
         if default_directory is not None and default_directory.is_dir():
             directory = str(default_directory.resolve())
+        command = self._command(default_name, directory)
         self._process = subprocess.Popen(
-            [
-                "/usr/bin/osascript",
-                "-e",
-                SAVE_DIALOG_SCRIPT,
-                "--",
-                default_name,
-                directory,
-            ],
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
         return True
+
+    def _command(self, default_name: str, directory: str) -> list[str]:
+        return [
+            "/usr/bin/osascript",
+            "-e",
+            SAVE_DIALOG_SCRIPT,
+            "--",
+            default_name,
+            directory,
+        ]
+
+    def _cancelled(self, returncode: int, stderr: str) -> bool:
+        return "User canceled" in stderr
 
     def poll(self) -> tuple[bool, Path | None]:
         """Return (finished, selected path); cancellation yields (True, None)."""
@@ -129,8 +137,8 @@ class MacSaveDialog:
         stdout, stderr = process.communicate()
         if process.returncode == 0 and stdout.strip():
             return True, Path(stdout.strip())
-        if "User canceled" not in stderr:
-            LOG.error("macOS save dialog failed: %s", stderr.strip() or process.returncode)
+        if not self._cancelled(process.returncode, stderr):
+            LOG.error("Save dialog failed: %s", stderr.strip() or process.returncode)
         return True, None
 
     def close(self) -> None:
@@ -142,6 +150,24 @@ class MacSaveDialog:
                 self._process.kill()
                 self._process.wait()
         self._process = None
+
+
+class LinuxSaveDialog(MacSaveDialog):
+    """Non-blocking GTK save panel supplied by Ubuntu's zenity package."""
+
+    def _cancelled(self, returncode: int, stderr: str) -> bool:
+        return returncode == 1
+
+    def _command(self, default_name: str, directory: str) -> list[str]:
+        return [
+            "zenity",
+            "--file-selection",
+            "--save",
+            "--confirm-overwrite",
+            "--title=Save thermal capture",
+            f"--filename={Path(directory) / default_name}",
+            "--file-filter=PNG images | *.png",
+        ]
 
 
 def toolbar_layout(width: int) -> ToolbarLayout:
@@ -414,7 +440,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--output",
         type=Path,
         default=None,
-        help="initial directory for the macOS Save dialog",
+        help="initial directory for the Save dialog",
     )
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
@@ -433,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     camera = TC002CDuoCamera()
     picker = MousePicker()
-    save_dialog = MacSaveDialog()
+    save_dialog = LinuxSaveDialog() if sys.platform.startswith("linux") else MacSaveDialog()
     show_instructions = False
     last_selected: tuple[int, int] | None = None
 
@@ -454,7 +480,7 @@ def main(argv: list[str] | None = None) -> int:
             if not save_dialog.open(args.output):
                 LOG.info("A Save dialog is already open")
         except OSError as exc:
-            LOG.error("Unable to open the macOS Save dialog: %s", exc)
+            LOG.error("Unable to open the Save dialog (Linux requires zenity): %s", exc)
 
     print(
         "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "

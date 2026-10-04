@@ -1,8 +1,11 @@
 import struct
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
+import usb.core
 
+import topdon_duo.camera as camera_module
 from topdon_duo.camera import (
     FRAME_BYTES,
     FRAME_MAGIC,
@@ -11,7 +14,12 @@ from topdon_duo.camera import (
     SENSOR_HEIGHT,
     SENSOR_PIXELS,
     SENSOR_WIDTH,
+    CameraAccessError,
+    CameraError,
     FrameAssembler,
+    LinuxFrameAssembler,
+    NegotiatedMode,
+    TC002CDuoCamera,
     build_probe,
     decode_duo_frame,
     parse_probe,
@@ -63,3 +71,106 @@ def test_decode_and_temperature_conversion():
 def test_decode_rejects_wrong_magic():
     with pytest.raises(ValueError, match="invalid Duo frame magic"):
         decode_duo_frame(bytes(FRAME_BYTES))
+
+
+def test_linux_larger_preview_keeps_complete_radiometric_frame():
+    # This camera advertises a 512x384 preview on Ubuntu, following the
+    # same telemetry and 256x192 radiometric plane as the macOS stream.
+    source = make_frame() + bytes(512 * 384 * 2 - SENSOR_PIXELS * 2)
+    assembler = LinuxFrameAssembler(len(source))
+    result = None
+    for offset in range(0, len(source), 8134):
+        result = assembler.feed(bytes([2, 0x80]) + source[offset:offset + 8134]) or result
+    result = assembler.feed(bytes([2, 0x82])) or result
+    assert result == source
+    _, raw, _ = decode_duo_frame(result)
+    assert np.all(raw == 20_000)
+
+
+def test_linux_rejects_dropped_payload_and_recovers_next_frame():
+    source = make_frame() + bytes(294_912)
+    assembler = LinuxFrameAssembler(len(source))
+    # Reproduce the missing data observed in the captured Ubuntu USB stream:
+    # the old assembler accepted 488358 bytes as a 201248-byte frame.
+    damaged = source[:10_000] + source[17_802:]
+    assert len(damaged) == 488_358
+    assert assembler.feed(bytes([2, 0x82]) + damaged) is None
+    assert assembler.feed(bytes([2, 0x83]) + source) == source
+
+
+def test_linux_rejects_stale_midframe_data_even_when_size_matches():
+    assembler = LinuxFrameAssembler()
+    assert assembler.feed(bytes([2, 0x82]) + bytes(FRAME_BYTES)) is None
+    assert assembler.feed(bytes([2, 0x83]) + make_frame()) == make_frame()
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_usb_setup_and_driver_restoration(monkeypatch, platform):
+    monkeypatch.setattr(camera_module.sys, "platform", platform)
+    device = Mock()
+    device.is_kernel_driver_active.return_value = True
+    monkeypatch.setattr(TC002CDuoCamera, "find", Mock(return_value=device))
+    claim = Mock()
+    release = Mock()
+    monkeypatch.setattr(camera_module.usb.util, "claim_interface", claim)
+    monkeypatch.setattr(camera_module.usb.util, "release_interface", release)
+    monkeypatch.setattr(camera_module.usb.util, "dispose_resources", Mock())
+    camera = TC002CDuoCamera()
+    mode = NegotiatedMode(1, 10, 400_000, FRAME_BYTES, 5020)
+    monkeypatch.setattr(camera, "_negotiate", lambda: mode)
+    assert camera.open() == mode
+    if platform == "linux":
+        device.set_configuration.assert_not_called()
+        device.get_active_configuration.assert_called_once()
+    else:
+        device.set_configuration.assert_called_once()
+        device.get_active_configuration.assert_not_called()
+    assert [call.args[0] for call in device.detach_kernel_driver.call_args_list] == [0, 1]
+    assert [call.args[1] for call in claim.call_args_list] == [0, 1]
+    camera.close()
+    assert [call.args[1] for call in release.call_args_list] == [1, 0]
+    assert [call.args[0] for call in device.attach_kernel_driver.call_args_list] == [1, 0]
+
+
+def test_linux_unconfigured_device_is_configured(monkeypatch):
+    monkeypatch.setattr(camera_module.sys, "platform", "linux")
+    device = Mock()
+    device.get_active_configuration.side_effect = usb.core.USBError("Configuration not set")
+    monkeypatch.setattr(TC002CDuoCamera, "find", Mock(return_value=device))
+    camera = TC002CDuoCamera()
+    monkeypatch.setattr(camera, "_detach_and_claim", Mock())
+    monkeypatch.setattr(camera, "_negotiate", lambda: NegotiatedMode(1, 10, 400_000, FRAME_BYTES, 5020))
+    monkeypatch.setattr(camera_module.usb.util, "dispose_resources", Mock())
+    camera.open()
+    device.set_configuration.assert_called_once()
+    camera.close()
+
+
+def test_failed_negotiation_restores_linux_driver(monkeypatch):
+    monkeypatch.setattr(camera_module.sys, "platform", "linux")
+    device = Mock()
+    device.is_kernel_driver_active.return_value = True
+    monkeypatch.setattr(TC002CDuoCamera, "find", Mock(return_value=device))
+    monkeypatch.setattr(camera_module.usb.util, "claim_interface", Mock())
+    monkeypatch.setattr(camera_module.usb.util, "release_interface", Mock())
+    monkeypatch.setattr(camera_module.usb.util, "dispose_resources", Mock())
+    camera = TC002CDuoCamera()
+    monkeypatch.setattr(camera, "_negotiate", Mock(side_effect=CameraError("rejected mode")))
+    with pytest.raises(CameraError, match="rejected mode"):
+        camera.open()
+    assert camera.device is None
+    assert camera._detached == []
+    assert device.attach_kernel_driver.call_count == 2
+
+
+@pytest.mark.parametrize("platform, message", [("linux", "udev"), ("darwin", "sudo")])
+def test_usb_access_error_is_platform_specific(monkeypatch, platform, message):
+    monkeypatch.setattr(camera_module.sys, "platform", platform)
+    device = Mock()
+    denied = usb.core.USBError("Access denied", errno=13)
+    device.get_active_configuration.side_effect = denied
+    device.set_configuration.side_effect = denied
+    monkeypatch.setattr(TC002CDuoCamera, "find", Mock(return_value=device))
+    monkeypatch.setattr(camera_module.usb.util, "dispose_resources", Mock())
+    with pytest.raises(CameraAccessError, match=message):
+        TC002CDuoCamera().open()

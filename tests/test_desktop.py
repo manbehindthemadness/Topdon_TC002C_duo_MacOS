@@ -4,6 +4,7 @@ import numpy as np
 from test_camera import make_frame
 
 from topdon_duo.desktop import (
+    LinuxSaveDialog,
     MacSaveDialog,
     MousePicker,
     ambient_to_trackbar,
@@ -72,6 +73,35 @@ def test_native_save_dialog_returns_selected_path(monkeypatch, tmp_path):
     assert dialog.is_open
     assert dialog.poll() == (True, chosen_path)
     assert not dialog.is_open
+
+
+def test_save_dialog_commands_preserve_mac_and_support_linux(tmp_path):
+    # Paths with spaces remain a single subprocess argument.
+    directory = str(tmp_path / "thermal captures")
+    mac_command = MacSaveDialog()._command("capture.png", directory)
+    assert mac_command[0] == "/usr/bin/osascript"
+    assert mac_command[-2:] == ["capture.png", directory]
+    linux_command = LinuxSaveDialog()._command("capture.png", directory)
+    assert linux_command[0] == "zenity"
+    assert "--confirm-overwrite" in linux_command
+    assert f"--filename={directory}/capture.png" in linux_command
+
+
+def test_linux_save_cancellation_and_nonblocking_poll(monkeypatch, caplog):
+    from unittest.mock import Mock
+
+    process = Mock(returncode=1)
+    process.poll.side_effect = [None, 1]
+    process.communicate.return_value = ("", "")
+    monkeypatch.setattr("topdon_duo.desktop.subprocess.Popen", lambda *a, **kw: process)
+    dialog = LinuxSaveDialog()
+    assert dialog.open()
+    assert not dialog.open()
+    assert dialog.poll() == (False, None)
+    process.communicate.assert_not_called()
+    assert dialog.poll() == (True, None)
+    assert not dialog.is_open
+    assert not caplog.records
 
 
 def test_control_instructions_preserve_shape_and_draw_overlay():

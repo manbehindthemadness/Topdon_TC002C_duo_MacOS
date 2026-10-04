@@ -144,6 +144,9 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# Local USB captures and rendered troubleshooting images
+/diagnostics/
+
 # mypy
 .mypy_cache/
 .dmypy.json

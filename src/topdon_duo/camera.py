@@ -1,4 +1,4 @@
-"""Direct UVC bulk capture for the TOPDON TC002C Duo on macOS."""
+"""Direct UVC bulk capture for the TOPDON TC002C Duo on macOS and Linux."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class CameraError(RuntimeError):
 
 
 class CameraAccessError(CameraError):
-    """Raised when macOS will not release the camera interface."""
+    """Raised when USB permissions prevent access to the camera."""
 
 
 @dataclass(frozen=True)
@@ -113,6 +113,18 @@ class FrameAssembler:
         frame = bytes(self._data[: self.frame_size])
         self._data.clear()
         return frame
+
+
+class LinuxFrameAssembler(FrameAssembler):
+    """Keep complete negotiated frames and reject stale/partial USB data."""
+
+    def _finish(self) -> bytes | None:
+        if len(self._data) != self.frame_size or not self._data.startswith(
+            struct.pack("<I", FRAME_MAGIC)
+        ):
+            self._data.clear()
+            return None
+        return super()._finish()
 
 
 def decode_duo_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -205,12 +217,18 @@ class TC002CDuoCamera:
                         "endpoints": [f"0x{ep.bEndpointAddress:02x}" for ep in interface],
                     }
                 )
+        strings = {}
+        for name in ("manufacturer", "product", "serial_number"):
+            try:
+                strings[name] = getattr(device, name)
+            except (usb.core.USBError, ValueError) as exc:
+                strings[name] = f"unavailable: {exc}"
         return {
             "connected": True,
             "usb_id": f"{device.idVendor:04x}:{device.idProduct:04x}",
-            "manufacturer": str(device.manufacturer),
-            "product": str(device.product),
-            "serial": str(device.serial_number),
+            "manufacturer": strings["manufacturer"],
+            "product": strings["product"],
+            "serial": strings["serial_number"],
             "interfaces": interfaces,
         }
 
@@ -224,8 +242,19 @@ class TC002CDuoCamera:
             )
 
         try:
-            device.set_configuration()
             self.device = device
+            if sys.platform.startswith("linux"):
+                # Linux already configures UVC devices and binds uvcvideo.
+                # Re-setting that configuration can fail with EBUSY before
+                # we have a chance to detach the kernel driver.
+                try:
+                    device.get_active_configuration()
+                except usb.core.USBError as exc:
+                    if exc.strerror != "Configuration not set":
+                        raise
+                    device.set_configuration()
+            else:
+                device.set_configuration()
             for interface_number in (0, VIDEO_STREAMING_INTERFACE):
                 self._detach_and_claim(device, interface_number)
             self.mode = self._negotiate()
@@ -239,10 +268,19 @@ class TC002CDuoCamera:
         except usb.core.USBError as exc:
             self.close()
             if getattr(exc, "errno", None) in (1, 13) or "Access denied" in str(exc):
+                if sys.platform.startswith("linux"):
+                    raise CameraAccessError(
+                        "USB access denied. Install the rule in "
+                        "packaging/udev/70-topdon-duo.rules, reload udev rules, "
+                        "and reconnect the camera (see README.md)."
+                    ) from exc
                 raise CameraAccessError(
                     "macOS owns the camera's UVC interface. Run: sudo .venv/bin/topdon-duo"
                 ) from exc
             raise CameraError(f"USB setup failed: {exc}") from exc
+        except Exception:
+            self.close()
+            raise
 
     def _detach_and_claim(self, device, interface_number: int) -> None:
         try:
@@ -299,7 +337,15 @@ class TC002CDuoCamera:
     def frames(self) -> Iterator[bytes]:
         if self.device is None or self.mode is None:
             self.open()
-        assembler = FrameAssembler()
+        if sys.platform.startswith("linux"):
+            # Linux can negotiate a larger preview plane. The radiometric
+            # plane stays at the same offset, but the entire USB frame must
+            # arrive before it is safe to use it. Keep macOS assembly intact.
+            if self.mode.max_frame_size < FRAME_BYTES:
+                raise CameraError(f"invalid negotiated frame size: {self.mode.max_frame_size}")
+            assembler = LinuxFrameAssembler(self.mode.max_frame_size)
+        else:
+            assembler = FrameAssembler()
         read_size = max(16_384, self.mode.max_payload_size)
         while self._running.is_set():
             try:
@@ -344,6 +390,6 @@ class TC002CDuoCamera:
 
 
 def platform_warning() -> str | None:
-    if sys.platform != "darwin":
-        return "This package targets macOS; direct UVC capture on this platform is untested."
+    if sys.platform != "darwin" and not sys.platform.startswith("linux"):
+        return "Direct UVC capture is supported on macOS and Linux; this platform is untested."
     return None

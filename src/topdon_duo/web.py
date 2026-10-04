@@ -173,7 +173,7 @@ def create_app(stream: LiveStream) -> Flask:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="TOPDON TC002C Duo live viewer for macOS")
+    parser = argparse.ArgumentParser(description="TOPDON TC002C Duo live viewer for macOS and Linux")
     parser.add_argument("--host", default="127.0.0.1", help="web bind address")
     parser.add_argument("--port", type=int, default=5001, help="web port")
     parser.add_argument("--diagnose", action="store_true", help="list the USB device and exit")

@@ -1,7 +1,7 @@
 [project]
 name = "topdon-tc002c-duo-macos"
 version = "0.1.0"
-description = "Live TOPDON TC002C Duo thermal viewer for macOS"
+description = "Live TOPDON TC002C Duo thermal viewer for macOS and Linux"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
