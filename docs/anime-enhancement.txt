@@ -1,0 +1,70 @@
+Anime4K enhancement: source and model acquisition
+================================================
+
+The official Android app's regular TC002C Duo TISR path selects Anime4K09,
+not ACNet. Anime4K09 is a rule-based upscaler with no trained weights.
+This follows the Java creator's GPU selection and the ARM64 native constructor
+call to Anime4KCPP::OpenCL::Anime4K09 (see hardware-research.txt).
+The iOS app has not been inspected.
+
+Public source obtained locally
+-----------------------------
+Upstream: https://github.com/TianZerL/Anime4KCPP
+
+/usr/src/Anime4KCPP
+  tag v2.5.0, commit f2ad479327fea35e29fef29b66c43ce3faaa1cd4
+  Includes CPUAnime4K09.cpp, OpenCLAnime4K09.cpp and Anime4KCPPKernel.cl
+  under Anime4KCore. MIT license. This is a compatible public reference,
+  not proof that this exact revision was used to build the phone library.
+
+/usr/src/Anime4KCPP-modern
+  tag v3.2.0, commit 50c5d1b99965d804eeecfab9b48acfcaffddee3d
+  Includes full-precision ACNetLegacy_HDN0 through HDN3 parameters in
+  core/include/AC/Core/Model/Param/ACNet.p. The core uses the MIT license;
+  other upstream components have their own licenses, including GPLv3.
+
+Normal Android Anime4K09 parameters
+----------------------------------
+passes=3, pushColorCount=1, strengthColor=0.0, strengthGradient=0.5,
+zoomFactor=2.0, fastMode=false, videoMode=false, preprocessing=false,
+postprocessing=false, preFilters=4, postFilters=48, alpha=true.
+SupHelp also supplies HDN=true and HDNLevel=2 in its parameter object, but the
+non-CNN An4KGPU constructor does not pass those fields to the native algorithm.
+
+ACNet models obtained and verified separately
+--------------------------------------------
+Each of the four public legacy variants contains 4,784 float parameters:
+4,712 kernels and 72 biases. Read-only comparisons with the official APK's
+exported CPU constants, after accounting for layer storage order, match every
+array within 1e-7 (largest absolute difference 5.960464477539063e-08).
+Some arrays are byte-identical; others differ by decimal/float rounding.
+This supports a matching parameter set, not identical end-to-end phone output.
+
+Local, gitignored research artifacts:
+  diagnostics/telemetry-research/anime-models/verify_weights.py
+  diagnostics/telemetry-research/anime-models/verified-models.json
+  diagnostics/telemetry-research/anime-models/acnet-legacy-hdn[0-3].npz
+  diagnostics/telemetry-research/anime-models/LICENSE-MIT.txt
+The exported NPZ files contain public upstream parameters, not redistributed
+vendor binaries or extracted proprietary model files.
+
+Runnable local test
+------------------
+Built the modern CPU-only CLI with:
+  cmake -S /usr/src/Anime4KCPP-modern -B /usr/src/Anime4KCPP-modern/build \
+    -DAC_BUILD_CLI=ON -DAC_BUILD_VIDEO=OFF -DAC_BUILD_GUI=OFF \
+    -DAC_CORE_WITH_OPENCL=OFF -DAC_CORE_WITH_CUDA=OFF -DAC_ENABLE_LTO=OFF
+  cmake --build /usr/src/Anime4KCPP-modern/build -j4
+
+Run from this repository:
+  /usr/src/Anime4KCPP-modern/build/bin/ac_cli \
+    -i diagnostics/telemetry-research/anime-models/fan-native-input.png \
+    -o diagnostics/telemetry-research/anime-models/fan-native-acnet-hdn2.png \
+    -m acnet-legacy-hdn2 -p cpu -f 2
+
+This succeeded at 256x192 -> 512x384, using CPU FMA. One inference took
+39.247 ms; that single run is not a sustained frame-rate benchmark.
+The input was downsampled from a saved, already rendered fan preview, so this
+does not demonstrate recovered sensor detail or reproduce the phone pipeline.
+Source and models are available locally; no enhancement has been integrated
+into the viewer yet. Preserve raw temperature data during any integration.

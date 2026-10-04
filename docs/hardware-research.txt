@@ -16,7 +16,7 @@ Results and application opportunities
   from 496,160 to 98,440 bytes; preview-only capture is 393,216 bytes.
 * TOPDON advertises TISR: native 256x192 enhanced to 512x384. The official
   Android TC002C Duo activity's TISR switch activates HOST display processing.
-  Its normal 2x path reaches Anime4KCPP/ACNet through libASupCPPCore.so. The
+  Its normal 2x path reaches Anime4KCPP's Anime4K09 through libASupCPPCore.so. The
   generic camera SDK's AI-super-resolution field is a different interface and
   its write was ignored here. This does not negate the advertised TISR feature.
 * The phone polls hardware initialization status before streaming. This gives
@@ -247,11 +247,17 @@ Directly established call path for normal TC002C Duo TISR:
        OpencvTools.supImage on display pixels
     -> com.example.suplib.wrapper.SupHelp.runImage
     -> An4K.loadImageMat / process / saveImageToMat
-    -> libASupCPPCore.so, which exports Anime4KCPP CPU/OpenCL ACNet symbols
+    -> An4KCreator.create(parameters, GPU), selecting An4KGPU
+    -> An4KGPU.createAn4KGPUByArgs in libASupCPPCore.so
+    -> Anime4KCPP::OpenCL::Anime4K09 constructor
 
-The display scale is 2 when this path is active. The helper's constructor
-parameters include a 2.0 zoom factor and GPU selection. Exact native
-configuration/model mapping still needs validation. The APK also contains
+The display scale is 2 when this path is active. ARM64 disassembly establishes
+the native constructor: call at 0x34b5fc selects OpenCL::Anime4K09, a rule-based
+algorithm. The separate An4KGPUCNN constructor selects ACNet. Public ACNet
+HDN0-3 weights match the bundled CPU arrays within float rounding precision;
+their presence does not mean the normal TISR path uses them. See
+anime-enhancement.txt for source versions, parameters and runnable model tests.
+The APK also contains
 NCNN up2x models and an MNN ai.mnn model. The Duo activity restricts its separate
 MNN/ESRGAN high-mode popup to deviceType==96. Presence of those assets does not
 prove they are the ordinary TC002C Duo TISR implementation.
@@ -263,7 +269,7 @@ appropriate input size, processing and output size and compare the same scene.
 This is Android evidence, not proof of the iOS app's internal algorithm.
 
 Useful next integration: build an optional host enhancement using a compatible
-open-source Anime4KCPP/ACNet implementation, benchmark against our existing
+open-source Anime4K09 implementation, compare ACNet separately against our existing
 filters on preserved captures, and leave saved raw measurements untouched.
 Do not redistribute extracted vendor binaries/models as part of the application.
 

@@ -221,8 +221,11 @@ ambient anchor.
 control trials, the verified USB protocol, preserved settings, six captured
 stream formats, processing controls, and unresolved features. The official
 Android app's TC002C Duo TISR switch was traced to host-side enhancement using
-Anime4KCPP/ACNet; the generic SDK's ignored super-resolution field is a separate
-interface. The app's iOS implementation has not been inspected.
+Anime4KCPP's rule-based Anime4K09 algorithm. ACNet CNN models are also bundled,
+but use a separate constructor. The generic SDK's ignored super-resolution field
+is a separate interface. The app's iOS implementation has not been inspected.
+[Enhancement source and model notes](docs/anime-enhancement.txt) record the
+obtained upstream code, verified ACNet weights, and a successful local test.
 
 Large captures, original configuration payloads and extracted research material
 remain local under the gitignored `diagnostics/telemetry-research/` directory.
