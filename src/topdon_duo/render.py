@@ -80,7 +80,9 @@ class ThermalRenderer:
             return cv2.rotate(array, cv2.ROTATE_90_COUNTERCLOCKWISE)
         return array.copy()
 
-    def render_detailed(self, frame: bytes) -> RenderedThermalFrame:
+    def render_detailed(
+        self, frame: bytes, *, show_center_marker: bool = True
+    ) -> RenderedThermalFrame:
         _telemetry, raw, _preview = decode_duo_frame(frame)
 
         if self._average_raw is None:
@@ -116,15 +118,16 @@ class ThermalRenderer:
             interpolation=cv2.INTER_CUBIC,
         )
 
-        center = (heatmap.shape[1] // 2, heatmap.shape[0] // 2)
-        cv2.drawMarker(
-            heatmap,
-            center,
-            (255, 255, 255),
-            markerType=cv2.MARKER_CROSS,
-            markerSize=24,
-            thickness=2,
-        )
+        if show_center_marker:
+            center = (heatmap.shape[1] // 2, heatmap.shape[0] // 2)
+            cv2.drawMarker(
+                heatmap,
+                center,
+                (255, 255, 255),
+                markerType=cv2.MARKER_CROSS,
+                markerSize=24,
+                thickness=2,
+            )
         unit = self.temperature_unit
         label = (
             f"Min {self.display_temperature(stats.minimum):.1f} {unit}   "

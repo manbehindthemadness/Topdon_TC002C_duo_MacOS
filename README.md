@@ -85,12 +85,23 @@ The controls are available from the toolbar as well as the keyboard:
 | Action | Control |
 | --- | --- |
 | Inspect a pixel | Move the mouse over the image |
+| Place fixed sample spots | **Add spots** or `P`, then click image locations |
+| Clear all sample spots | **Clear spots** or `P` again |
 | Adjust ambient temperature | Toolbar, `[` / `]`, slider, or mouse wheel when supported |
 | Save a capture | **Save** or `S` |
 | Rotate clockwise | **Rotate** or `O` |
 | Toggle Celsius/Fahrenheit | **Unit** or `F` |
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
+
+Sample spots use green crosshairs with a one-pixel stroke and live temperature
+readings in the selected unit. They remain on the same thermal pixels when the
+window is resized or the view is rotated. Placement stays enabled until you
+press **Clear spots** or `P` again.
+The center crosshair is hidden while sample spots are enabled and returns when
+they are cleared.
+The mouse sampler uses the same thin green crosshair and hides its marker and
+temperature reading when the pointer leaves the image.
 
 Saving opens the native macOS Save dialog or Ubuntu's Zenity Save dialog without pausing camera capture. A
 single chosen filename produces three matching files:

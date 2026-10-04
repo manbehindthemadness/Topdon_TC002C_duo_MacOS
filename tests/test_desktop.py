@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from unittest.mock import Mock
 
 import cv2
@@ -10,11 +11,14 @@ from topdon_duo.desktop import (
     LinuxSaveDialog,
     MacSaveDialog,
     MousePicker,
+    SampleSpots,
     ambient_to_trackbar,
     clamp_ambient,
     draw_control_instructions,
     draw_picker,
+    draw_sample_spots,
     draw_toolbar,
+    image_position_at,
     mouse_viewport_size,
     save_capture,
     toolbar_action_at,
@@ -136,6 +140,47 @@ def test_picker_maps_resized_viewport_to_sensor_pixel():
     assert selected == (128, 96)
 
 
+def test_mouse_picker_matches_thin_spot_marker():
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    image, selected = draw_picker(rendered, MousePicker(x=123, y=201), scale=3)
+    assert selected == (41, 67)
+    assert tuple(image[201, 123]) == (80, 255, 80)
+    assert tuple(image[204, 123]) == (80, 255, 80)
+    assert np.array_equal(image[204, 124], rendered.image[204, 124])
+    assert np.array_equal(image[207, 123], rendered.image[207, 123])
+
+
+def test_mouse_picker_hides_on_window_exit_without_mouse_event_and_reappears(monkeypatch):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    picker = MousePicker(x=123, y=201)
+    put_text = Mock(wraps=cv2.putText)
+    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    image, selected = draw_picker(rendered, picker, scale=3, pointer_over_image=False)
+    assert selected is None
+    assert np.array_equal(image, rendered.image)
+    put_text.assert_not_called()
+    # The last callback coordinates are unchanged when leaving the window.
+    assert (picker.x, picker.y) == (123, 201)
+    image, selected = draw_picker(rendered, picker, scale=3, pointer_over_image=True)
+    assert selected == (41, 67)
+    assert not np.array_equal(image, rendered.image)
+    assert put_text.call_count == 2
+
+
+@pytest.mark.parametrize("position", [(100, 0), (-1, 200), (768, 200), (100, 630)])
+def test_mouse_picker_hides_marker_and_reading_outside_image(position):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    layout = toolbar_layout(rendered.image.shape[1])
+    image, selected = draw_picker(
+        rendered,
+        MousePicker(x=position[0], y=position[1]),
+        scale=3,
+        toolbar_height=layout.height,
+    )
+    assert selected is None
+    assert np.array_equal(image, rendered.image)
+
+
 @pytest.mark.parametrize("rotation", [0, 90])
 @pytest.mark.parametrize("viewport_scale", [0.5, 1.0, 1.5])
 def test_linux_mouse_coordinates_are_already_image_pixels(monkeypatch, rotation, viewport_scale):
@@ -217,3 +262,145 @@ def test_renderer_toggles_fahrenheit_display_conversion():
     assert renderer.display_temperature(20.0) == 20.0
     assert renderer.toggle_temperature_unit() == "F"
     assert renderer.display_temperature(20.0) == 68.0
+
+
+@pytest.mark.parametrize("viewport_scale", [0.5, 1.0, 1.5])
+def test_spot_placement_maps_viewport_and_rejects_toolbar_and_outside(viewport_scale):
+    shape = (576, 768, 3)
+    toolbar_height = toolbar_layout(shape[1]).height
+    viewport = (int(shape[1] * viewport_scale), int((shape[0] + toolbar_height) * viewport_scale))
+    assert image_position_at(
+        round(240 * viewport_scale),
+        round((180 + toolbar_height) * viewport_scale),
+        shape,
+        viewport,
+        toolbar_height,
+    ) == (240, 180)
+    for x, y in ((-2, 200), (768, 200), (200, 0), (200, 576 + toolbar_height)):
+        assert (
+            image_position_at(
+                round(x * viewport_scale),
+                round(y * viewport_scale),
+                shape,
+                viewport,
+                toolbar_height,
+            )
+            is None
+        )
+
+
+def test_spots_stay_on_same_sensor_pixels_through_four_rotations():
+    from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS
+
+    values = np.frombuffer(make_frame(), dtype="<u2").copy()
+    values[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS] = np.arange(SENSOR_PIXELS) + 10000
+    frame = values.tobytes()
+    renderer = ThermalRenderer()
+    spots = SampleSpots()
+    spots.add((41, 67))
+    assert spots.pixels == []
+    spots.toggle()
+    spots.add((41, 67))
+    spots.add((41, 67))
+    spots.add(None)
+    for _ in range(4):
+        before = renderer.render_detailed(frame)
+        x, y = spots.pixels[0]
+        temperature = before.temperatures_celsius[y, x]
+        spots.rotate_clockwise(before.temperatures_celsius.shape[0])
+        renderer.rotate_clockwise()
+        after = renderer.render_detailed(frame)
+        x, y = spots.pixels[0]
+        assert after.temperatures_celsius[y, x] == temperature
+    assert spots.pixels == [(41, 67)]
+    spots.toggle()
+    assert not spots.placing
+    assert spots.pixels == []
+
+
+def test_spots_draw_thin_green_markers_and_live_readings(monkeypatch):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    spots = SampleSpots(placing=True, pixels=[(41, 67), (80, 90)])
+    original = rendered.image.copy()
+    put_text = Mock(wraps=cv2.putText)
+    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    for temperature, unit, expected in ((20, "C", "20.00 C"), (25, "F", "77.00 F")):
+        frame = replace(rendered, temperatures_celsius=np.full((192, 256), temperature))
+        result = draw_sample_spots(rendered.image, frame, spots, 3, unit)
+        assert [call.args[1] for call in put_text.call_args_list] == [expected] * 4
+        put_text.reset_mock()
+        for x, y in spots.pixels:
+            ix, iy = x * 3 + 1, y * 3 + 1
+            assert tuple(result[iy, ix]) == (80, 255, 80)
+            assert tuple(result[iy + 3, ix]) == (80, 255, 80)
+            assert np.array_equal(result[iy + 3, ix + 1], original[iy + 3, ix + 1])
+    assert np.array_equal(rendered.image, original)
+
+
+def test_desktop_spot_control_places_multiple_spots_rotates_and_clears(monkeypatch):
+    from topdon_duo import desktop
+
+    camera = Mock()
+    camera.frames.return_value = [make_frame()] * 8
+    monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)
+    monkeypatch.setattr(desktop, "mouse_viewport_size", lambda: None)
+    pointer_monitor = Mock()
+    pointer_monitor.over_image.return_value = True
+    monkeypatch.setattr(desktop, "PointerMonitor", lambda _name: pointer_monitor)
+    for name in ("namedWindow", "createTrackbar", "resizeWindow", "imshow", "destroyAllWindows"):
+        monkeypatch.setattr(desktop.cv2, name, Mock())
+    set_callback = Mock()
+    monkeypatch.setattr(desktop.cv2, "setMouseCallback", set_callback)
+    states = []
+    draw_spots = desktop.draw_sample_spots
+
+    def record_spots(image, rendered, spots, scale, unit):
+        states.append((spots.placing, spots.pixels.copy()))
+        center = rendered.image[rendered.image.shape[0] // 2, rendered.image.shape[1] // 2]
+        assert bool(np.all(center == 255)) == (not spots.placing)
+        return draw_spots(image, rendered, spots, scale, unit)
+
+    monkeypatch.setattr(desktop, "draw_sample_spots", record_spots)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        callback = set_callback.call_args.args[1]
+        width = 576 if step >= 6 else 768
+        layout = toolbar_layout(width)
+
+        def click(x, y):
+            callback(cv2.EVENT_LBUTTONUP, x, y, 0, None)
+
+        if step == 1:
+            click(123, 201 + layout.height)  # Placement is initially disabled.
+        elif step in (2, 6):
+            x0, y0, x1, y1 = layout.buttons["spots"]
+            click((x0 + x1) // 2, (y0 + y1) // 2)
+        elif step == 3:
+            click(123, 201 + layout.height)
+            click(240, 270 + layout.height)
+            click(123, 201 + layout.height)  # Duplicate sensor pixel.
+            click(-10, 200)
+            click(0, 0)  # Toolbar padding is not an image pixel.
+        elif step == 5:
+            return ord("o")
+        elif step == 8:
+            return ord("q")
+        return -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert states == [
+        (False, []),
+        (False, []),
+        (False, []),
+        (True, []),
+        (True, [(41, 67), (80, 90)]),
+        (True, [(124, 41), (101, 80)]),
+        (True, [(124, 41), (101, 80)]),
+        (False, []),
+    ]
+    camera.close.assert_called_once()
+    pointer_monitor.close.assert_called_once()

@@ -15,7 +15,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .camera import CameraError, TC002CDuoCamera
+from .camera import SENSOR_HEIGHT, SENSOR_WIDTH, CameraError, TC002CDuoCamera
+from .pointer import PointerMonitor
 from .render import RenderedThermalFrame, ThermalRenderer
 
 LOG = logging.getLogger(__name__)
@@ -86,6 +87,24 @@ class MousePicker:
 class ToolbarLayout:
     height: int
     buttons: dict[str, tuple[int, int, int, int]]
+
+
+@dataclass
+class SampleSpots:
+    placing: bool = False
+    pixels: list[tuple[int, int]] = field(default_factory=list)
+
+    def toggle(self) -> None:
+        self.placing = not self.placing
+        if not self.placing:
+            self.pixels.clear()
+
+    def add(self, pixel: tuple[int, int] | None) -> None:
+        if self.placing and pixel is not None and pixel not in self.pixels:
+            self.pixels.append(pixel)
+
+    def rotate_clockwise(self, sensor_height: int) -> None:
+        self.pixels = [(sensor_height - 1 - y, x) for x, y in self.pixels]
 
 
 class MacSaveDialog:
@@ -178,6 +197,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
         ("save", "Save", 58),
         ("rotate", "Rotate", 68),
         ("unit", "C / F", 58),
+        ("spots", "Add spots", 100),
         ("help", "Help", 56),
         ("quit", "Quit", 52),
     )
@@ -201,6 +221,7 @@ def draw_toolbar(
     image: np.ndarray,
     ambient_celsius: float,
     temperature_unit: str,
+    placing_spots: bool = False,
 ) -> np.ndarray:
     layout = toolbar_layout(image.shape[1])
     canvas = np.zeros((image.shape[0] + layout.height, image.shape[1], 3), np.uint8)
@@ -215,11 +236,12 @@ def draw_toolbar(
         "save": "Save",
         "rotate": "Rotate",
         "unit": f"Unit: {temperature_unit}",
+        "spots": "Clear spots" if placing_spots else "Add spots",
         "help": "Help",
         "quit": "Quit",
     }
     for action, (x0, y0, x1, y1) in layout.buttons.items():
-        active = action == "unit"
+        active = action == "unit" or (action == "spots" and placing_spots)
         fill = (74, 92, 70) if active else (47, 51, 61)
         cv2.rectangle(canvas, (x0, y0), (x1, y1), fill, -1)
         cv2.rectangle(canvas, (x0, y0), (x1, y1), (105, 112, 128), 1)
@@ -348,6 +370,75 @@ def mouse_viewport_size() -> tuple[int, int] | None:
         return None
 
 
+def image_position_at(
+    x: int,
+    y: int,
+    image_shape: tuple[int, ...],
+    viewport_size: tuple[int, int] | None = None,
+    toolbar_height: int = 0,
+) -> tuple[int, int] | None:
+    """Map a mouse event to an image pixel, excluding toolbar and outside clicks."""
+    height, width = image_shape[:2]
+    if viewport_size:
+        if viewport_size[0] <= 0 or viewport_size[1] <= 0:
+            return None
+        x = round(x * width / viewport_size[0])
+        y = round(y * (height + toolbar_height) / viewport_size[1])
+    y -= toolbar_height
+    if not (0 <= x < width and 0 <= y < height):
+        return None
+    return x, y
+
+
+def draw_sample_spots(
+    image: np.ndarray,
+    rendered: RenderedThermalFrame,
+    spots: SampleSpots,
+    scale: int,
+    temperature_unit: str = "C",
+) -> np.ndarray:
+    image = image.copy()
+    color = (80, 255, 80)
+    for sensor_x, sensor_y in spots.pixels:
+        image_x = sensor_x * scale + scale // 2
+        image_y = sensor_y * scale + scale // 2
+        temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
+        if temperature_unit == "F":
+            temperature = temperature * 9.0 / 5.0 + 32.0
+        text = f"{temperature:.2f} {temperature_unit}"
+        (text_width, text_height), baseline = cv2.getTextSize(
+            text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1
+        )
+        text_x = max(2, min(image_x + 8, image.shape[1] - text_width - 2))
+        text_y = image_y - 8
+        if text_y < text_height + 2:
+            text_y = image_y + text_height + 8
+        text_y = min(text_y, image.shape[0] - baseline - 2)
+        for thickness, text_color in ((3, (0, 0, 0)), (1, color)):
+            cv2.putText(
+                image,
+                text,
+                (text_x, text_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                text_color,
+                thickness,
+                cv2.LINE_AA,
+            )
+    # Draw markers last so nearby labels cannot hide the sampled pixels.
+    for sensor_x, sensor_y in spots.pixels:
+        cv2.drawMarker(
+            image,
+            (sensor_x * scale + scale // 2, sensor_y * scale + scale // 2),
+            color,
+            markerType=cv2.MARKER_CROSS,
+            markerSize=9,
+            thickness=1,
+            line_type=cv2.LINE_8,
+        )
+    return image
+
+
 def draw_picker(
     rendered: RenderedThermalFrame,
     picker: MousePicker,
@@ -355,18 +446,15 @@ def draw_picker(
     viewport_size: tuple[int, int] | None = None,
     toolbar_height: int = 0,
     temperature_unit: str = "C",
+    pointer_over_image: bool | None = None,
 ) -> tuple[np.ndarray, tuple[int, int] | None]:
     image = rendered.image.copy()
-    if picker.x is None or picker.y is None:
+    if pointer_over_image is False or picker.x is None or picker.y is None:
         return image, None
-    image_x, image_y = picker.x, picker.y
-    if viewport_size and viewport_size[0] > 0 and viewport_size[1] > 0:
-        image_x = round(image_x * image.shape[1] / viewport_size[0])
-        canvas_height = image.shape[0] + toolbar_height
-        image_y = round(image_y * canvas_height / viewport_size[1])
-    image_y -= toolbar_height
-    if image_y < 0 or image_y >= image.shape[0]:
+    position = image_position_at(picker.x, picker.y, image.shape, viewport_size, toolbar_height)
+    if position is None:
         return image, None
+    image_x, image_y = position
     sensor_x = min(max(image_x // scale, 0), rendered.temperatures_celsius.shape[1] - 1)
     sensor_y = min(max(image_y // scale, 0), rendered.temperatures_celsius.shape[0] - 1)
     temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
@@ -378,8 +466,9 @@ def draw_picker(
         (image_x, image_y),
         (80, 255, 80),
         markerType=cv2.MARKER_CROSS,
-        markerSize=20,
-        thickness=2,
+        markerSize=9,
+        thickness=1,
+        line_type=cv2.LINE_8,
     )
     text = f"({sensor_x}, {sensor_y}) {temperature:.2f} {temperature_unit}"
     text_x = min(image_x + 12, max(5, image.shape[1] - 190))
@@ -411,7 +500,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     """Draw a translucent keyboard/mouse help panel over the image."""
     result = image.copy()
     panel_width = min(390, result.shape[1] - 20)
-    panel_height = min(249, result.shape[0] - 20)
+    panel_height = min(274, result.shape[0] - 20)
     x0, y0 = 10, result.shape[0] - panel_height - 10
     x1, y1 = x0 + panel_width, y0 + panel_height
 
@@ -423,6 +512,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     lines = (
         ("Controls", (255, 255, 255)),
         ("Mouse move   Inspect pixel temperature", (210, 215, 225)),
+        ("P / Add spots  Place spots; again clears", (210, 215, 225)),
         ("Wheel/slider Adjust ambient by 0.1 C", (210, 215, 225)),
         ("[ / ]        Ambient down / up", (210, 215, 225)),
         ("S            Save PNG + radiometric data", (210, 215, 225)),
@@ -473,6 +563,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     camera = TC002CDuoCamera()
     picker = MousePicker()
+    spots = SampleSpots()
+    pointer_monitor = PointerMonitor(WINDOW_NAME)
     save_dialog = LinuxSaveDialog() if sys.platform.startswith("linux") else MacSaveDialog()
     show_instructions = False
     last_selected: tuple[int, int] | None = None
@@ -496,9 +588,18 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as exc:
             LOG.error("Unable to open the Save dialog (Linux requires zenity): %s", exc)
 
+    def rotate_view() -> None:
+        nonlocal last_selected
+        # Rotate the stored sensor coordinates with the image, preserving samples.
+        sensor_height = SENSOR_HEIGHT if renderer.rotation in (0, 180) else SENSOR_WIDTH
+        spots.rotate_clockwise(sensor_height)
+        renderer.rotate_clockwise()
+        picker.x = picker.y = None
+        last_selected = None
+
     print(
         "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "
-        "s: save | o: rotate | f: C/F | Space: controls | q/Esc: quit"
+        "p: add/clear spots | s: save | o: rotate | f: C/F | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
@@ -516,7 +617,7 @@ def main(argv: list[str] | None = None) -> int:
             ambient_steps = picker.consume_ambient_steps()
             if ambient_steps:
                 set_ambient(renderer.ambient_celsius + ambient_steps * AMBIENT_STEP_C)
-            rendered = renderer.render_detailed(frame)
+            rendered = renderer.render_detailed(frame, show_center_marker=not spots.placing)
             layout = toolbar_layout(rendered.image.shape[1])
             if not initial_window_size_set:
                 cv2.resizeWindow(
@@ -533,6 +634,9 @@ def main(argv: list[str] | None = None) -> int:
                 viewport_size=viewport_size,
                 toolbar_height=layout.height,
                 temperature_unit=renderer.temperature_unit,
+                pointer_over_image=pointer_monitor.over_image(
+                    rendered.image.shape[0], layout.height
+                ),
             )
             if selected is not None:
                 last_selected = selected
@@ -551,10 +655,14 @@ def main(argv: list[str] | None = None) -> int:
                 print("Saved " + ", ".join(str(path) for path in saved))
             if show_instructions:
                 display = draw_control_instructions(display)
+            display = draw_sample_spots(
+                display, rendered, spots, renderer.scale, renderer.temperature_unit
+            )
             display = draw_toolbar(
                 display,
                 renderer.ambient_celsius,
                 renderer.temperature_unit,
+                placing_spots=spots.placing,
             )
 
             quit_requested = False
@@ -573,15 +681,24 @@ def main(argv: list[str] | None = None) -> int:
                 elif action == "save":
                     request_save()
                 elif action == "rotate":
-                    renderer.rotate_clockwise()
-                    picker.x = picker.y = None
-                    last_selected = None
+                    rotate_view()
+                elif action == "spots":
+                    spots.toggle()
                 elif action == "unit":
                     renderer.toggle_temperature_unit()
                 elif action == "help":
                     show_instructions = not show_instructions
                 elif action == "quit":
                     quit_requested = True
+                elif action is None and spots.placing:
+                    position = image_position_at(
+                        click_x, click_y, rendered.image.shape, viewport_size, layout.height
+                    )
+                    spots.add(
+                        (position[0] // renderer.scale, position[1] // renderer.scale)
+                        if position is not None
+                        else None
+                    )
             if quit_requested:
                 break
             cv2.imshow(WINDOW_NAME, display)
@@ -589,9 +706,9 @@ def main(argv: list[str] | None = None) -> int:
             if key in (ord("q"), 27):
                 break
             if key == ord("o"):
-                renderer.rotate_clockwise()
-                picker.x = picker.y = None
-                last_selected = None
+                rotate_view()
+            elif key == ord("p"):
+                spots.toggle()
             elif key == ord(" "):
                 show_instructions = not show_instructions
             elif key == ord("["):
@@ -606,6 +723,7 @@ def main(argv: list[str] | None = None) -> int:
         LOG.error("Unable to run desktop viewer: %s", exc)
         return 2
     finally:
+        pointer_monitor.close()
         save_dialog.close()
         camera.close()
         cv2.destroyAllWindows()
