@@ -167,10 +167,12 @@ def test_mouse_picker_hides_on_window_exit_without_mouse_event_and_reappears(mon
     assert put_text.call_count == 2
 
 
-@pytest.mark.parametrize("position", [(100, 0), (-1, 200), (768, 200), (100, 630)])
+@pytest.mark.parametrize("position", [(100, 0), (-1, 200), (768, 200), None])
 def test_mouse_picker_hides_marker_and_reading_outside_image(position):
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     layout = toolbar_layout(rendered.image.shape[1])
+    if position is None:
+        position = (100, rendered.image.shape[0] + layout.height)
     image, selected = draw_picker(
         rendered,
         MousePicker(x=position[0], y=position[1]),

@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -15,8 +16,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .camera import SENSOR_HEIGHT, SENSOR_WIDTH, CameraError, TC002CDuoCamera
+from .camera import FRAME_RATE, SENSOR_HEIGHT, SENSOR_WIDTH, CameraError, TC002CDuoCamera
+from .capture_panel import CapturePanel
 from .pointer import PointerMonitor
+from .recording import VideoRecorder
 from .render import RenderedThermalFrame, ThermalRenderer
 
 LOG = logging.getLogger(__name__)
@@ -27,6 +30,9 @@ AMBIENT_MAX_C = 100.0
 AMBIENT_STEP_C = 0.1
 TOOLBAR_ROW_HEIGHT = 42
 TOOLBAR_PADDING = 6
+TOOLBAR_STATUS_HEIGHT = 22
+TIMELAPSE_DEFAULT_FPM = 60
+TIMELAPSE_MAX_FPM = FRAME_RATE * 60
 SAVE_DIALOG_SCRIPT = """
 on run argv
     tell current application to activate
@@ -117,12 +123,13 @@ class MacSaveDialog:
     def is_open(self) -> bool:
         return self._process is not None
 
-    def open(self, default_directory: Path | None = None) -> bool:
+    def open(
+        self, default_directory: Path | None = None, *, suffix: str = ".png", kind: str = ""
+    ) -> bool:
         if self._process is not None:
             return False
-        default_name = datetime.now().astimezone().strftime(
-            "TC002C-Duo-%Y%m%d-%H%M%S.png"
-        )
+        prefix = f"TC002C-Duo-{kind}-" if kind else "TC002C-Duo-"
+        default_name = prefix + datetime.now().astimezone().strftime("%Y%m%d-%H%M%S") + suffix
         directory = ""
         if default_directory is not None and default_directory.is_dir():
             directory = str(default_directory.resolve())
@@ -136,10 +143,13 @@ class MacSaveDialog:
         return True
 
     def _command(self, default_name: str, directory: str) -> list[str]:
+        script = SAVE_DIALOG_SCRIPT
+        if Path(default_name).suffix.lower() == ".mp4":
+            script = script.replace("Save thermal capture", "Save thermal recording")
         return [
             "/usr/bin/osascript",
             "-e",
-            SAVE_DIALOG_SCRIPT,
+            script,
             "--",
             default_name,
             directory,
@@ -178,14 +188,15 @@ class LinuxSaveDialog(MacSaveDialog):
         return returncode == 1
 
     def _command(self, default_name: str, directory: str) -> list[str]:
+        video = Path(default_name).suffix.lower() == ".mp4"
         return [
             "zenity",
             "--file-selection",
             "--save",
             "--confirm-overwrite",
-            "--title=Save thermal capture",
+            "--title=Save thermal recording" if video else "--title=Save thermal capture",
             f"--filename={Path(directory) / default_name}",
-            "--file-filter=PNG images | *.png",
+            "--file-filter=MP4 videos | *.mp4" if video else "--file-filter=PNG images | *.png",
         ]
 
 
@@ -198,6 +209,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
         ("rotate", "Rotate", 68),
         ("unit", "C / F", 58),
         ("spots", "Add spots", 100),
+        ("capture", "Capture", 82),
         ("help", "Help", 56),
         ("quit", "Quit", 52),
     )
@@ -212,7 +224,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
         buttons[action] = (x, y, x + button_width, y + 30)
         x += button_width + TOOLBAR_PADDING
     return ToolbarLayout(
-        height=TOOLBAR_PADDING * 2 + (row + 1) * TOOLBAR_ROW_HEIGHT,
+        height=TOOLBAR_PADDING * 2 + (row + 1) * TOOLBAR_ROW_HEIGHT + TOOLBAR_STATUS_HEIGHT,
         buttons=buttons,
     )
 
@@ -222,6 +234,9 @@ def draw_toolbar(
     ambient_celsius: float,
     temperature_unit: str,
     placing_spots: bool = False,
+    recording_mode: str | None = None,
+    pending_recording: str | None = None,
+    status: str = "Ready",
 ) -> np.ndarray:
     layout = toolbar_layout(image.shape[1])
     canvas = np.zeros((image.shape[0] + layout.height, image.shape[1], 3), np.uint8)
@@ -237,11 +252,13 @@ def draw_toolbar(
         "rotate": "Rotate",
         "unit": f"Unit: {temperature_unit}",
         "spots": "Clear spots" if placing_spots else "Add spots",
+        "capture": "Capture",
         "help": "Help",
         "quit": "Quit",
     }
     for action, (x0, y0, x1, y1) in layout.buttons.items():
         active = action == "unit" or (action == "spots" and placing_spots)
+        active = active or (action == "capture" and bool(recording_mode or pending_recording))
         fill = (74, 92, 70) if active else (47, 51, 61)
         cv2.rectangle(canvas, (x0, y0), (x1, y1), fill, -1)
         cv2.rectangle(canvas, (x0, y0), (x1, y1), (105, 112, 128), 1)
@@ -252,13 +269,31 @@ def draw_toolbar(
         cv2.putText(
             canvas,
             label,
-            (x0 + (x1 - x0 - text_width) // 2, y0 + (y1 - y0 + text_height) // 2),
+            (
+                x0 + (x1 - x0 - text_width) // 2,
+                y0 + (y1 - y0 + text_height) // 2,
+            ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.42,
             (235, 238, 244),
             1,
             cv2.LINE_AA,
         )
+    while (
+        status
+        and cv2.getTextSize(status, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0][0] > image.shape[1] - 12
+    ):
+        status = status[:-1]
+    cv2.putText(
+        canvas,
+        status,
+        (6, layout.height - 7),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.4,
+        (210, 215, 225),
+        1,
+        cv2.LINE_AA,
+    )
     return canvas
 
 
@@ -500,7 +535,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     """Draw a translucent keyboard/mouse help panel over the image."""
     result = image.copy()
     panel_width = min(390, result.shape[1] - 20)
-    panel_height = min(274, result.shape[0] - 20)
+    panel_height = min(299, result.shape[0] - 20)
     x0, y0 = 10, result.shape[0] - panel_height - 10
     x1, y1 = x0 + panel_width, y0 + panel_height
 
@@ -516,6 +551,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
         ("Wheel/slider Adjust ambient by 0.1 C", (210, 215, 225)),
         ("[ / ]        Ambient down / up", (210, 215, 225)),
         ("S            Save PNG + radiometric data", (210, 215, 225)),
+        ("C            Open Capture controls", (210, 215, 225)),
         ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
         ("F            Toggle Celsius / Fahrenheit", (210, 215, 225)),
         ("Space        Hide controls", (210, 215, 225)),
@@ -541,13 +577,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--scale", type=int, choices=range(1, 7), default=3)
     parser.add_argument(
+        "--timelapse-fpm",
+        type=int,
+        default=TIMELAPSE_DEFAULT_FPM,
+        help="timelapse frames per minute (default: 60)",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
         help="initial directory for the Save dialog",
     )
     parser.add_argument("--verbose", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not 1 <= args.timelapse_fpm <= TIMELAPSE_MAX_FPM:
+        parser.error(f"--timelapse-fpm must be between 1 and {TIMELAPSE_MAX_FPM}")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -566,6 +611,14 @@ def main(argv: list[str] | None = None) -> int:
     spots = SampleSpots()
     pointer_monitor = PointerMonitor(WINDOW_NAME)
     save_dialog = LinuxSaveDialog() if sys.platform.startswith("linux") else MacSaveDialog()
+    recorder = VideoRecorder()
+    capture_panel = CapturePanel()
+    pending_save_kind: str | None = None
+    capture_cursor = False
+    timelapse_fpm = args.timelapse_fpm
+    status_message = "Ready"
+    status_until = 0.0
+    status = "Ready"
     show_instructions = False
     last_selected: tuple[int, int] | None = None
 
@@ -581,12 +634,53 @@ def main(argv: list[str] | None = None) -> int:
     def on_ambient_trackbar(position: int) -> None:
         set_ambient(trackbar_to_ambient(position), update_trackbar=False)
 
-    def request_save() -> None:
+    def notify(message: str) -> None:
+        nonlocal status_message, status_until
+        status_message = message
+        status_until = time.monotonic() + 8.0
+        LOG.info("%s", message)
+
+    def set_timelapse_fpm(value: int) -> None:
+        nonlocal timelapse_fpm
+        if not recorder.is_recording and pending_save_kind not in ("video", "timelapse"):
+            timelapse_fpm = min(max(value, 1), TIMELAPSE_MAX_FPM)
+
+    def stop_recording() -> None:
         try:
-            if not save_dialog.open(args.output):
-                LOG.info("A Save dialog is already open")
+            path = recorder.stop()
+        except (OSError, cv2.error) as exc:
+            notify(f"Could not finalize recording: {exc}")
+            return
+        if path is not None:
+            _restore_user_ownership([path])
+            notify(f"Saved {path.name} ({recorder.frames_written} frames)")
+            LOG.info("Recording saved to %s", path)
+
+    def request_save(kind: str = "image") -> None:
+        nonlocal pending_save_kind
+        if kind in ("video", "timelapse"):
+            if recorder.is_recording:
+                if recorder.mode == kind:
+                    stop_recording()
+                return
+            if pending_save_kind == kind:
+                save_dialog.close()
+                pending_save_kind = None
+                notify("Recording cancelled")
+                return
+        if save_dialog.is_open:
+            notify("Finish or cancel the open Save dialog first")
+            return
+        try:
+            opened = (
+                save_dialog.open(args.output)
+                if kind == "image"
+                else save_dialog.open(args.output, suffix=".mp4", kind=kind)
+            )
+            if opened:
+                pending_save_kind = kind
         except OSError as exc:
-            LOG.error("Unable to open the Save dialog (Linux requires zenity): %s", exc)
+            notify(f"Unable to open Save dialog: {exc}")
 
     def rotate_view() -> None:
         nonlocal last_selected
@@ -597,9 +691,26 @@ def main(argv: list[str] | None = None) -> int:
         picker.x = picker.y = None
         last_selected = None
 
+    def capture_state() -> dict:
+        return {
+            "recording_mode": recorder.mode,
+            "pending_recording": pending_save_kind if pending_save_kind != "image" else None,
+            "capture_cursor": capture_cursor,
+            "frames_per_minute": timelapse_fpm,
+            "max_fpm": TIMELAPSE_MAX_FPM,
+            "status": status,
+        }
+
+    def open_capture() -> None:
+        try:
+            capture_panel.open(capture_state())
+        except OSError as exc:
+            notify(f"Could not open Capture: {exc}")
+
     print(
         "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "
-        "p: add/clear spots | s: save | o: rotate | f: C/F | Space: controls | q/Esc: quit"
+        "p: add/clear spots | s: save | c: Capture controls | "
+        "o: rotate | f: C/F | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
@@ -614,6 +725,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         initial_window_size_set = False
         for frame in camera.frames():
+            for command in capture_panel.poll():
+                action = command.get("action")
+                if action == "error":
+                    notify(f"Capture window failed: {command.get('message', '')}")
+                elif action == "rate":
+                    set_timelapse_fpm(int(command["value"]))
+                elif action == "cursor":
+                    capture_cursor = bool(command["value"])
+                elif action in ("video", "timelapse"):
+                    set_timelapse_fpm(int(command["frames_per_minute"]))
+                    capture_cursor = bool(command["capture_cursor"])
+                    request_save(action)
             ambient_steps = picker.consume_ambient_steps()
             if ambient_steps:
                 set_ambient(renderer.ambient_celsius + ambient_steps * AMBIENT_STEP_C)
@@ -642,27 +765,75 @@ def main(argv: list[str] | None = None) -> int:
                 last_selected = selected
 
             save_finished, save_path = save_dialog.poll()
-            if save_finished and save_path is not None:
-                saved = save_capture(
+            if save_finished:
+                kind, pending_save_kind = pending_save_kind, None
+                if save_path is not None:
+                    try:
+                        if kind in ("video", "timelapse"):
+                            recorder.start(
+                                save_path,
+                                rendered.image.shape,
+                                kind,
+                                frames_per_minute=timelapse_fpm,
+                            )
+                            notify(f"Recording to {recorder.path.name}")
+                        else:
+                            saved = save_capture(
+                                rendered,
+                                save_path.parent,
+                                renderer.ambient_celsius,
+                                renderer.rotation,
+                                last_selected,
+                                renderer.temperature_unit,
+                                base_path=save_path,
+                            )
+                            notify(f"Saved {saved[0].name}")
+                    except (OSError, ValueError, cv2.error) as exc:
+                        notify(f"Capture failed: {exc}")
+                else:
+                    notify("Save cancelled")
+            # Only the thermal view and sample annotations go into the video.
+            # The cursor sampler remains visible locally even when capture is off.
+            if recorder.is_recording:
+                recording_view = draw_sample_spots(
+                    display if capture_cursor else rendered.image,
                     rendered,
-                    save_path.parent,
-                    renderer.ambient_celsius,
-                    renderer.rotation,
-                    last_selected,
+                    spots,
+                    renderer.scale,
                     renderer.temperature_unit,
-                    base_path=save_path,
                 )
-                print("Saved " + ", ".join(str(path) for path in saved))
-            if show_instructions:
-                display = draw_control_instructions(display)
+                try:
+                    recorder.write(recording_view)
+                except (OSError, cv2.error) as exc:
+                    stop_recording()
+                    notify(f"Recording failed: {exc}")
             display = draw_sample_spots(
                 display, rendered, spots, renderer.scale, renderer.temperature_unit
             )
+            if show_instructions:
+                display = draw_control_instructions(display)
+            if recorder.is_recording:
+                status = (
+                    f"REC {recorder.mode} | {recorder.elapsed_seconds():.1f}s | "
+                    f"{recorder.frames_written} frames"
+                )
+                if recorder.mode == "timelapse":
+                    status += f" | {timelapse_fpm}/min"
+            elif pending_save_kind:
+                status = f"Choose a filename for {pending_save_kind}..."
+            elif time.monotonic() < status_until:
+                status = status_message
+            else:
+                status = "Ready"
+            capture_panel.update(capture_state())
             display = draw_toolbar(
                 display,
                 renderer.ambient_celsius,
                 renderer.temperature_unit,
                 placing_spots=spots.placing,
+                recording_mode=recorder.mode,
+                pending_recording=pending_save_kind if pending_save_kind != "image" else None,
+                status=status,
             )
 
             quit_requested = False
@@ -680,6 +851,8 @@ def main(argv: list[str] | None = None) -> int:
                     set_ambient(renderer.ambient_celsius + AMBIENT_STEP_C)
                 elif action == "save":
                     request_save()
+                elif action == "capture":
+                    open_capture()
                 elif action == "rotate":
                     rotate_view()
                 elif action == "spots":
@@ -719,10 +892,14 @@ def main(argv: list[str] | None = None) -> int:
                 renderer.toggle_temperature_unit()
             elif key == ord("s"):
                 request_save()
+            elif key == ord("c"):
+                open_capture()
     except CameraError as exc:
         LOG.error("Unable to run desktop viewer: %s", exc)
         return 2
     finally:
+        stop_recording()
+        capture_panel.close()
         pointer_monitor.close()
         save_dialog.close()
         camera.close()

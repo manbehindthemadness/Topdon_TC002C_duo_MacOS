@@ -32,7 +32,7 @@ libraries and GTK save dialog, then create a local Python environment:
 
 ```bash
 cd /usr/src/Topdon_TC002C_duo_MacOS
-sudo apt install python3-venv libusb-1.0-0 libgl1 libxcb-xinerama0 zenity
+sudo apt install python3-venv libusb-1.0-0 libgl1 libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 zenity
 python3 -m venv .venv
 .venv/bin/python -m pip install uv
 .venv/bin/uv sync --dev
@@ -89,6 +89,7 @@ The controls are available from the toolbar as well as the keyboard:
 | Clear all sample spots | **Clear spots** or `P` again |
 | Adjust ambient temperature | Toolbar, `[` / `]`, slider, or mouse wheel when supported |
 | Save a capture | **Save** or `S` |
+| Open video and timelapse controls | **Capture** or `C` |
 | Rotate clockwise | **Rotate** or `O` |
 | Toggle Celsius/Fahrenheit | **Unit** or `F` |
 | Show control help | **Help** or Space |
@@ -113,6 +114,27 @@ single chosen filename produces three matching files:
 
 Radiometric data remains in Celsius even when the viewer is displaying
 Fahrenheit.
+
+Open **Capture** to access video and timelapse controls in a separate popup
+window. **Record video** or **Record timelapse** opens a Save dialog for an `.mp4`
+filename. Recording starts after you select the filename; press **Stop video**
+or **Stop timelapse** in the popup to finish. While choosing a filename, the
+button becomes **Cancel**. The popup and main toolbar show recording status.
+Closing the popup keeps recording active; reopen **Capture** to stop it.
+Quitting the viewer finalizes an active recording.
+
+Set the timelapse rate in the popup's **Timelapse frames per minute** number
+field before starting. It defaults to **60** (one frame each second) and supports
+1–1500 frames per minute. You can also set
+the initial rate with `--timelapse-fpm 120`. Both modes play back at 25 fps; the
+default timelapse therefore plays 25 times faster than real time.
+
+Recordings include fixed sample spots and their live temperature readings.
+The popup's **Capture cursor** checkbox is unchecked by default; checking it includes the moving
+sampler crosshair and temperature reading whenever the pointer is over the
+image. You can toggle it during a recording. The toolbar and help panel stay out
+of the video. Rotating during recording fits the image into the original video
+dimensions with black borders, preserving its aspect ratio.
 
 ## Web viewer
 
