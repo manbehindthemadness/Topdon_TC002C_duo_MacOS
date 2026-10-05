@@ -1271,8 +1271,16 @@ def main(argv: list[str] | None = None) -> int:
             elif renderer.upsampler.error:
                 message += f" · {renderer.upsampler.error}; showing unenhanced image"
             else:
-                algorithm = "Anime4K09" if renderer.upsampling == "anime4k09" else "ACNet"
-                message += f" · {algorithm} 2× · {renderer.upsampler.elapsed_ms:.0f} ms"
+                algorithm = (
+                    "TIDY denoise"
+                    if renderer.upsampling == "tidy"
+                    else "DnCNN denoise"
+                    if renderer.upsampling == "dncnn-gray-blind"
+                    else "Anime4K09 2×"
+                    if renderer.upsampling == "anime4k09"
+                    else "ACNet 2×"
+                )
+                message += f" · {algorithm} · {renderer.upsampler.elapsed_ms:.0f} ms"
         if graphs.logging:
             message += " · Settings locked while logging"
         elif reflected_calibration.running:

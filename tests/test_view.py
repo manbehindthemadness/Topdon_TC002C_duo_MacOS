@@ -458,12 +458,30 @@ assert not window.reset_button.isEnabled() and not window.restore_button.isEnabl
 window._reset_display()
 window._restore_hardware()
 assert len(messages) == count
+window.tidy_model.input.setText("/usr/src/models/tidy.onnx")
+window.tidy_model.input.setModified(True)
+window.tidy_model._emit()
+assert not window.tidy_model.browse.isEnabled()
+assert len(messages) == count
 window.update_state({**state, "temperature_unit": "C", "settings_locked": False})
 assert window.advanced_auto.isEnabled()
 assert window.reset_button.isEnabled() and window.restore_button.isEnabled()
 assert all(control_row.input.isEnabled()
            for control_row in (*window.rows.values(), *window.hardware_rows.values())
            if control_row is not window.rows["color_palette"])
+# TIDY's external file picker is visible only in TIDY mode and commits paths.
+window.update_state({**state, "upsampling": "tidy", "tidy_model_path": "/usr/src/models/current.onnx"})
+assert not window.tidy_model.isHidden() and window.tidy_model.browse.isEnabled()
+assert window.tidy_model.input.text() == "/usr/src/models/current.onnx"
+window.tidy_model.input.setText("/usr/src/models/new.onnx")
+window.tidy_model.input.setModified(True)
+window.tidy_model._emit()
+assert messages[-1] == {"action": "setting", "name": "tidy_model_path", "value": "/usr/src/models/new.onnx"}
+window.update_state({**state, "upsampling": "off"})
+assert window.tidy_model.isHidden()
+window.update_state({**state, "upsampling": "dncnn-gray-blind"})
+assert window.controls["upsampling"].currentData() == "dncnn-gray-blind"
+assert window.tidy_model.isHidden()
 # Unlocking must still respect controls that are unavailable on this camera.
 window.update_state({**state, "hardware": {"ambient": {"value": 30, "available": False}}})
 assert not row.input.isEnabled()

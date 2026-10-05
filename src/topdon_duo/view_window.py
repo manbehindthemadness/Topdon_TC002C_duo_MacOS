@@ -6,9 +6,11 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QSlider,
@@ -188,6 +190,59 @@ class ControlRow(QWidget):
             return
         if value != self.value():
             self._set_value(value)
+
+
+class TidyModelControls(QWidget):
+    """Select the external TIDY artifact without changing other enhancement modes."""
+
+    def __init__(self, send):
+        super().__init__()
+        self.send = send
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        title = QLabel("TIDY ONNX model file")
+        title.setStyleSheet("font-weight: 600")
+        layout.addWidget(title)
+        line = QHBoxLayout()
+        self.input = QLineEdit()
+        self.input.setAccessibleName("TIDY ONNX model file")
+        self.input.setPlaceholderText("Select an exported tidy.onnx file")
+        self.input.editingFinished.connect(self._emit)
+        line.addWidget(self.input, 1)
+        self.browse = QPushButton("Browse…")
+        self.browse.clicked.connect(self._browse)
+        line.addWidget(self.browse)
+        layout.addLayout(line)
+        note = QLabel(
+            "TIDY denoises at the input resolution. Native sensor size is faster; "
+            "large inputs may slow the live view. Model files are supplied separately "
+            "under TIDY's noncommercial license."
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+    def _emit(self):
+        if self.isEnabled() and self.input.isModified():
+            self.send(
+                {"action": "setting", "name": "tidy_model_path", "value": self.input.text().strip()}
+            )
+            self.input.setModified(False)
+
+    def _browse(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose TIDY ONNX model", self.input.text(), "ONNX models (*.onnx)"
+        )
+        if path and self.isEnabled():
+            self.input.setText(path)
+            self.input.setModified(True)
+            self._emit()
+
+    def update_state(self, path, locked):
+        self.setEnabled(not locked)
+        if locked or not (self.input.hasFocus() and self.input.isModified()):
+            if self.input.text() != path:
+                self.input.setText(path)
+            self.input.setModified(False)
 
 
 class DistanceCalibrationControls(QWidget):
@@ -562,7 +617,7 @@ class ViewWindow(QWidget):
             "palette_source": ("Color source", tuple(PALETTE_SOURCES.items())),
             "temperature_unit": ("Measurement units", tuple(TEMPERATURE_UNITS.items())),
             "image_filter": ("Image filter", tuple(IMAGE_FILTERS.items())),
-            "upsampling": ("Upsampling algorithm", tuple(UPSCALING_MODES.items())),
+            "upsampling": ("Enhancement algorithm", tuple(UPSCALING_MODES.items())),
             "enhancement_input": ("Enhancement input size", tuple(ENHANCEMENT_INPUTS.items())),
             "color_palette": ("App palette (raw / grayscale)", tuple(COLOR_PALETTES.items())),
             "mirror_horizontal": ("Mirror left / right", ((False, "Off"), (True, "On"))),
@@ -655,6 +710,10 @@ class ViewWindow(QWidget):
                         "Native uses the phone's input size. Full preview retains all supplied "
                         "pixels and takes more processing time."
                     )
+            if title == "AI enhancement":
+                self.tidy_model = TidyModelControls(self._send)
+                self.tidy_model.setVisible(False)
+                rows.addWidget(self.tidy_model)
             for name in hardware_names:
                 spec = HARDWARE_CONTROLS[name]
                 row = ControlRow(
@@ -736,6 +795,8 @@ class ViewWindow(QWidget):
 
     def update_state(self, state: dict) -> None:
         self._settings_locked = bool(state.get("settings_locked", False))
+        self.tidy_model.update_state(state.get("tidy_model_path", ""), self._settings_locked)
+        self.tidy_model.setVisible(state.get("upsampling") == "tidy")
         if self._settings_locked:
             for row in (*self.rows.values(), *self.hardware_rows.values()):
                 row.timer.stop()

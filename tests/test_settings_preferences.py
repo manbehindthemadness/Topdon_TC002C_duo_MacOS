@@ -30,7 +30,12 @@ def test_invalid_preferences_preserve_independent_valid_fields(monkeypatch, tmp_
 def test_preferences_round_trip_without_temporary_file(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     saved = {
-        "display": {"color_palette": "inferno", "enhancement_amount": 0.5},
+        "display": {
+            "color_palette": "inferno",
+            "enhancement_amount": 0.5,
+            "upsampling": "tidy",
+            "tidy_model_path": "/usr/src/models/tidy.onnx",
+        },
         "hardware": {"ambient": 27.5, "palette": 11, "detail_enabled": 0},
         "rotation": 270,
         "advanced_auto": False,

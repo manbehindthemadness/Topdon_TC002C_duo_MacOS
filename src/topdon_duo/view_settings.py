@@ -16,6 +16,8 @@ IMAGE_FILTERS = {
 UPSCALING_MODES = {
     "off": "Off",
     "anime4k09": "Anime4K09 2× — phone algorithm",
+    "tidy": "TIDY — thermal denoise (experimental)",
+    "dncnn-gray-blind": "DnCNN — blind denoise (experimental)",
     "acnet-legacy-hdn0": "ACNet 2× — no denoise",
     "acnet-legacy-hdn1": "ACNet 2× — light denoise",
     "acnet-legacy-hdn2": "ACNet 2× — medium denoise",
@@ -45,6 +47,7 @@ VIEW_DEFAULTS = {
     "enhancement_amount": 1.0,
     "enhancement_input": "native",
     "anime4k_passes": 3,
+    "tidy_model_path": "",
     "antialiasing": True,
     "color_palette": "inferno",
     "palette_source": "camera",
@@ -64,6 +67,9 @@ def validate_view_setting(name: str, value: object) -> None:
     if name in options:
         if not isinstance(value, str) or value not in options[name]:
             raise ValueError(f"Invalid {name}: {value!r}")
+    elif name == "tidy_model_path":
+        if not isinstance(value, str) or len(value) > 4096 or any(ord(c) < 32 for c in value):
+            raise ValueError("TIDY model path must be a single-line file path")
     elif name in ("mirror_horizontal", "mirror_vertical", "antialiasing"):
         if not isinstance(value, bool):
             raise ValueError(f"{name} must be a boolean")
