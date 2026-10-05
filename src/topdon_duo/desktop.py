@@ -503,6 +503,7 @@ def save_capture(
         rotation_degrees=np.int16(rotation),
         mirror_horizontal=np.bool_(rendered.display_settings.get("mirror_horizontal", False)),
         mirror_vertical=np.bool_(rendered.display_settings.get("mirror_vertical", False)),
+        measurements_valid=np.bool_(rendered.measurements_valid),
     )
 
     metadata: dict[str, object] = {
@@ -515,6 +516,8 @@ def save_capture(
         "image_source": rendered.image_source,
         "display_settings": rendered.display_settings,
         "temperature_stats_celsius": rendered.stats.as_dict(),
+        "measurements_valid": rendered.measurements_valid,
+        "measurement_status": rendered.measurement_status,
         "radiometric_file": data_path.name,
         "image_file": png_path.name,
         "graphs_included": graph_image is not None,
@@ -524,7 +527,11 @@ def save_capture(
         metadata["selected_pixel"] = {
             "x": x,
             "y": y,
-            "temperature_celsius": round(float(rendered.temperatures_celsius[y, x]), 3),
+            "temperature_celsius": (
+                round(float(rendered.temperatures_celsius[y, x]), 3)
+                if np.isfinite(rendered.temperatures_celsius[y, x])
+                else None
+            ),
             "raw_count": int(rendered.raw_counts[y, x]),
         }
     json_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
@@ -737,7 +744,8 @@ def _spot_label_layout(
         temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
         if temperature_unit == "F":
             temperature = temperature * 9.0 / 5.0 + 32.0
-        text = f"{number}: {temperature:.2f} {temperature_unit}"
+        reading = f"{temperature:.2f}" if np.isfinite(temperature) else "--"
+        text = f"{number}: {reading} {temperature_unit}"
         origin, rect = _place_temperature_label(text, anchor, rendered.image.shape, occupied)
         occupied.append(rect)
         labels.append((text, origin, rect))
@@ -906,7 +914,8 @@ def draw_picker(
         and _spot_hit(position, spots, image.shape, scale, viewport_size) is not None
     ):
         return _draw_contrasting_overlay(image, mask, text_mask), (sensor_x, sensor_y)
-    text = f"({sensor_x}, {sensor_y}) {temperature:.2f} {temperature_unit}"
+    reading = f"{temperature:.2f}" if np.isfinite(temperature) else "--"
+    text = f"({sensor_x}, {sensor_y}) {reading} {temperature_unit}"
     _, occupied = _spot_label_layout(rendered, spots or SampleSpots(), scale, temperature_unit)
     occupied.append((image_x - 6, image_y - 6, image_x + 7, image_y + 7))
     origin, rect = _place_temperature_label(text, (image_x, image_y), image.shape, occupied)
@@ -1265,6 +1274,8 @@ def main(argv: list[str] | None = None) -> int:
             message = hardware.error
         else:
             message += " · Camera temperatures (approximate)"
+        if renderer.measurement_status:
+            message += f" · {renderer.measurement_status}"
         if renderer.upsampling != "off":
             if not renderer.enhancement_amount:
                 message += " · Enhancement amount 0 (original image)"
@@ -1572,7 +1583,7 @@ def main(argv: list[str] | None = None) -> int:
             rendered = renderer.render_detailed(frame)
             actual_image_source = rendered.image_source
             try:
-                if emissivity_calibration.active:
+                if emissivity_calibration.active and rendered.measurements_valid:
                     previous_reference = emissivity_calibration.reference
                     emissivity_calibration.update(
                         raw_temperatures(rendered.raw_counts, offset=50), time.monotonic()
@@ -1587,9 +1598,10 @@ def main(argv: list[str] | None = None) -> int:
                     hardware.error = f"Could not restore emissivity: {restore_exc}"
             try:
                 previous_reference = reflected_calibration.reference
-                reflected_calibration.update(
-                    raw_temperatures(rendered.raw_counts, offset=50), time.monotonic()
-                )
+                if rendered.measurements_valid:
+                    reflected_calibration.update(
+                        raw_temperatures(rendered.raw_counts, offset=50), time.monotonic()
+                    )
                 if previous_reference != reflected_calibration.reference:
                     persist_settings()
                     renderer._average_raw = None
@@ -1603,7 +1615,11 @@ def main(argv: list[str] | None = None) -> int:
                     hardware.error = (
                         f"Could not restore reflector measurement settings: {restore_exc}"
                     )
-            if not graphs.logging and distance_calibration.update(rendered.temperatures_celsius):
+            if (
+                rendered.measurements_valid
+                and not graphs.logging
+                and distance_calibration.update(rendered.temperatures_celsius)
+            ):
                 notify(distance_calibration.message)
             layout = toolbar_layout(rendered.image.shape[1])
             if not initial_window_size_set:
@@ -1735,7 +1751,9 @@ def main(argv: list[str] | None = None) -> int:
                 except (OSError, cv2.error) as exc:
                     stop_recording()
                     notify(f"Recording failed: {exc}")
-            if reflected_calibration.active:
+            if rendered.measurement_status:
+                status = rendered.measurement_status
+            elif reflected_calibration.active:
                 display = draw_reflector_target(
                     display, reflected_calibration, renderer.scale, renderer.temperature_unit
                 )
@@ -1847,7 +1865,7 @@ def main(argv: list[str] | None = None) -> int:
                 elif action is None and reflected_calibration.active:
                     continue
                 elif action is None and emissivity_calibration.active:
-                    if emissivity_calibration.selecting:
+                    if emissivity_calibration.selecting and rendered.measurements_valid:
                         position = image_position_at(
                             click_x, click_y, rendered.image.shape, viewport_size, layout.height
                         )
@@ -1898,6 +1916,7 @@ def main(argv: list[str] | None = None) -> int:
                         ),
                         size=graph_size,
                         unit=renderer.temperature_unit,
+                        measurements_valid=rendered.measurements_valid,
                     )
                 )
                 display = np.concatenate((display, graphs.image(graph_size)), axis=1)

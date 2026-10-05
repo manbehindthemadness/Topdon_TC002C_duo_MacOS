@@ -393,6 +393,13 @@ Camera discovery can be checked without claiming its USB interfaces:
 uv run topdon-duo --diagnose
 ```
 
+During camera shutter calibration (shown as “Auto calibrate”), frozen temperature frames hold the last
+valid image and readings with a status message. Calibration sampling and CSV
+logging skip those frames; graphs show a gap. Averaging restarts when live
+measurements return. Frames containing invalid endpoint counts receive the
+same treatment. Captures record measurement validity in JSON and NPZ; before
+the first valid frame, temperature labels show `--` and JSON readings are null.
+
 If capture cannot open the camera, disconnect other apps using it, reconnect the
 device, and wait a moment for it to enumerate. On macOS, run the viewer with
 `sudo`. On Ubuntu, install the udev rule above and reconnect the camera. Discovery

@@ -341,3 +341,58 @@ Computer component temperatures are not verified ambient-air measurements.
 The future-calibration table, required references and validation criteria are
 maintained in README.md under Automatic controls and future calibrations.
 No new calibration or automatic hardware writes were performed for this note.
+
+Shutter / frozen-frame investigation (2026-10-05)
+------------------------------------------------
+Read-only, 120-second mode-8 capture: 2,998 frames at approximately 25 Hz.
+The viewer was closed to release USB ownership. No hardware controls were
+written. Local evidence: diagnostics/shutter-audit/{frames.csv,headers.npy,
+raw.npy,frame-count.txt,event-montage.png,replay.py}. Arrays have unused
+preallocated rows; use only the frame count recorded in frame-count.txt.
+
+A little-endian uint32 at byte 32 changed from 0 to 1 for frames 1164..1179
+(elapsed 46.6197..47.2193 seconds). These 16 frames repeated the temperature
+plane from frame 1163 exactly. Live temperature pixels resumed at frame 1180.
+At 25 Hz this is about 0.64 seconds of frozen radiometry. Frame sequence
+numbers continued advancing. The user heard a click during this capture;
+the sound itself was not timestamped or recorded.
+
+Device-research corroboration:
+- Related HCUSBSDK header USB_STREAM_FS_SUPPLE_INFO_TEMP contains four DWORDs:
+  dwTmDataMode, dwTmScale, dwTmOffset, dwIsFreezedata. The freeze field is
+  documented as 1 frozen / 0 not frozen. Local source:
+  diagnostics/telemetry-research/module-search/HCUsbSDK.h, lines 2578..2584.
+- Our mode-8 DWORDs at bytes 20,24,28,32 are [1,1,0,freeze], consistent with
+  a two-byte temperature format and this supplementary block. This mapping
+  is an inference supported by the actual freeze/repeat event, not an exact
+  TOPDON header definition. The older SDK's complete stream structures order
+  blocks differently; do not apply their whole struct directly to our stream.
+  In particular, its scale/offset fields do not establish TOPDON's Celsius
+  conversion. raw/64-50 remains independently verified for this camera.
+- Native SDK strings also expose byIsFreezedata in appended radiometric JPEG
+  data. That corroborates generic frozen-data semantics; it does not establish
+  the cause of every frozen frame or the offset in our mode-8 stream.
+- Phone CalibrationTools.shutter dispatches tc1bShutterManual for one device
+  family, otherwise updateOOCOrB(B_UPDATE); autoShutter uses a separate
+  shutter-property command. These are multiple device families, so they are
+  leads rather than proof that every command applies to the TC002C Duo.
+
+TOPDON's manual describes clicking as normal automatic shutter operation
+used to refresh image clarity. The observed flag is best treated as 'data
+frozen', with shutter calibration the observed likely cause. No 0 or 65535
+raw pixels occurred in this capture, and the flagged frames were repetitions,
+not corrupt temperatures. Thus this event alone does not establish the cause
+of every previously reported temperature spike. A synthetic single-65535
+pixel experiment separately demonstrated that unchecked averaging can keep
+an impossible maximum visible across subsequent good frames.
+
+Implemented handling: frozen frames and frames containing raw endpoint
+counts 0/65535 hold the last valid image/readings, expose a status, skip
+calibration sampling and CSV samples, and create gaps in graph histories.
+Temporal averaging restarts from the first valid frame after a pause. Startup
+without a valid frame shows unavailable temperatures. Capture metadata
+records measurements_valid and measurement_status (NPZ records validity).
+Fast scene changes and delayed header min/max are deliberately accepted;
+those are not reliable shutter/corruption detectors. Replay of the captured
+freeze/recovery passes. No auto-shutter settings were changed; original
+settings and the unresolved auto-shutter readback remain as documented above.

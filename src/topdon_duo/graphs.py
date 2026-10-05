@@ -24,6 +24,7 @@ class GraphSnapshot:
     size: tuple[int, int]  # width, height of the reserved graph area
     unit: str = "C"
     spot_names: tuple[tuple[tuple[int, int], str], ...] = ()
+    measurements_valid: bool = True
 
 
 def spot_title(snapshot, key):
@@ -102,7 +103,7 @@ class GraphWorker:
             return error
 
     def _write_log(self, snapshot, now):
-        if self._log_file is None:
+        if self._log_file is None or not snapshot.measurements_valid:
             return
         stamp = datetime.now(UTC).isoformat(timespec="milliseconds")
         elapsed = f"{now - self._log_started:.3f}"
@@ -172,12 +173,13 @@ class GraphWorker:
         self.stop_logging()
 
     def _sample(self, snapshot, now):
-        self._master.append((now, snapshot.stats))
+        values = snapshot.stats if snapshot.measurements_valid else (float("nan"),) * 4
+        self._master.append((now, values))
         current = dict(snapshot.spots)
         self._spots = {key: history for key, history in self._spots.items() if key in current}
         for key, value in snapshot.spots:
             history = self._spots.setdefault(key, deque(maxlen=HISTORY_SAMPLES))
-            history.append((now, (value,)))
+            history.append((now, (value if snapshot.measurements_valid else float("nan"),)))
 
     def _run(self):
         deadline = 0.0

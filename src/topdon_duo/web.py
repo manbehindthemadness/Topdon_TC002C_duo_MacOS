@@ -55,7 +55,7 @@ PAGE = """<!doctype html>
       try {
         const r = await fetch('/api/status', {cache: 'no-store'});
         const s = await r.json();
-        status.textContent = s.error || (s.stats ?
+        status.textContent = s.error || s.measurement_status || (s.stats ?
           `Center ${s.stats.center.toFixed(1)} C · ${s.frames} frames` : 'Starting...');
         status.style.color = s.error ? '#ff8d8d' : '#90e0aa';
       } catch (_) { status.textContent = 'Viewer unavailable'; }
@@ -78,7 +78,7 @@ class LiveStream:
         )
         self.condition = threading.Condition()
         self.jpeg: bytes | None = None
-        self.stats: dict[str, float] | None = None
+        self.stats: dict[str, float | None] | None = None
         self.frames = 0
         self.error: str | None = None
         self.running = threading.Event()
@@ -136,6 +136,7 @@ class LiveStream:
             "stats": self.stats,
             "error": self.error,
             "rotation": self.renderer.rotation,
+            "measurement_status": self.renderer.measurement_status,
         }
 
     def rotate_clockwise(self) -> int:
@@ -173,7 +174,9 @@ def create_app(stream: LiveStream) -> Flask:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="TOPDON TC002C Duo live viewer for macOS and Linux")
+    parser = argparse.ArgumentParser(
+        description="TOPDON TC002C Duo live viewer for macOS and Linux"
+    )
     parser.add_argument("--host", default="127.0.0.1", help="web bind address")
     parser.add_argument("--port", type=int, default=5001, help="web port")
     parser.add_argument("--diagnose", action="store_true", help="list the USB device and exit")

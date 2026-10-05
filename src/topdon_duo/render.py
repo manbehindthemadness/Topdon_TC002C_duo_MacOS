@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from .camera import IMAGE_OFFSET, decode_duo_frame, raw_temperatures
+from .camera import IMAGE_OFFSET, decode_duo_frame, measurement_frame_status, raw_temperatures
 from .upsampling import VisionUpsampler
 from .view_settings import VIEW_DEFAULTS, validate_view_setting
 
@@ -21,12 +21,15 @@ class TemperatureStats:
     maximum: float
     center: float
 
-    def as_dict(self) -> dict[str, float]:
+    def as_dict(self) -> dict[str, float | None]:
         return {
-            "minimum": round(self.minimum, 2),
-            "average": round(self.average, 2),
-            "maximum": round(self.maximum, 2),
-            "center": round(self.center, 2),
+            name: round(value, 2) if np.isfinite(value) else None
+            for name, value in (
+                ("minimum", self.minimum),
+                ("average", self.average),
+                ("maximum", self.maximum),
+                ("center", self.center),
+            )
         }
 
 
@@ -38,6 +41,8 @@ class RenderedThermalFrame:
     raw_counts: np.ndarray
     image_source: str = "raw"
     display_settings: dict = field(default_factory=dict)
+    measurements_valid: bool = True
+    measurement_status: str = ""
 
 
 def draw_temperature_readout(
@@ -51,16 +56,19 @@ def draw_temperature_readout(
     def display(celsius: float) -> float:
         return celsius * 9.0 / 5.0 + 32.0 if temperature_unit == "F" else celsius
 
+    def reading(celsius: float) -> str:
+        return f"{display(celsius):.1f}" if np.isfinite(celsius) else "--"
+
     ambient_label = (
         f"Ambient {display(ambient_celsius):.1f} {temperature_unit}"
         if ambient_celsius is not None
         else "Ambient unavailable"
     )
     label = (
-        f"Min {display(stats.minimum):.1f} {temperature_unit}   "
-        f"Avg {display(stats.average):.1f} {temperature_unit}   "
-        f"Max {display(stats.maximum):.1f} {temperature_unit}   "
-        f"Center {display(stats.center):.1f} {temperature_unit}   "
+        f"Min {reading(stats.minimum)} {temperature_unit}   "
+        f"Avg {reading(stats.average)} {temperature_unit}   "
+        f"Max {reading(stats.maximum)} {temperature_unit}   "
+        f"Center {reading(stats.center)} {temperature_unit}   "
         f"{ambient_label}"
     )
     canvas = np.zeros((image.shape[0] + READOUT_HEIGHT, image.shape[1], 3), np.uint8)
@@ -105,6 +113,9 @@ class ThermalRenderer:
         self.rotation = rotation
         self.temperature_unit = temperature_unit
         self._average_raw: np.ndarray | None = None
+        self._last_valid_frame: bytes | None = None
+        self._recover_measurements = False
+        self.measurement_status = ""
         self.native_temperatures = False
         self.camera_preview = False
         self.camera_color = False
@@ -204,21 +215,35 @@ class ThermalRenderer:
         return cv2.applyColorMap(gray, getattr(cv2, f"COLORMAP_{self.color_palette.upper()}"))
 
     def render_detailed(self, frame: bytes) -> RenderedThermalFrame:
-        _telemetry, raw, preview = decode_duo_frame(frame)
-
-        if self._average_raw is None:
-            self._average_raw = raw.astype(np.float32)
+        telemetry, raw, preview = decode_duo_frame(frame)
+        self.measurement_status = measurement_frame_status(telemetry, raw)
+        measurements_valid = not self.measurement_status
+        if measurements_valid:
+            if self._average_raw is None or self._recover_measurements:
+                self._average_raw = raw.astype(np.float32)
+            else:
+                cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
+            self._last_valid_frame = frame
+            self._recover_measurements = False
         else:
-            cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
+            self._recover_measurements = True
+            if self._last_valid_frame is not None:
+                frame = self._last_valid_frame
+                _, raw, preview = decode_duo_frame(frame)
 
         averaged = self._average_raw
-        celsius = self._orient(
-            raw_temperatures(
-                averaged,
-                ambient_celsius=self.ambient_celsius,
-                offset=50 if self.native_temperatures else None,
+        if averaged is None:
+            # Remain responsive if the first frames arrive during calibration.
+            averaged = np.zeros(raw.shape, np.float32)
+            celsius = self._orient(np.full(raw.shape, np.nan, np.float32))
+        else:
+            celsius = self._orient(
+                raw_temperatures(
+                    averaged,
+                    ambient_celsius=self.ambient_celsius,
+                    offset=50 if self.native_temperatures else None,
+                )
             )
-        )
         oriented_raw = self._orient(raw)
         oriented_average = self._orient(averaged)
         native_size = (oriented_raw.shape[1], oriented_raw.shape[0])
@@ -291,6 +316,8 @@ class ThermalRenderer:
             raw_counts=oriented_raw,
             image_source="preview" if use_preview else "raw",
             display_settings=self.view_settings(),
+            measurements_valid=measurements_valid,
+            measurement_status=self.measurement_status,
         )
 
 

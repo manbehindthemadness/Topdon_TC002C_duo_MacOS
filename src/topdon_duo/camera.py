@@ -162,6 +162,23 @@ def estimate_temperature_offset(raw: np.ndarray, ambient_celsius: float = 22.0) 
     return float(np.percentile(raw, 2.0)) / 64.0 - ambient_celsius
 
 
+def measurement_frame_status(telemetry: np.ndarray, raw: np.ndarray) -> str:
+    """Recognize mode-8 frozen radiometry and impossible endpoint counts.
+
+    The related HCUSBSDK calls this dwIsFreezedata (1 frozen, 0 live).
+    Byte 32 was observed as 1 through a shutter cycle, with the temperature
+    plane repeated exactly for 16 frames; normal frames carry 0. Avoid using
+    scene changes or delayed telemetry min/max as a calibration detector.
+    """
+    frozen = int(telemetry[16]) | (int(telemetry[17]) << 16)
+    if frozen:
+        return "Auto calibrate; readings held"
+    invalid = int(np.count_nonzero((raw == 0) | (raw == 65535)))
+    if invalid:
+        return f"Invalid temperature frame ({invalid} invalid pixels); readings held"
+    return ""
+
+
 def raw_temperatures(
     raw: np.ndarray, ambient_celsius: float = 22.0, offset: float | None = None
 ) -> np.ndarray:

@@ -7,7 +7,13 @@ def test_index_and_status_routes():
     assert client.get("/").status_code == 200
     response = client.get("/api/status")
     assert response.status_code == 200
-    assert response.json == {"error": None, "frames": 0, "rotation": 0, "stats": None}
+    assert response.json == {
+        "error": None,
+        "frames": 0,
+        "rotation": 0,
+        "stats": None,
+        "measurement_status": "",
+    }
 
 
 def test_status_route_reports_capture_error():
