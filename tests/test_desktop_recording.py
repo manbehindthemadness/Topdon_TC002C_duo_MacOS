@@ -37,6 +37,18 @@ def viewer(monkeypatch, tmp_path):
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 30
     monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)
+
+    class FramePump:
+        def __init__(self, source):
+            self._source = source
+
+        def __iter__(self):
+            return iter(self._source.frames())
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(desktop, "CameraFramePump", FramePump)
     monkeypatch.setattr(desktop, "mouse_viewport_size", lambda: None)
     monkeypatch.setattr(desktop, "window_resize_size", lambda _name: None)
     pointer = Mock()
@@ -518,7 +530,7 @@ def test_show_graph_doubles_window_width_and_hides_back_to_original(viewer, monk
     graph_layout = desktop.GraphWindowLayout.fit(
         (768, 576 + desktop.toolbar_layout(768).height), (1860, 710)
     )
-    assert np.count_nonzero(viewer.displayed[1][34:, graph_layout.camera_size[0]:]) == 0
+    assert np.count_nonzero(viewer.displayed[1][34:, graph_layout.camera_size[0] :]) == 0
     assert load_settings()["show_graph"] is False
 
 
@@ -922,6 +934,88 @@ def test_startup_calibration_waits_for_valid_frame_and_runs_once(viewer, monkeyp
     viewer.hardware.set_auto_calibrate.assert_called_once_with(False)
 
 
+def test_missing_frames_keep_ui_active_and_exclude_stale_measurements(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import save_settings
+
+    save_settings({"show_graph": True})
+    viewer.camera.frames.return_value = [make_frame(), None, None, make_frame(24000)]
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        viewer.clock[0] += 1
+        return ord("q") if step == 4 else -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    snapshots = [call.args[0] for call in viewer.graphs.submit.call_args_list]
+    assert [snapshot.measurements_valid for snapshot in snapshots] == [True, False, False, True]
+    assert snapshots[-1].stats[0] == 325
+    assert len(viewer.displayed) == 4
+
+
+def test_viewer_can_quit_while_waiting_for_first_frame(viewer, monkeypatch):
+    viewer.camera.frames.return_value = [None] * 10
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    viewer.hardware.calibrate_now.assert_not_called()
+    viewer.camera.close.assert_called_once()
+    assert len(viewer.displayed) == 1
+
+
+def test_hardware_settings_retry_after_frames_arrive_before_applying_values(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import save_settings
+
+    save_settings({"hardware": {"ambient": 22.2}})
+    viewer.hardware.load.side_effect = [
+        desktop.CameraError("Camera not ready"),
+        desktop.CameraError("Camera not ready"),
+        None,
+    ]
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    counts = []
+
+    def frames():
+        assert viewer.hardware.load.call_count == 1
+        viewer.hardware.set_auto_calibrate.assert_not_called()
+        viewer.hardware.set.assert_not_called()
+        yield make_frame()
+        yield make_frame()
+
+    def wait_key(_delay):
+        counts.append(viewer.hardware.calibrate_now.call_count)
+        viewer.clock[0] += 1.1
+        return ord("q") if len(counts) == 2 else -1
+
+    viewer.camera.frames.side_effect = frames
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert viewer.hardware.load.call_count == 3
+    viewer.hardware.set.assert_called_once_with("ambient", 22.2, True)
+    viewer.hardware.set_auto_calibrate.assert_called_once_with(False)
+    assert counts == [0, 1]
+
+
+def test_hardware_startup_retries_are_bounded_and_do_not_send_calibration(viewer, monkeypatch):
+    viewer.hardware.load.side_effect = desktop.CameraError("Unsupported control layout")
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        viewer.clock[0] += 11
+        return ord("q") if step == 6 else -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert viewer.hardware.load.call_count == 5
+    viewer.hardware.set_auto_calibrate.assert_not_called()
+    viewer.hardware.calibrate_now.assert_not_called()
+
+
 def test_startup_calibration_failure_keeps_viewer_running_without_retries(
     viewer, monkeypatch, caplog
 ):
@@ -973,7 +1067,10 @@ def test_popup_covering_window_center_preserves_graph_layout(viewer, monkeypatch
     monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
     assert desktop.main([]) == 0
     assert [image.shape[:2] for image in viewer.displayed] == [
-        (1200, 2400), (1200, 2400), (1200, 2400), (1300, 2600)
+        (1200, 2400),
+        (1200, 2400),
+        (1200, 2400),
+        (1300, 2600),
     ]
     assert load_main_window_size() == (2600, 1300)
 

@@ -214,18 +214,20 @@ class ThermalRenderer:
             return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
         return cv2.applyColorMap(gray, getattr(cv2, f"COLORMAP_{self.color_palette.upper()}"))
 
-    def render_detailed(self, frame: bytes) -> RenderedThermalFrame:
+    def render_detailed(
+        self, frame: bytes, *, update_measurements: bool = True
+    ) -> RenderedThermalFrame:
         telemetry, raw, preview = decode_duo_frame(frame)
         self.measurement_status = measurement_frame_status(telemetry, raw)
         measurements_valid = not self.measurement_status
-        if measurements_valid:
+        if measurements_valid and update_measurements:
             if self._average_raw is None or self._recover_measurements:
                 self._average_raw = raw.astype(np.float32)
             else:
                 cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
             self._last_valid_frame = frame
             self._recover_measurements = False
-        else:
+        elif not measurements_valid:
             self._recover_measurements = True
             if self._last_valid_frame is not None:
                 frame = self._last_valid_frame

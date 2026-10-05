@@ -678,7 +678,46 @@ request is released on exit, including after a camera error. On GNOME this uses
 D-Bus interface, and macOS uses `caffeinate -d`. System power settings are unchanged.
 If the desktop refuses the request, the viewer reports the failure.
 
+After reconnecting, the camera may stream before its settings interface is ready.
+If initial settings reads fail, the viewer retries them as frames arrive, at most
+once per second for 30 seconds. Saved hardware values and calibration commands
+are applied only after the complete original settings have been read and saved.
+This lets unavailable controls recover without repeated manual restarts.
+
+Desktop USB acquisition runs continuously on a dedicated thread, retaining the
+newest complete frame for the UI. Rendering does not stop the camera reads or
+build a queue of old images. If no new frame arrives for half a second, the image
+and readouts are held while graphs mark measurements invalid and CSV logging
+skips them. Window events remain responsive while capture waits for the camera.
+
 ## Development
+
+To investigate a Linux viewer stall without reopening its camera, monitor the
+running viewer's PID:
+
+```bash
+.venv/bin/python tools/watch_ui.py PID --output diagnostics/ui-watch.jsonl
+```
+
+The monitor writes one JSON record per second with thread CPU activity, scheduler
+waits, memory use, open CSV file sizes, and periodic X11 display power and window
+geometry. It stops when the viewer exits or after one hour (`--duration` changes
+the limit). CSV buffering and normal waiting can look like inactivity; these are
+diagnostic clues rather than measurement counters. Kernel stack availability is
+recorded at startup and may be restricted by Linux permissions. The monitor does
+not acquire the camera, change power settings, or interrupt the viewer.
+
+For precise diagnostics, launch the desktop viewer with
+`--diagnostics diagnostics/viewer.jsonl`. This records received-frame counts,
+measurement-validity transitions, and slow stages such as camera acquisition,
+rendering and GUI event processing. A watchdog captures all Python thread stacks
+in `diagnostics/viewer.stacks.log` when a stage runs for at least two seconds.
+This requires starting the viewer with the option; it cannot be attached to an
+existing session. A native call holding Python's interpreter lock can delay the
+watchdog, so the external monitor remains useful alongside it.
+The trace also records USB packet/byte counts, timeouts and frame rejection
+reasons, including the most recent rejected length. This distinguishes missing
+USB traffic from traffic that does not assemble into a complete thermal frame.
 
 ```bash
 uv sync --dev

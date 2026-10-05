@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +29,7 @@ from .dialog_preferences import load_dialog_directory, remember_dialog_directory
 from .display_awake import DisplayAwake
 from .distance_calibration import DistanceCalibrator
 from .emissivity_calibration import EmissivityCalibrator
+from .frame_pump import CameraFramePump
 from .graph_panel import GraphPanel
 from .graph_settings import GRAPH_DEFAULTS, validate_graph_settings
 from .graphs import (
@@ -58,6 +59,7 @@ from .spot_preferences import validate_spots
 from .spots_panel import SpotsPanel
 from .view_panel import ViewPanel
 from .view_settings import VIEW_DEFAULTS
+from .viewer_diagnostics import ViewerDiagnostics
 from .window_preferences import load_main_window_size, save_main_window_size
 from .window_style import set_black_window_backgrounds, window_resize_size
 
@@ -1117,6 +1119,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="initial directory for the Save dialog",
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--diagnostics", type=Path, help="Write UI timings and stall thread stacks")
     args = parser.parse_args(argv)
     if args.timelapse_fpm is not None and not 1 <= args.timelapse_fpm <= TIMELAPSE_MAX_FPM:
         parser.error(f"--timelapse-fpm must be between 1 and {TIMELAPSE_MAX_FPM}")
@@ -1522,11 +1525,12 @@ def main(argv: list[str] | None = None) -> int:
         "p: toggle spot placement | s: save image data | c: Capture controls | "
         "o: rotate | f: metric/imperial | v: Camera controls | g: show/hide graph | l: log temperatures | Space: controls | q/Esc: quit"
     )
-    try:
-        camera.open()
-        display_awake.start()
+
+    def initialize_hardware() -> bool:
+        nonlocal calibration_available
         try:
             hardware.load()
+            hardware.error = ""
             for name, value in remembered_hardware.items():
                 try:
                     hardware.set(name, value, True)
@@ -1536,17 +1540,75 @@ def main(argv: list[str] | None = None) -> int:
         except CameraError as exc:
             hardware.error = str(exc)
             LOG.warning("Could not read hardware settings: %s", exc)
+            return False
         try:
             hardware.set_auto_calibrate(auto_calibrate)
             calibration_available = True
         except CameraError as exc:
             hardware.error = f"Could not set Auto calibrate: {exc}"
             LOG.warning("%s", hardware.error)
+        return True
+
+    try:
+        diagnostics = ViewerDiagnostics(args.diagnostics)
+    except OSError as exc:
+        LOG.error("Could not open diagnostic log: %s", exc)
+        return 2
+    frame_pump = None
+    try:
+        diagnostics.stage("camera_open")
+        camera.stream_observer = diagnostics.stream if args.diagnostics else None
+        camera.open()
+        diagnostics.stage("hardware_setup")
+        display_awake.start()
+        hardware_setup_pending = not initialize_hardware()
+        hardware_retry_deadline = None
+        next_hardware_retry = 0.0
         cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL)
         cv2.setMouseCallback(WINDOW_NAME, picker.callback)
         set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
-        for frame in camera.frames():
+        frame_pump = CameraFramePump(camera)
+        last_frame = None
+        last_frame_at = None
+        for frame in diagnostics.frames(frame_pump):
+            fresh_frame = frame is not None
+            if fresh_frame:
+                last_frame = frame
+                last_frame_at = time.monotonic()
+            elif last_frame is None:
+                waiting = np.zeros((480, 640, 3), np.uint8)
+                cv2.putText(
+                    waiting,
+                    "Waiting for camera...",
+                    (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (230, 230, 230),
+                    1,
+                )
+                cv2.imshow(WINDOW_NAME, waiting)
+                if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                    break
+                continue
+            else:
+                frame = last_frame
+            if hardware_setup_pending:
+                now = time.monotonic()
+                if hardware_retry_deadline is None:
+                    hardware_retry_deadline = now + 30
+                if now >= next_hardware_retry:
+                    diagnostics.stage("hardware_setup_retry")
+                    hardware_setup_pending = not initialize_hardware()
+                    next_hardware_retry = now + 1
+                    if not hardware_setup_pending:
+                        notify("Camera settings loaded after startup")
+                    elif now >= hardware_retry_deadline:
+                        hardware_setup_pending = False
+                        notify(
+                            "Camera settings unavailable after startup retries; reconnect camera."
+                        )
+                    diagnostics.stage("controls")
             display_error = display_awake.check()
             if display_error:
                 notify(display_error)
@@ -1814,8 +1876,23 @@ def main(argv: list[str] | None = None) -> int:
             renderer.hardware_settings = hardware.state() if hardware.original else {}
             ambient = renderer.hardware_settings.get("ambient", {})
             renderer.ambient_celsius = ambient.get("value") if ambient.get("available") else None
-            rendered = renderer.render_detailed(frame)
-            if startup_calibration_pending and rendered.measurements_valid:
+            diagnostics.stage("render")
+            rendered = renderer.render_detailed(frame, update_measurements=fresh_frame)
+            if not fresh_frame and time.monotonic() - last_frame_at >= 0.5:
+                rendered = replace(
+                    rendered,
+                    measurements_valid=False,
+                    measurement_status="Waiting for camera frame; readings held",
+                )
+                renderer.measurement_status = rendered.measurement_status
+                renderer._recover_measurements = True
+            diagnostics.measurements(rendered.measurement_status)
+            diagnostics.stage("calibration_and_layout")
+            if (
+                startup_calibration_pending
+                and calibration_available
+                and rendered.measurements_valid
+            ):
                 startup_calibration_pending = False
                 try:
                     hardware.calibrate_now()
@@ -2220,6 +2297,7 @@ def main(argv: list[str] | None = None) -> int:
             spots_panel.update(spots_state())
             graph_panel.update(graph_config_state())
             if show_graph:
+                diagnostics.stage("graphs")
                 if graph_layout is None:
                     graph_layout = GraphWindowLayout.fit(
                         (display.shape[1], display.shape[0]),
@@ -2255,8 +2333,11 @@ def main(argv: list[str] | None = None) -> int:
                 display = graph_layout.compose(display, graph_image)
             else:
                 graphs.pause()
+            diagnostics.stage("imshow")
             cv2.imshow(WINDOW_NAME, display)
+            diagnostics.stage("waitKey")
             key = cv2.waitKey(1) & 0xFF
+            diagnostics.stage("window_geometry")
             current_size = window_resize_size(WINDOW_NAME)
             if current_size is not None:
                 last_window_size = current_size
@@ -2281,6 +2362,7 @@ def main(argv: list[str] | None = None) -> int:
                 except ValueError:
                     notify("Enter an update interval between 0.1 and 60 seconds.")
                 continue
+            diagnostics.stage("keyboard_controls")
             if key in (ord("q"), 27):
                 break
             if key == ord("o"):
@@ -2305,6 +2387,7 @@ def main(argv: list[str] | None = None) -> int:
         LOG.error("Unable to run desktop viewer: %s", exc)
         return 2
     finally:
+        diagnostics.stage("shutdown")
         try:
             reflected_calibration.cancel()
         except CameraError as exc:
@@ -2339,8 +2422,11 @@ def main(argv: list[str] | None = None) -> int:
         except CameraError as exc:
             LOG.error("Could not restore automatic camera calibration: %s", exc)
         display_awake.close()
+        if frame_pump is not None:
+            frame_pump.close()
         camera.close()
         cv2.destroyAllWindows()
+        diagnostics.close()
     return 0
 
 

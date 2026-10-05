@@ -6,6 +6,7 @@ import logging
 import struct
 import sys
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Self
@@ -77,17 +78,29 @@ class FrameAssembler:
         self.frame_size = frame_size
         self._fid: int | None = None
         self._data = bytearray()
+        self.last_rejected_size = None
+        self.last_rejected_prefix = None
+        self.rejected = {
+            "invalid_header": 0,
+            "uvc_error": 0,
+            "partial": 0,
+            "size_mismatch": 0,
+            "magic_mismatch": 0,
+        }
 
     def feed(self, packet: bytes) -> bytes | None:
         if len(packet) < 2:
+            self.rejected["invalid_header"] += 1
             return None
 
         header_length = packet[0]
         if header_length < 2 or header_length > len(packet):
+            self.rejected["invalid_header"] += 1
             return None
 
         flags = packet[1]
         if flags & 0x40:
+            self.rejected["uvc_error"] += 1
             self._data.clear()
             self._fid = flags & 1
             return None
@@ -108,6 +121,7 @@ class FrameAssembler:
 
     def _finish(self) -> bytes | None:
         if len(self._data) < self.frame_size:
+            self.rejected["partial"] += 1
             self._data.clear()
             return None
         frame = bytes(self._data[: self.frame_size])
@@ -119,9 +133,16 @@ class LinuxFrameAssembler(FrameAssembler):
     """Keep complete negotiated frames and reject stale/partial USB data."""
 
     def _finish(self) -> bytes | None:
-        if len(self._data) != self.frame_size or not self._data.startswith(
-            struct.pack("<I", FRAME_MAGIC)
-        ):
+        if len(self._data) != self.frame_size:
+            self.last_rejected_size = len(self._data)
+            self.last_rejected_prefix = self._data[:16].hex()
+            self.rejected["size_mismatch"] += 1
+            self._data.clear()
+            return None
+        if not self._data.startswith(struct.pack("<I", FRAME_MAGIC)):
+            self.last_rejected_size = len(self._data)
+            self.last_rejected_prefix = self._data[:16].hex()
+            self.rejected["magic_mismatch"] += 1
             self._data.clear()
             return None
         return super()._finish()
@@ -221,6 +242,7 @@ class TC002CDuoCamera:
         self._claimed: list[int] = []
         self._detached: list[int] = []
         self._running = threading.Event()
+        self.stream_observer = None
 
     @staticmethod
     def find():
@@ -374,16 +396,44 @@ class TC002CDuoCamera:
         else:
             assembler = FrameAssembler()
         read_size = max(16_384, self.mode.max_payload_size)
+        observer = self.stream_observer
+        totals = {"packets": 0, "bytes": 0, "timeouts": 0, "frames": 0}
+        next_report = 0.0
+
+        def report():
+            nonlocal next_report
+            now = time.monotonic()
+            if now >= next_report:
+                observer(
+                    {
+                        **totals,
+                        "rejected": assembler.rejected.copy(),
+                        "expected_frame_bytes": assembler.frame_size,
+                        "buffered_bytes": len(assembler._data),
+                        "last_rejected_size": assembler.last_rejected_size,
+                        "last_rejected_prefix": assembler.last_rejected_prefix,
+                    }
+                )
+                next_report = now + 1
+
         while self._running.is_set():
             try:
                 packet = bytes(self.device.read(BULK_ENDPOINT, read_size, timeout=self.timeout_ms))
             except usb.core.USBTimeoutError:
+                if observer is not None:
+                    totals["timeouts"] += 1
+                    report()
                 continue
             except usb.core.USBError as exc:
                 if not self._running.is_set():
                     break
                 raise CameraError(f"USB stream read failed: {exc}") from exc
             frame = assembler.feed(packet)
+            if observer is not None:
+                totals["packets"] += 1
+                totals["bytes"] += len(packet)
+                totals["frames"] += int(frame is not None)
+                report()
             if frame is not None:
                 yield frame
 

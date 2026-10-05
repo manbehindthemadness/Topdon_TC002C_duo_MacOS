@@ -388,6 +388,21 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 8
     monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)
+
+    class FramePump:
+        def __init__(self, source):
+            self._source = source
+
+        def __iter__(self):
+            return iter(self._source.frames())
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(desktop, "CameraFramePump", FramePump)
+    awake = Mock()
+    awake.check.return_value = None
+    monkeypatch.setattr(desktop, "DisplayAwake", lambda: awake)
     monkeypatch.setattr(desktop, "mouse_viewport_size", lambda: None)
     pointer_monitor = Mock()
     pointer_monitor.over_image.return_value = True

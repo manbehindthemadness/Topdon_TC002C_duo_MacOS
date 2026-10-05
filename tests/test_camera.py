@@ -104,6 +104,49 @@ def test_linux_rejects_stale_midframe_data_even_when_size_matches():
     assert assembler.feed(bytes([2, 0x83]) + make_frame()) == make_frame()
 
 
+def test_assembler_diagnostics_distinguish_header_error_size_and_magic():
+    assembler = LinuxFrameAssembler()
+    assert assembler.feed(b"\x01") is None
+    assert assembler.feed(b"\x05\x00") is None
+    assert assembler.feed(b"\x02\x40") is None
+    assert assembler.feed(b"\x02\x82short") is None
+    assert assembler.feed(b"\x02\x83" + bytes(FRAME_BYTES)) is None
+    assert assembler.feed(b"\x02\x82" + make_frame()) == make_frame()
+    assert assembler.rejected == {
+        "invalid_header": 2, "uvc_error": 1, "partial": 0,
+        "size_mismatch": 1, "magic_mismatch": 1,
+    }
+
+
+def test_stream_diagnostics_distinguish_timeouts_from_rejected_frames(monkeypatch):
+    monkeypatch.setattr(camera_module.sys, "platform", "linux")
+    clock = iter((0.0, 2.0, 4.0))
+    monkeypatch.setattr(camera_module.time, "monotonic", lambda: next(clock))
+    camera = TC002CDuoCamera()
+    camera.mode = NegotiatedMode(1, 10, 400_000, FRAME_BYTES, 5020)
+    camera.device = Mock()
+    camera.device.read.side_effect = [
+        usb.core.USBTimeoutError("Timed out"),
+        b"\x02\x82" + bytes(FRAME_BYTES),
+        b"\x02\x83" + make_frame(),
+    ]
+    camera._running.set()
+    events = []
+    camera.stream_observer = events.append
+    frames = camera.frames()
+    try:
+        assert next(frames) == make_frame()
+    finally:
+        frames.close()
+    assert events[0]["timeouts"] == 1
+    assert events[0]["packets"] == 0
+    assert events[1]["packets"] == 1
+    assert events[1]["rejected"]["magic_mismatch"] == 1
+    assert events[2]["packets"] == 2
+    assert events[2]["frames"] == 1
+    assert events[2]["bytes"] == (FRAME_BYTES + 2) * 2
+
+
 @pytest.mark.parametrize("platform", ["linux", "darwin"])
 def test_usb_setup_and_driver_restoration(monkeypatch, platform):
     monkeypatch.setattr(camera_module.sys, "platform", platform)

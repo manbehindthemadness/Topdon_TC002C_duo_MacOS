@@ -129,7 +129,11 @@ class HardwareControls:
         size = int.from_bytes(response, "little")
         expected = {**BLOCK_LENGTHS, (1, 24): 11, (2, 4): 1}[selector, command]
         if len(response) not in (2, 4) or size != expected:
-            raise CameraError("Camera returned an unsupported control layout")
+            raise CameraError(
+                "Camera returned an unsupported control layout "
+                f"for {selector}:{command}: expected {expected} bytes, "
+                f"received length {size} ({response.hex()})"
+            )
         return size
 
     def read(self, selector, command) -> bytes:
