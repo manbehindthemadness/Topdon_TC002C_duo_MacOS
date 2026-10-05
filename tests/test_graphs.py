@@ -3,6 +3,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import replace
+from itertools import pairwise
 from unittest.mock import Mock
 
 import numpy as np
@@ -227,5 +228,62 @@ def test_named_regions_reach_graph_titles_and_csv_without_changing_series_ids(
         text = [call.args[1] for call in labels.call_args_list]
         assert "Left hand, thumb (Spot 1) (C)" in text
         assert "Motor (Spot 2) (C)" in text
+    finally:
+        worker.close()
+
+
+def test_interval_change_wakes_worker_and_controls_csv_cadence(tmp_path):
+    worker = graphs.GraphWorker()
+    try:
+        worker.set_interval(60)
+        worker.submit(snapshot())
+        with worker._condition:
+            assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
+        path = worker.start_logging(tmp_path / "interval.csv")
+        with pytest.raises(ValueError, match="Stop logging"):
+            worker.set_interval(0.1)
+        worker.stop_logging()
+        worker.set_interval(0.1)
+        worker.start_logging(path)
+        with worker._condition:
+            assert worker._condition.wait_for(lambda: len(worker._master) >= 4, timeout=2)
+            times = [stamp for stamp, _ in worker._master]
+            assert worker._master.maxlen == 601
+        worker.stop_logging()
+        assert all(0.08 <= b - a < 1 for a, b in pairwise(times))
+        with path.open() as stream:
+            rows = list(csv.DictReader(stream))
+        assert len(rows) == 12
+        elapsed = [float(rows[i]["elapsed_seconds"]) for i in (0, 4, 8)]
+        assert all(0.08 <= b - a < 1 for a, b in pairwise(elapsed))
+    finally:
+        worker.close()
+
+
+def test_interval_editor_applies_valid_values_and_preserves_invalid_input():
+    editor = graphs.GraphIntervalEditor()
+    editor.begin()
+    for character in "0.25":
+        editor.key(ord(character))
+    assert editor.key(13) == 0.25
+    editor.begin()
+    editor.key(ord("0"))
+    with pytest.raises(ValueError):
+        editor.key(13)
+    assert editor.text == "0"
+    editor.key(27)
+    assert editor.text is None
+    editor.begin()
+    editor.key(8)
+    assert editor.text == ""
+
+
+@pytest.mark.parametrize("value", [True, "1", 0, -1, 61, float("nan"), float("inf")])
+def test_invalid_interval_does_not_change_worker(value):
+    worker = graphs.GraphWorker()
+    try:
+        with pytest.raises((ValueError, TypeError)):
+            worker.set_interval(value)
+        assert worker._interval == 0.5
     finally:
         worker.close()

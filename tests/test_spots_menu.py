@@ -324,7 +324,7 @@ def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monk
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_: 1)
     assert desktop.main([]) == 0
     assert viewer.hardware.set_auto_calibrate.call_args_list == [call(False), call(True)]
-    viewer.hardware.calibrate_now.assert_called_once()
+    assert viewer.hardware.calibrate_now.call_count == 2  # Startup plus the manual request.
     viewer.hardware.restore_auto_calibrate.assert_called_once()
     assert load_settings()["auto_calibrate"] is True
     assert settings.update.call_args.args[0]["auto_calibrate"] is True
@@ -338,4 +338,4 @@ def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monk
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set_auto_calibrate.assert_called_once_with(True)
-    viewer.hardware.calibrate_now.assert_not_called()
+    viewer.hardware.calibrate_now.assert_called_once()  # Startup runs on each launch.

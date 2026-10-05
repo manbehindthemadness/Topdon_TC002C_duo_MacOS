@@ -833,3 +833,107 @@ def test_image_graph_capture_preserves_native_radiometric_data(viewer, monkeypat
     with np.load(viewer.dialog.selected.with_suffix(".npz")) as data:
         assert data["raw_counts"].shape == (192, 256)
         assert data["temperatures_celsius"].shape == (192, 256)
+
+
+def test_graph_interval_field_applies_and_remembers_value(viewer, monkeypatch):
+    from topdon_duo.graphs import graph_interval_rect
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    save_settings({"show_graph": True, "graph_interval": 2})
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    keys = iter([-1, ord("0"), ord("."), ord("2"), ord("5"), 13, ord("q")])
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            x0, y0, x1, y1 = graph_interval_rect(768)
+            callback = viewer.set_mouse.call_args.args[1]
+            callback(cv2.EVENT_LBUTTONUP, 768 + (x0 + x1) // 2, (y0 + y1) // 2, 0, None)
+        return next(keys)
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert [call.args for call in viewer.graphs.set_interval.call_args_list] == [(2,), (0.25,)]
+    assert load_settings()["graph_interval"] == 0.25
+
+
+def test_graph_interval_field_is_locked_during_logging(viewer, monkeypatch):
+    from topdon_duo.graphs import graph_interval_rect
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    save_settings({"show_graph": True})
+    viewer.graphs.logging = True
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            x0, y0, x1, y1 = graph_interval_rect(768)
+            callback = viewer.set_mouse.call_args.args[1]
+            callback(cv2.EVENT_LBUTTONUP, 768 + (x0 + x1) // 2, (y0 + y1) // 2, 0, None)
+            return -1
+        return ord("q")
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    viewer.graphs.set_interval.assert_called_once_with(0.5)
+    assert load_settings()["graph_interval"] == 0.5
+
+
+def test_graph_interval_field_maps_resized_viewport():
+    from topdon_duo.graphs import graph_interval_rect
+
+    x0, y0, x1, y1 = graph_interval_rect(768)
+    for scale in (0.5, 1, 1.5):
+        assert desktop.graph_interval_at(
+            round((768 + (x0 + x1) / 2) * scale),
+            round((y0 + y1) / 2 * scale),
+            768,
+            650,
+            (768 * scale, 650 * scale),
+        )
+        assert not desktop.graph_interval_at(20, 20, 768, 650, (768 * scale, 650 * scale))
+
+
+def test_startup_calibration_waits_for_valid_frame_and_runs_once(viewer, monkeypatch):
+    from test_measurement_validity import frozen_frame
+
+    viewer.camera.frames.return_value = [frozen_frame(), make_frame(0), make_frame(), make_frame()]
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    counts = []
+
+    def wait_key(_delay):
+        counts.append(viewer.hardware.calibrate_now.call_count)
+        return ord("q") if len(counts) == 4 else -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert counts == [0, 0, 1, 1]
+    viewer.hardware.set_auto_calibrate.assert_called_once_with(False)
+
+
+def test_startup_calibration_failure_keeps_viewer_running_without_retries(
+    viewer, monkeypatch, caplog
+):
+    viewer.hardware.calibrate_now.side_effect = desktop.CameraError("Calibration rejected")
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events([-1, -1, "q"]))
+    assert desktop.main([]) == 0
+    viewer.hardware.calibrate_now.assert_called_once()
+    assert len(viewer.displayed) == 3
+    assert "Could not run startup calibration: Calibration rejected" in caplog.text
+    viewer.camera.close.assert_called_once()
+
+
+def test_startup_calibration_is_not_requested_without_valid_camera_data(viewer, monkeypatch):
+    from test_measurement_validity import frozen_frame
+
+    viewer.camera.frames.return_value = [frozen_frame()]
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    viewer.hardware.calibrate_now.assert_not_called()

@@ -27,7 +27,15 @@ from .camera import (
 from .capture_panel import CapturePanel
 from .distance_calibration import DistanceCalibrator
 from .emissivity_calibration import EmissivityCalibrator
-from .graphs import GraphSnapshot, GraphWorker, draw_graph_logging_control, graph_log_button_rect
+from .graphs import (
+    GRAPH_INTERVAL,
+    GraphIntervalEditor,
+    GraphSnapshot,
+    GraphWorker,
+    draw_graph_logging_control,
+    graph_interval_rect,
+    graph_log_button_rect,
+)
 from .hardware_controls import HardwareControls
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
@@ -441,12 +449,20 @@ def toolbar_action_at(
 
 
 def graph_logging_button_at(x, y, image_width, canvas_height, viewport_size=None):
+    return graph_control_at(x, y, image_width, canvas_height, viewport_size, graph_log_button_rect)
+
+
+def graph_interval_at(x, y, image_width, canvas_height, viewport_size=None):
+    return graph_control_at(x, y, image_width, canvas_height, viewport_size, graph_interval_rect)
+
+
+def graph_control_at(x, y, image_width, canvas_height, viewport_size, rectangle):
     if viewport_size:
         if viewport_size[0] <= 0 or viewport_size[1] <= 0:
             return False
         x = round(x * image_width / viewport_size[0])
         y = round(y * canvas_height / viewport_size[1])
-    x0, y0, x1, y1 = graph_log_button_rect(image_width)
+    x0, y0, x1, y1 = rectangle(image_width)
     return x0 <= x - image_width <= x1 and y0 <= y <= y1
 
 
@@ -1012,7 +1028,10 @@ def main(argv: list[str] | None = None) -> int:
     advanced_auto = saved_settings.get("advanced_auto", True)
     auto_calibrate = saved_settings.get("auto_calibrate", False)
     calibration_available = False
+    startup_calibration_pending = True
     show_graph = saved_settings.get("show_graph", False)
+    graph_interval = saved_settings.get("graph_interval", GRAPH_INTERVAL)
+    graph_interval_editor = GraphIntervalEditor(graph_interval)
     requested_window_size = None
     saved_window_size = load_main_window_size()
     last_window_size = None
@@ -1052,6 +1071,7 @@ def main(argv: list[str] | None = None) -> int:
         hardware, saved_settings.get("reflected_calibration")
     )
     graphs = GraphWorker()
+    graphs.set_interval(graph_interval)
     actual_image_source = renderer.image_source
     pending_save_kind: str | None = None
     capture_cursor = False
@@ -1074,6 +1094,7 @@ def main(argv: list[str] | None = None) -> int:
                     "advanced_auto": advanced_auto,
                     "auto_calibrate": auto_calibrate,
                     "show_graph": show_graph,
+                    "graph_interval": graph_interval,
                     "distance_calibration": (
                         distance_calibration.reference.as_dict()
                         if distance_calibration.reference
@@ -1098,6 +1119,7 @@ def main(argv: list[str] | None = None) -> int:
         spot_drag.cancel()
         show_graph = not show_graph
         if not show_graph:
+            graph_interval_editor.text = None
             graphs.pause()
         requested_window_size = (width * 2 if show_graph else max(1, round(width / 2)), height)
         cv2.resizeWindow(WINDOW_NAME, *requested_window_size)
@@ -1611,6 +1633,16 @@ def main(argv: list[str] | None = None) -> int:
             ambient = renderer.hardware_settings.get("ambient", {})
             renderer.ambient_celsius = ambient.get("value") if ambient.get("available") else None
             rendered = renderer.render_detailed(frame)
+            if startup_calibration_pending and rendered.measurements_valid:
+                startup_calibration_pending = False
+                try:
+                    hardware.calibrate_now()
+                    renderer._recover_measurements = True
+                    notify("Startup calibration requested")
+                except CameraError as exc:
+                    hardware.error = f"Could not run startup calibration: {exc}"
+                    LOG.warning("%s", hardware.error)
+                    notify(hardware.error)
             actual_image_source = rendered.image_source
             try:
                 if emissivity_calibration.active and rendered.measurements_valid:
@@ -1864,6 +1896,16 @@ def main(argv: list[str] | None = None) -> int:
                     except OSError as exc:
                         notify(f"Could not open spot menu: {exc}")
             for click_x, click_y in picker.consume_clicks():
+                if show_graph and graph_interval_at(
+                    click_x, click_y, rendered.image.shape[1], display.shape[0], viewport_size
+                ):
+                    if graphs.logging or pending_save_kind == "graph_log":
+                        notify("Stop graph logging before changing the update interval.")
+                    else:
+                        graph_interval_editor.begin()
+                        notify("Update interval in seconds: Enter to apply, Esc to cancel.")
+                    continue
+                graph_interval_editor.text = None
                 if show_graph and graph_logging_button_at(
                     click_x, click_y, rendered.image.shape[1], display.shape[0], viewport_size
                 ):
@@ -1951,7 +1993,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 display = np.concatenate((display, graphs.image(graph_size)), axis=1)
                 draw_graph_logging_control(
-                    display[:, graph_size[0] :], graphs.logging, pending_save_kind == "graph_log"
+                    display[:, graph_size[0] :],
+                    graphs.logging,
+                    pending_save_kind == "graph_log",
+                    interval=graph_interval,
+                    edit_text=graph_interval_editor.text,
                 )
             else:
                 graphs.pause()
@@ -1966,6 +2012,21 @@ def main(argv: list[str] | None = None) -> int:
             except cv2.error:
                 if last_window_size is not None:
                     break
+            if graph_interval_editor.text is not None:
+                try:
+                    updated_interval = graph_interval_editor.key(key)
+                    if updated_interval is not None:
+                        if graphs.logging or pending_save_kind == "graph_log":
+                            notify("Stop graph logging before changing the update interval.")
+                        else:
+                            graphs.set_interval(updated_interval)
+                            graph_interval = updated_interval
+                            graph_interval_editor.value = updated_interval
+                            persist_settings()
+                            notify(f"Graph update interval: {graph_interval:g} seconds.")
+                except ValueError:
+                    notify("Enter an update interval between 0.1 and 60 seconds.")
+                continue
             if key in (ord("q"), 27):
                 break
             if key == ord("o"):

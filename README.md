@@ -118,13 +118,18 @@ is remembered across restarts. The master graph plots minimum, average, maximum
 and center temperatures; each placed spot gets its own graph in placement order.
 All graphs share the available height evenly and show a rolling 60-second history
 in the selected Celsius/Fahrenheit unit. Sampling and rendering run on a separate
-worker thread every 0.5 seconds, using the latest camera measurements without
+worker thread every 0.5 seconds by default, using the latest camera measurements without
 queuing video frames. Hiding the graph area pauses sampling and rendering;
 reopening resumes, with gaps rather than connecting lines across long pauses.
 Spot history survives rotation and mirroring, and clears when the spots are
 cleared. Histories are session-only; disabling a spot removes its graph history,
 and enabling it starts fresh sampling. Captures and recordings can include the
 graph pane with the Capture dialog’s **Include graphs when visible** checkbox.
+
+**Update (s)**, immediately left of **Log to CSV**, sets the graph and CSV sampling
+interval from 0.1 to 60 seconds. Click the number and type a value; press Enter to
+apply or Escape to cancel. The interval is remembered across restarts and is
+locked while logging or choosing a log file.
 
 **Log to CSV** opens a Save dialog before logging begins. **Stop logging** closes
 and saves the file; **Cancel logging** cancels an unfinished Save dialog. Hiding
@@ -135,7 +140,7 @@ settings requests. Stopping logging unlocks the available controls again.
 Quitting the app
 finalizes active logs, and logging does not resume automatically on restart.
 CSV files open in spreadsheet applications such as Excel or LibreOffice. Each
-half-second sample has one row for each master statistic and each active spot,
+sample has one row for each master statistic and each active spot,
 with columns `timestamp_utc`, `elapsed_seconds`, `series_id`, `series`,
 `temperature_celsius`, `temperature_display`, and `display_unit`. Spot IDs remain
 stable through rotation and mirroring, and change when spots are cleared and
@@ -235,7 +240,9 @@ overrides; Reset display settings saves the display defaults. Explicit
 `--rotate` and `--image-source` options override remembered values. Invalid saved
 fields are ignored independently so valid preferences can still load.
 **Auto calibrate** is at the top of Camera settings and defaults to off. Its
-saved choice is applied on startup. Right-click the thermal image and choose
+saved choice is applied on startup. After the first valid camera frame arrives,
+the viewer requests one calibration, including when Auto calibrate is off.
+Readings are held during the calibration as usual. Right-click the thermal image and choose
 **Calibrate now** to request one calibration. Both controls are disabled while
 logging or measuring a calibration reference. Automatic camera calibration is
 re-enabled when the viewer exits; the saved switch choice is retained for the

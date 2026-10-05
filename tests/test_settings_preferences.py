@@ -40,6 +40,7 @@ def test_preferences_round_trip_without_temporary_file(monkeypatch, tmp_path):
         "rotation": 270,
         "advanced_auto": False,
         "auto_calibrate": True,
+        "graph_interval": 0.2,
     }
     save_settings(saved)
     assert load_settings() == saved
@@ -56,3 +57,12 @@ def test_invalid_emissivity_reference_does_not_discard_other_settings(monkeypatc
     ):
         save_settings({"emissivity_calibration": value, "display": {"temperature_unit": "F"}})
         assert load_settings() == {"display": {"temperature_unit": "F"}, "hardware": {}}
+
+
+def test_invalid_graph_interval_preserves_other_preferences(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    for value in (True, "0.5", None, 0, 61, float("inf")):
+        path = tmp_path / "topdon-duo" / "settings.json"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps({"graph_interval": value, "show_graph": True}))
+        assert load_settings() == {"display": {}, "hardware": {}, "show_graph": True}

@@ -4,6 +4,7 @@ import json
 
 from .distance_calibration import DistanceReference
 from .emissivity_calibration import validate_reference
+from .graphs import validate_graph_interval
 from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS
 from .reflected_calibration import validate_reference as validate_reflected_reference
 from .view_settings import validate_view_setting
@@ -38,6 +39,10 @@ def load_settings() -> dict:
     for name in ("advanced_auto", "show_graph", "auto_calibrate"):
         if isinstance(saved.get(name), bool):
             result[name] = saved[name]
+    try:
+        result["graph_interval"] = validate_graph_interval(saved.get("graph_interval"))
+    except (TypeError, ValueError):
+        pass
     try:
         result["distance_calibration"] = DistanceReference.from_dict(
             saved.get("distance_calibration")
