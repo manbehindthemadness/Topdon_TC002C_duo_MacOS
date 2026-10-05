@@ -6,7 +6,7 @@ import json
 import os
 import sys
 
-from PySide6.QtCore import QSignalBlocker, QTimer
+from PySide6.QtCore import QSignalBlocker, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -137,6 +137,7 @@ def run_window(window_type, title: str) -> int:
             app.quit()
 
     window = window_type(send)
+    window.setWindowFlag(Qt.WindowStaysOnTopHint, True)
     os.set_blocking(sys.stdin.fileno(), False)
     incoming = b""
 

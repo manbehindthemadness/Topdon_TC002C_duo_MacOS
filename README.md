@@ -133,6 +133,9 @@ Spot history survives rotation and mirroring, and clears when the spots are
 cleared. Histories are session-only; disabling a spot removes its graph history,
 and enabling it starts fresh sampling. Captures and recordings can include the
 graph pane with the Capture dialog’s **Include graphs** checkbox beside **Capture cursor**.
+Camera, Capture, Graph configuration and measuring-spot menus stay above the
+main viewer so they remain accessible in fullscreen.
+
 Both checkboxes and the timelapse frames-per-minute setting save immediately
 and restore on the next launch. An explicit `--timelapse-fpm` value overrides
 the remembered rate.
@@ -667,6 +670,13 @@ preserve the camera's corrected temperature conversion throughout display tuning
 The measurement reference procedures are informed by
 [FLIR's thermographic measurement guidance](https://support.flir.com/docdownload/assets/web/4jau/en-us/T505000.xml.html);
 they still require validation for this camera.
+
+While the desktop viewer holds a camera connection, it requests temporary display
+idle inhibition to prevent monitor blanking from stalling the display loop. The
+request is released on exit, including after a camera error. On GNOME this uses
+`gnome-session-inhibit --inhibit idle`; other Linux desktops use the ScreenSaver
+D-Bus interface, and macOS uses `caffeinate -d`. System power settings are unchanged.
+If the desktop refuses the request, the viewer reports the failure.
 
 ## Development
 

@@ -31,6 +31,9 @@ def viewer(monkeypatch, tmp_path):
     graphs.stop_logging.side_effect = stop_logging
     graphs.image.side_effect = lambda size, **_kwargs: np.zeros((size[1], size[0], 3), np.uint8)
     monkeypatch.setattr(desktop, "GraphWorker", lambda: graphs)
+    awake = Mock()
+    awake.check.return_value = None
+    monkeypatch.setattr(desktop, "DisplayAwake", lambda: awake)
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 30
     monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)
@@ -511,8 +514,11 @@ def test_show_graph_doubles_window_width_and_hides_back_to_original(viewer, monk
         (1860, 710),
         (930, 710),
     ]
-    assert [image.shape[1] for image in viewer.displayed] == [768, 1536, 768]
-    assert np.count_nonzero(viewer.displayed[1][34:, 768:]) == 0
+    assert [image.shape[1] for image in viewer.displayed] == [768, 1860, 768]
+    graph_layout = desktop.GraphWindowLayout.fit(
+        (768, 576 + desktop.toolbar_layout(768).height), (1860, 710)
+    )
+    assert np.count_nonzero(viewer.displayed[1][34:, graph_layout.camera_size[0]:]) == 0
     assert load_settings()["show_graph"] is False
 
 
@@ -939,6 +945,39 @@ def test_startup_calibration_is_not_requested_without_valid_camera_data(viewer, 
     viewer.hardware.calibrate_now.assert_not_called()
 
 
+def test_popup_covering_window_center_preserves_graph_layout(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import save_settings
+    from topdon_duo.window_preferences import load_main_window_size
+
+    save_settings({"show_graph": True})
+    window_size = (2400, 1200)
+    covered = False
+    step = 0
+    monkeypatch.setattr(
+        desktop, "window_resize_size", lambda _name: None if covered else window_size
+    )
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+
+    def wait_key(_delay):
+        nonlocal covered, step, window_size
+        step += 1
+        if step == 1:
+            covered = True
+        elif step == 3:
+            covered = False
+            window_size = (2600, 1300)
+        elif step == 4:
+            return ord("q")
+        return -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert [image.shape[:2] for image in viewer.displayed] == [
+        (1200, 2400), (1200, 2400), (1200, 2400), (1300, 2600)
+    ]
+    assert load_main_window_size() == (2600, 1300)
+
+
 @pytest.mark.parametrize("event_scale", [None, 0.5])
 def test_resized_graph_window_keeps_spots_and_controls_aligned(viewer, monkeypatch, event_scale):
     from topdon_duo.graphs import graph_interval_rect
@@ -1202,3 +1241,18 @@ def test_timelapse_rate_saves_immediately_reloads_and_respects_cli_override(view
     assert desktop.main(["--timelapse-fpm", "240"]) == 0
     assert viewer.panel.state["frames_per_minute"] == 240
     assert load_settings()["timelapse_fpm"] == 240
+
+
+@pytest.mark.parametrize("camera_error", [False, True])
+def test_display_awake_request_matches_camera_lifetime(viewer, monkeypatch, camera_error):
+    awake = Mock()
+    awake.check.return_value = None
+    monkeypatch.setattr(desktop, "DisplayAwake", lambda: awake)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    if camera_error:
+        viewer.camera.open.side_effect = desktop.CameraError("Connection failed")
+    assert desktop.main([]) == (2 if camera_error else 0)
+    assert awake.start.call_count == (0 if camera_error else 1)
+    awake.close.assert_called_once()
+    viewer.camera.close.assert_called_once()

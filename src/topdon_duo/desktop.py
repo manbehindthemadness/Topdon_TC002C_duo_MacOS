@@ -26,6 +26,7 @@ from .camera import (
 )
 from .capture_panel import CapturePanel
 from .dialog_preferences import load_dialog_directory, remember_dialog_directory
+from .display_awake import DisplayAwake
 from .distance_calibration import DistanceCalibrator
 from .emissivity_calibration import EmissivityCalibrator
 from .graph_panel import GraphPanel
@@ -1155,6 +1156,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.ambient is not None:
         LOG.warning("--ambient is ignored; set hardware ambient temperature in Camera.")
     camera = TC002CDuoCamera()
+    display_awake = DisplayAwake()
     picker = MousePicker()
     spots = SampleSpots()
     if "spots" in saved_settings:
@@ -1522,6 +1524,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         camera.open()
+        display_awake.start()
         try:
             hardware.load()
             for name, value in remembered_hardware.items():
@@ -1544,6 +1547,9 @@ def main(argv: list[str] | None = None) -> int:
         set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
         for frame in camera.frames():
+            display_error = display_awake.check()
+            if display_error:
+                notify(display_error)
             for command in spots_panel.poll():
                 if command.get("action") == "error":
                     notify(f"Spot menu failed: {command.get('message', '')}")
@@ -1869,10 +1875,15 @@ def main(argv: list[str] | None = None) -> int:
                 cv2.resizeWindow(WINDOW_NAME, width, height)
                 initial_window_size_set = True
             event_viewport = mouse_viewport_size()
+            current_size = window_resize_size(WINDOW_NAME)
+            if current_size is not None:
+                last_window_size = current_size
+            # A popup covering the window center can temporarily prevent native
+            # size detection. Keep the canvas and mouse mapping at the last size.
             graph_layout = (
                 GraphWindowLayout.fit(
                     (rendered.image.shape[1], rendered.image.shape[0] + layout.height),
-                    window_resize_size(WINDOW_NAME),
+                    last_window_size,
                 )
                 if show_graph
                 else None
@@ -2211,7 +2222,8 @@ def main(argv: list[str] | None = None) -> int:
             if show_graph:
                 if graph_layout is None:
                     graph_layout = GraphWindowLayout.fit(
-                        (display.shape[1], display.shape[0]), window_resize_size(WINDOW_NAME)
+                        (display.shape[1], display.shape[0]),
+                        window_resize_size(WINDOW_NAME) or last_window_size,
                     )
                 graph_size = graph_layout.graph_size
                 graphs.submit(
@@ -2326,6 +2338,7 @@ def main(argv: list[str] | None = None) -> int:
             hardware.restore_auto_calibrate()
         except CameraError as exc:
             LOG.error("Could not restore automatic camera calibration: %s", exc)
+        display_awake.close()
         camera.close()
         cv2.destroyAllWindows()
     return 0
