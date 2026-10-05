@@ -101,7 +101,7 @@ The controls are available from the toolbar as well as the keyboard:
 | Save image data | **Capture** → **Save image data**, or `S` |
 | Open image, video and timelapse controls | **Capture** or `C` |
 | Rotate clockwise | **Rotate** or `O` |
-| Toggle Celsius/Fahrenheit | **Unit** or `F` |
+| Toggle metric/imperial units (°C + meters / °F + feet) | **Units** or `F` |
 | Open camera controls | **Camera** or `V` |
 | Show/hide graph area | **Show graph** / **Hide graph** or `G` |
 | Start/stop temperature logging | **Log to CSV** / **Stop logging** at the top of the graph area, or `L` |
@@ -198,8 +198,12 @@ overrides; Reset display settings saves the display defaults. Explicit
 `--rotate` and `--image-source` options override remembered values. Invalid saved
 fields are ignored independently so valid preferences can still load.
 Each control has a title and editable value; only numeric ranges have sliders.
-Ambient and reflected-temperature inputs follow the selected Celsius/Fahrenheit
-unit, including ranges and slider values; hardware writes remain in Celsius.
+The **Units** toggle and Camera's **Measurement units** selection switch together:
+metric uses Celsius and meters; imperial uses Fahrenheit and feet. Ambient,
+reflected-temperature and distance inputs convert their values, ranges and
+steps accordingly. Distance sliders retain the camera's 1 cm precision, and
+pending edits survive unit changes. Hardware writes and saved hardware overrides
+remain in Celsius and meters, so switching units does not change calibration.
 Choice and on/off controls use dropdowns. On/off settings use two columns within Display controls, above
 AI enhancement and camera adjustments. All available inputs stay enabled. The single
 **Advanced / Auto** checkbox is reserved for future automatic control behavior. Hardware rows include ambient and reflected temperature,

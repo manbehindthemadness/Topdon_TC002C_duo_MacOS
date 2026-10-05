@@ -140,7 +140,7 @@ assert row.input.minimum() == -58 and row.input.maximum() == 212
 assert abs(row.input.singleStep() - 0.18) < 1e-8
 assert row.slider.value() == 800
 assert window.hardware_rows["reflected"].input.value() == 68
-assert window.hardware_rows["distance"].input.suffix() == " m"
+assert window.hardware_rows["distance"].input.suffix() == " ft"
 row.input.setValue(95)
 assert row.value() == 35 and row.slider.value() == 850
 row._emit()
@@ -157,6 +157,46 @@ row._emit()
 assert messages[-1]["value"] == 27.5
 window.update_state({**state, "temperature_unit": "C"})
 assert row.input.value() == 30
+
+# Distance uses feet in imperial mode while hardware commands retain meters.
+count = len(messages)
+distance = window.hardware_rows["distance"]
+metric = {**VIEW_DEFAULTS, "hardware": {"distance": {"value": 1, "available": True}}}
+window.update_state(metric)
+assert distance.input.value() == 1 and distance.input.suffix() == " m"
+window.update_state({**metric, "temperature_unit": "F"})
+assert len(messages) == count
+assert abs(distance.input.value() - 3.28084) < 0.0005
+assert distance.input.suffix() == " ft" and distance.input.decimals() == 3
+assert abs(distance.input.minimum() - 0.3/0.3048) < 0.0005
+assert abs(distance.input.maximum() - 99/0.3048) < 0.0005
+assert abs(distance.input.singleStep() - 0.01/0.3048) < 0.0005
+assert distance.slider.value() == 70
+# User inputs in feet are quantized to the camera's 1 cm precision.
+distance.input.setValue(6.56168)
+assert distance.value() == 2 and distance.slider.value() == 170
+distance._emit()
+assert messages[-1] == {"action": "hardware", "name": "distance", "value": 2.0, "enabled": True}
+distance.slider.setValue(120)
+assert distance.value() == 1.5 and abs(distance.input.value() - 1.5/0.3048) < 0.0005
+# A pending distance edit survives a unit change without an unintended write.
+count = len(messages)
+window.update_state(metric)
+assert distance.input.value() == 1.5 and distance.input.suffix() == " m"
+assert len(messages) == count
+distance._emit()
+assert messages[-1]["value"] == 1.5
+# Repeated round trips at both range endpoints must not drift or write hardware.
+for value in (0.3, 1, 27.54, 99):
+    expected = {**metric, "hardware": {"distance": {"value": value, "available": True}}}
+    count = len(messages)
+    for _ in range(5):
+        window.update_state(expected)
+        window.update_state({**expected, "temperature_unit": "F"})
+        assert distance.value() == value
+        window.update_state(expected)
+        assert distance.input.value() == value
+    assert len(messages) == count
 
 # Logging locks every settings input and cancels pending debounce timers.
 count = len(messages)

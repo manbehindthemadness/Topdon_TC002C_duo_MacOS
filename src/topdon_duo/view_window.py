@@ -62,6 +62,7 @@ class ControlRow(QWidget):
         self.minimum = minimum
         self.maximum = maximum
         self.is_temperature = unit == "°C"
+        self.is_distance = unit == "m"
         self.temperature_unit = "C"
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
@@ -105,28 +106,41 @@ class ControlRow(QWidget):
         if self.options:
             return self.input.currentData()
         value = self.input.value()
-        if self.is_temperature:
+        if self.is_temperature or self.is_distance:
             if self.temperature_unit == "F":
-                value = (value - 32) / 1.8
-            # Hardware temperatures retain their Celsius precision in both units.
+                value = (value - 32) / 1.8 if self.is_temperature else value * 0.3048
+            # Preserve hardware precision in Celsius and meters, regardless of display units.
             value = self.minimum + round((value - self.minimum) / self.step) * self.step
         return round(value, 2)
 
     def _display_value(self, value):
-        return value * 1.8 + 32 if self.is_temperature and self.temperature_unit == "F" else value
+        if self.temperature_unit == "F":
+            if self.is_temperature:
+                return value * 1.8 + 32
+            if self.is_distance:
+                return value / 0.3048
+        return value
 
-    def set_temperature_unit(self, unit):
-        if not self.is_temperature or unit == self.temperature_unit:
+    def set_display_unit(self, unit):
+        if not (self.is_temperature or self.is_distance) or unit == self.temperature_unit:
             return
         value = self.value()
         self.temperature_unit = unit
+        if self.is_temperature:
+            decimals = 2 if unit == "F" else 1
+            step = self.step * 1.8 if unit == "F" else self.step
+            suffix = f" °{unit}"
+        else:
+            decimals = 3 if unit == "F" else 2
+            step = self.step / 0.3048 if unit == "F" else self.step
+            suffix = " ft" if unit == "F" else " m"
         with QSignalBlocker(self.input):
-            self.input.setDecimals(2 if unit == "F" else 1)
+            self.input.setDecimals(decimals)
             self.input.setRange(
                 self._display_value(self.minimum), self._display_value(self.maximum)
             )
-            self.input.setSingleStep(self.step * 1.8 if unit == "F" else self.step)
-            self.input.setSuffix(f" °{unit}")
+            self.input.setSingleStep(step)
+            self.input.setSuffix(suffix)
         self._set_value(value)
 
     def _set_value(self, value):
@@ -210,7 +224,7 @@ class ViewWindow(QWidget):
         rows.setSpacing(16)
         display_options = {
             "image_source": ("Image source", tuple(IMAGE_SOURCES.items())),
-            "temperature_unit": ("Temperature unit", tuple(TEMPERATURE_UNITS.items())),
+            "temperature_unit": ("Measurement units", tuple(TEMPERATURE_UNITS.items())),
             "image_filter": ("Image filter", tuple(IMAGE_FILTERS.items())),
             "upsampling": ("Upsampling algorithm", tuple(UPSCALING_MODES.items())),
             "enhancement_input": ("Enhancement input size", tuple(ENHANCEMENT_INPUTS.items())),
@@ -379,9 +393,7 @@ class ViewWindow(QWidget):
         for name, row in self.rows.items():
             row.update_state(state.get(name, VIEW_DEFAULTS[name]), not self._settings_locked)
         for name, row in self.hardware_rows.items():
-            row.set_temperature_unit(
-                state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"])
-            )
+            row.set_display_unit(state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]))
             setting = state.get("hardware", {}).get(name, {})
             row.update_state(
                 setting.get("value", HARDWARE_CONTROLS[name].minimum),

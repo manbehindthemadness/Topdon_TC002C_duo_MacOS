@@ -211,7 +211,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
     """Fit compact controls across a single row at the current image width."""
     controls = (
         ("rotate", "Rotate", 54),
-        ("unit", "C / F", 50),
+        ("unit", "Units", 75),
         ("view", "Camera", 65),
         ("spots", "Add spots", 84),
         ("capture", "Capture", 64),
@@ -256,7 +256,7 @@ def draw_toolbar(
         )
     labels = {
         "rotate": "Rotate",
-        "unit": f"Unit: {temperature_unit}",
+        "unit": f"Units: {temperature_unit}/{'ft' if temperature_unit == 'F' else 'm'}",
         "view": "Camera",
         "spots": "Clear spots" if placing_spots else "Add spots",
         "capture": "Capture",
@@ -691,7 +691,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
         ("S            Save image data", (210, 215, 225)),
         ("C            Open Capture controls", (210, 215, 225)),
         ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
-        ("F            Toggle Celsius / Fahrenheit", (210, 215, 225)),
+        ("F            Toggle metric / imperial", (210, 215, 225)),
         ("V            Open Camera controls", (210, 215, 225)),
         ("G            Show / hide graph area", (210, 215, 225)),
         ("L            Start / stop CSV logging", (210, 215, 225)),
@@ -995,7 +995,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "Mouse: inspect a pixel | "
         "p: add/clear spots | s: save image data | c: Capture controls | "
-        "o: rotate | f: C/F | v: Camera controls | g: show/hide graph | l: log temperatures | Space: controls | q/Esc: quit"
+        "o: rotate | f: metric/imperial | v: Camera controls | g: show/hide graph | l: log temperatures | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()

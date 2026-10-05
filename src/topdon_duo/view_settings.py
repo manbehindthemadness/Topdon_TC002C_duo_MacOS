@@ -2,7 +2,7 @@
 
 import math
 
-TEMPERATURE_UNITS = {"C": "Celsius", "F": "Fahrenheit"}
+TEMPERATURE_UNITS = {"C": "Metric (°C, m)", "F": "Imperial (°F, ft)"}
 IMAGE_SOURCES = {"preview": "Camera preview", "raw": "Raw thermal image"}
 IMAGE_FILTERS = {
     "none": "None",
