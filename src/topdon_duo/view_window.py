@@ -334,6 +334,129 @@ class DistanceCalibrationControls(QWidget):
         self._update_buttons()
 
 
+class EmissivityCalibrationControls(QWidget):
+    def __init__(self, send):
+        super().__init__()
+        self._send = send
+        self._unit = "C"
+        self._locked = False
+        self._reference = None
+        self._selection_id = None
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        heading = QLabel("Emissivity calibration")
+        heading.setStyleSheet("font-size: 16px; font-weight: bold")
+        layout.addWidget(heading)
+        instructions = QLabel(
+            "Select a surface point, then enter its independently measured temperature. "
+            "Other markers are hidden; the reference point remains visible. Its current "
+            "temperature is copied for you to correct. Keep the point and surface steady "
+            "while fitting. Ambient, reflected temperature and distance must already "
+            "suit the measurement. Applying emissivity affects the whole image."
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+        self.known = NoWheelSpinBox()
+        self.known.setAccessibleName("Known surface temperature")
+        self.known.setRange(-50, 550)
+        self.known.setDecimals(2)
+        self.known.setSingleStep(0.1)
+        self.known.setSuffix(" °C")
+        self.known.setValue(20)
+        self.known.setKeyboardTracking(False)
+        line = QHBoxLayout()
+        line.addWidget(QLabel("Known surface temperature"), 1)
+        line.addWidget(self.known)
+        layout.addLayout(line)
+        self.select = QPushButton("Select reference point")
+        self.fit = QPushButton("Fit emissivity")
+        self.apply = QPushButton("Apply emissivity to camera")
+        self.cancel = QPushButton("Close calibration")
+        for button, operation in (
+            (self.select, "select"),
+            (self.apply, "apply"),
+            (self.cancel, "cancel"),
+        ):
+            button.clicked.connect(
+                lambda _checked=False, operation=operation: self._send(
+                    {"action": "emissivity_calibration", "operation": operation}
+                )
+            )
+        self.fit.clicked.connect(self._fit)
+        for controls in ((self.select, self.fit), (self.apply, self.cancel)):
+            line = QHBoxLayout()
+            for button in controls:
+                line.addWidget(button)
+            layout.addLayout(line)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.update_state({}, "C", False)
+
+    def _celsius(self):
+        return (self.known.value() - 32) / 1.8 if self._unit == "F" else self.known.value()
+
+    def _fit(self):
+        if not self._locked:
+            self.known.interpretText()
+            self._send(
+                {
+                    "action": "emissivity_calibration",
+                    "operation": "fit",
+                    "known_celsius": self._celsius(),
+                }
+            )
+
+    def update_state(self, state, unit, locked):
+        if unit != self._unit:
+            self.known.interpretText()
+            value = self._celsius()
+            self._unit = unit
+            with QSignalBlocker(self.known):
+                self.known.setRange(-58 if unit == "F" else -50, 1022 if unit == "F" else 550)
+                self.known.setSingleStep(0.18 if unit == "F" else 0.1)
+                self.known.setSuffix(f" °{unit}")
+                self.known.setValue(value * 1.8 + 32 if unit == "F" else value)
+        reference = state.get("reference")
+        if reference and reference != self._reference:
+            with QSignalBlocker(self.known):
+                value = reference["known_celsius"]
+                self.known.setValue(value * 1.8 + 32 if unit == "F" else value)
+        self._reference = reference
+        selection_id = state.get("selection_id")
+        if state.get("selected_celsius") is not None and selection_id != self._selection_id:
+            value = state.get("known_celsius")
+            if value is None:
+                value = state["selected_celsius"]
+            with QSignalBlocker(self.known):
+                self.known.setValue(value * 1.8 + 32 if unit == "F" else value)
+            self._selection_id = selection_id
+        self._locked = locked
+        running = bool(state.get("running"))
+        self.known.setEnabled(not locked)
+        self.select.setEnabled(not locked and not running)
+        self.fit.setEnabled(not locked and state.get("point") is not None and not running)
+        self.apply.setEnabled(
+            not locked and (state.get("result") is not None or bool(reference)) and not running
+        )
+        self.apply.setText(
+            "Apply saved emissivity"
+            if reference and state.get("result") is None
+            else "Apply emissivity to camera"
+        )
+        self.cancel.setEnabled(bool(state.get("active")) and (not locked or running))
+        message = state.get("status", "Select a point to begin.")
+        measured = state.get("measured_celsius")
+        if measured is not None and state.get("point") is not None:
+            display = measured * 1.8 + 32 if unit == "F" else measured
+            message += f" Selected point: {display:.2f} °{unit}."
+        if state.get("result") is not None:
+            message += f" Fitted emissivity: {state['result']:.2f}."
+        elif reference:
+            message += f" Saved emissivity: {reference['emissivity']:.2f}."
+        self.status.setText(message)
+
+
 class ViewWindow(QWidget):
     def __init__(self, send) -> None:
         super().__init__()
@@ -488,6 +611,8 @@ class ViewWindow(QWidget):
                 self.display_switches = switches
         self.distance_calibration = DistanceCalibrationControls(self._send)
         rows.addWidget(self.distance_calibration)
+        self.emissivity_calibration = EmissivityCalibrationControls(self._send)
+        rows.addWidget(self.emissivity_calibration)
         rows.addStretch()
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -552,6 +677,11 @@ class ViewWindow(QWidget):
             )
         self.distance_calibration.update_state(
             state.get("distance_calibration", {}),
+            state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]),
+            self._settings_locked,
+        )
+        self.emissivity_calibration.update_state(
+            state.get("emissivity_calibration", {}),
             state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]),
             self._settings_locked,
         )

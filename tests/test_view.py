@@ -18,6 +18,146 @@ from topdon_duo.view_settings import COLOR_PALETTES, IMAGE_FILTERS, VIEW_DEFAULT
 viewer = viewer_fixture
 
 
+def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading(
+    viewer, monkeypatch
+):
+    from topdon_duo.emissivity_calibration import EmissivityCalibrator
+    from topdon_duo.settings_preferences import load_settings
+
+    monkeypatch.setattr(EmissivityCalibrator, "SETTLE_SECONDS", 0.2)
+    panel = Mock()
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    setting = {"value": 0.95, "enabled": False, "available": True}
+    viewer.hardware.state.return_value["emissivity"] = setting
+
+    def set_hardware(name, value, enabled):
+        assert name == "emissivity"
+        setting.update(value=value if enabled else 0.95, enabled=enabled)
+
+    viewer.hardware.set.side_effect = set_hardware
+    words = np.frombuffer(make_frame(), dtype="<u2").copy()
+
+    def frames():
+        for _ in range(80):
+            temperature = min(550, 20 + 10 / setting["value"])
+            words[HEADER_U16 : SENSOR_PIXELS + HEADER_U16] = round((temperature + 50) * 64)
+            yield words.tobytes()
+
+    viewer.camera.frames.return_value = frames()
+    draw_spots = Mock(wraps=desktop.draw_sample_spots)
+    monkeypatch.setattr(desktop, "draw_sample_spots", draw_spots)
+    draw_reference = Mock(wraps=desktop.draw_emissivity_point)
+    monkeypatch.setattr(desktop, "draw_emissivity_point", draw_reference)
+    step = 0
+    applied = False
+
+    def click(x, y):
+        viewer.set_mouse.call_args.args[1](
+            cv2.EVENT_LBUTTONUP, x * 3, y * 3 + desktop.toolbar_layout(768).height, 0, None
+        )
+
+    def poll():
+        nonlocal step, applied
+        step += 1
+        if step == 4:
+            click(40, 50)
+            return [{"action": "emissivity_calibration", "operation": "select"}]
+        if step == 5:
+            assert panel.update.call_args.args[0]["emissivity_calibration"]["point"] == [40, 50]
+            assert panel.update.call_args.args[0]["emissivity_calibration"][
+                "selected_celsius"
+            ] == pytest.approx(30.53125)
+            return [{"action": "emissivity_calibration", "operation": "fit", "known_celsius": 40}]
+        if step > 5:
+            state = panel.update.call_args.args[0]
+            if state["emissivity_calibration"]["result"] is not None and not applied:
+                assert setting["value"] == 0.95 and not setting["enabled"]
+                assert "emissivity" not in load_settings().get("hardware", {})
+                assert load_settings()["emissivity_calibration"]["emissivity"] == 0.5
+                assert state["emissivity_calibration"]["point"] is None
+                applied = True
+                return [{"action": "emissivity_calibration", "operation": "apply"}]
+        return []
+
+    panel.poll.side_effect = poll
+    hidden_count = None
+
+    def key(_delay):
+        nonlocal hidden_count
+        viewer.clock[0] += 0.25
+        if step == 1:
+            return ord("p")
+        if step == 2:
+            click(30, 40)
+        state = panel.update.call_args.args[0]["emissivity_calibration"]
+        if state["active"]:
+            if hidden_count is None:
+                hidden_count = draw_spots.call_count
+            assert draw_spots.call_count == hidden_count
+        if applied:
+            return ord("q")
+        return -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", key)
+    assert desktop.main([]) == 0
+    assert applied and load_settings()["hardware"]["emissivity"] == 0.5
+    assert draw_spots.call_args.args[2].pixels == [(30, 40)]
+    assert draw_spots.call_count > hidden_count
+    assert draw_reference.call_count > 0
+
+
+def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(viewer, monkeypatch):
+    from topdon_duo.distance_calibration import DistanceReference
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    distance = DistanceReference(0.076, 0.5, 48).as_dict()
+    emissivity = {"version": 1, "emissivity": 0.5, "known_celsius": 40}
+    save_settings(
+        {
+            "distance_calibration": distance,
+            "emissivity_calibration": emissivity,
+            "display": {"mirror_horizontal": True, "temperature_unit": "F"},
+            "hardware": {"emissivity": 0.5},
+        }
+    )
+    setting = {"value": 0.95, "enabled": False, "available": True}
+    viewer.hardware.state.return_value["emissivity"] = setting
+    viewer.hardware.set.side_effect = lambda _name, value, enabled: setting.update(
+        value=value, enabled=enabled
+    )
+    viewer.hardware.restore.side_effect = lambda: setting.update(value=0.95, enabled=False)
+    panel = Mock()
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    step = 0
+
+    def poll():
+        nonlocal step
+        step += 1
+        if step > 1:
+            saved = load_settings()
+            assert saved["distance_calibration"] == distance
+            assert saved["emissivity_calibration"] == emissivity
+            state = panel.update.call_args.args[0]
+            assert state["distance_calibration"]["reference"] == distance
+            assert state["emissivity_calibration"]["reference"] == emissivity
+        if step == 1:
+            return [{"action": "reset"}]
+        if step == 2:
+            return [{"action": "restore_hardware"}]
+        if step == 3:
+            assert load_settings()["hardware"] == {}
+            return [{"action": "emissivity_calibration", "operation": "apply"}]
+        return []
+
+    panel.poll.side_effect = poll
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q") if step >= 4 else -1)
+    assert desktop.main([]) == 0
+    saved = load_settings()
+    assert saved["distance_calibration"] == distance
+    assert saved["emissivity_calibration"] == emissivity
+    assert saved["hardware"]["emissivity"] == 0.5
+
+
 def test_distance_calibration_detects_native_pixels_and_only_applies_on_request(
     viewer, monkeypatch
 ):
@@ -81,6 +221,20 @@ def test_distance_calibration_commands_are_rejected_while_logging(viewer, monkey
     assert desktop.main([]) == 0
     viewer.hardware.set.assert_not_called()
     assert panel.update.call_args.args[0]["distance_calibration"]["reference"] is None
+
+
+def test_emissivity_calibration_commands_are_rejected_while_logging(viewer, monkeypatch):
+    viewer.graphs.logging = True
+    panel = Mock()
+    panel.poll.return_value = [
+        {"action": "emissivity_calibration", "operation": operation}
+        for operation in ("select", "fit", "apply")
+    ]
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
+    assert desktop.main([]) == 0
+    viewer.hardware.set.assert_not_called()
+    assert not panel.update.call_args.args[0]["emissivity_calibration"]["active"]
 
 
 def test_view_popup_emits_settings_and_syncs_without_feedback(tmp_path):
@@ -338,6 +492,46 @@ for control in (cal.side, cal.distance, cal.select, cal.save, cal.measure, cal.a
     assert not control.isEnabled()
 cal._save()
 assert len(messages) == count
+
+# Known temperature follows the selected units; fit uses canonical Celsius.
+em = window.emissivity_calibration
+em_state = {"active": True, "point": [40, 50], "measured_celsius": 30}
+count = len(messages)
+em.update_state(em_state, "F", False)
+assert em.known.value() == 68 and em.known.suffix() == " °F"
+assert em.fit.isEnabled() and "86.00 °F" in em.status.text()
+assert len(messages) == count
+em.known.setValue(95)
+em.fit.click()
+assert messages[-1] == {"action": "emissivity_calibration", "operation": "fit", "known_celsius": 35}
+em.update_state(em_state, "C", False)
+assert em.known.value() == 35
+event = QWheelEvent(QPointF(5, 5), QPointF(em.known.mapToGlobal(QPoint(5, 5))),
+                    QPoint(), QPoint(0, -120), Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+QApplication.sendEvent(em.known, event)
+assert not event.isAccepted() and em.known.value() == 35
+em.update_state({**em_state, "running": True}, "C", True)
+assert not em.known.isEnabled() and not em.fit.isEnabled() and not em.select.isEnabled()
+assert not em.apply.isEnabled() and em.cancel.isEnabled()
+em.cancel.click()
+assert messages[-1] == {"action": "emissivity_calibration", "operation": "cancel"}
+em.update_state({**em_state, "result": 0.5}, "C", False)
+assert em.apply.isEnabled()
+em.apply.click()
+assert messages[-1] == {"action": "emissivity_calibration", "operation": "apply"}
+# A point selection imports its temperature once, even if the same pixel is reselected.
+selected_em = {**em_state, "selection_id": 1, "selected_celsius": 31.25, "known_celsius": 31.25}
+em.update_state(selected_em, "F", False)
+assert em.known.value() == 88.25
+em.known.setValue(95)
+em.update_state({**selected_em, "measured_celsius": 32}, "F", False)
+assert em.known.value() == 95
+em.update_state({**selected_em, "selection_id": 2, "selected_celsius": 29, "known_celsius": 29}, "C", False)
+assert em.known.value() == 29
+saved_em = {"version": 1, "emissivity": 0.5, "known_celsius": 40}
+em.update_state({"reference": saved_em}, "F", False)
+assert em.apply.isEnabled() and em.apply.text() == "Apply saved emissivity"
+assert em.known.value() == 104 and "Saved emissivity: 0.50" in em.status.text()
 
 body_layout = row.parentWidget().layout()
 headings = {body_layout.itemAt(i).widget().text(): i

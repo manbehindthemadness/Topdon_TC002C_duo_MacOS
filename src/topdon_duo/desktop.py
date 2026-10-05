@@ -16,9 +16,17 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .camera import FRAME_RATE, SENSOR_HEIGHT, SENSOR_WIDTH, CameraError, TC002CDuoCamera
+from .camera import (
+    FRAME_RATE,
+    SENSOR_HEIGHT,
+    SENSOR_WIDTH,
+    CameraError,
+    TC002CDuoCamera,
+    raw_temperatures,
+)
 from .capture_panel import CapturePanel
 from .distance_calibration import DistanceCalibrator
+from .emissivity_calibration import EmissivityCalibrator
 from .graphs import GraphSnapshot, GraphWorker, draw_graph_logging_control, graph_log_button_rect
 from .hardware_controls import HardwareControls
 from .pointer import PointerMonitor
@@ -642,6 +650,28 @@ def draw_distance_selection(image, calibration, scale):
     return _draw_contrasting_overlay(image, mask, text_mask)
 
 
+def draw_emissivity_point(image, calibration, scale, unit):
+    if calibration.point is None:
+        return image
+    x, y = (coordinate * scale + scale // 2 for coordinate in calibration.point)
+    mask = np.zeros(image.shape[:2], np.uint8)
+    text_mask = np.zeros_like(mask)
+    cv2.drawMarker(mask, (x, y), 255, cv2.MARKER_CROSS, 11, 1)
+    temperature = calibration.measured_celsius
+    label = "Reference"
+    if temperature is not None:
+        display = temperature * 1.8 + 32 if unit == "F" else temperature
+        label = f"Ref {display:.2f} {unit}"
+    (width, height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+    label_x = max(2, min(x + 10, image.shape[1] - width - 2))
+    label_y = y - 10 if y > height + 12 else y + height + 12
+    label_y = min(label_y, image.shape[0] - baseline - 2)
+    cv2.putText(
+        text_mask, label, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255, 1, cv2.LINE_AA
+    )
+    return _draw_contrasting_overlay(image, mask, text_mask)
+
+
 def draw_picker(
     rendered: RenderedThermalFrame,
     picker: MousePicker,
@@ -802,6 +832,9 @@ def main(argv: list[str] | None = None) -> int:
     capture_panel = CapturePanel()
     view_panel = ViewPanel()
     hardware = HardwareControls(camera)
+    emissivity_calibration = EmissivityCalibrator(
+        hardware, saved_settings.get("emissivity_calibration")
+    )
     graphs = GraphWorker()
     actual_image_source = renderer.image_source
     pending_save_kind: str | None = None
@@ -827,6 +860,7 @@ def main(argv: list[str] | None = None) -> int:
                         if distance_calibration.reference
                         else None
                     ),
+                    "emissivity_calibration": emissivity_calibration.reference,
                 }
             )
         except OSError as exc:
@@ -858,6 +892,9 @@ def main(argv: list[str] | None = None) -> int:
 
     def toggle_graph_logging() -> None:
         nonlocal pending_save_kind
+        if emissivity_calibration.active:
+            notify("Close emissivity calibration before starting temperature logging.")
+            return
         if graphs.logging:
             try:
                 path = graphs.stop_logging()
@@ -923,9 +960,11 @@ def main(argv: list[str] | None = None) -> int:
 
     def rotate_view() -> None:
         nonlocal last_selected
-        if graphs.logging:
-            notify("Stop temperature logging before changing settings.")
+        if graphs.logging or emissivity_calibration.running:
+            notify("Stop logging or emissivity fitting before changing settings.")
             return
+        if emissivity_calibration.active:
+            emissivity_calibration.cancel()
         # Rotate the stored sensor coordinates with the image, preserving samples.
         sensor_height = SENSOR_HEIGHT if renderer.rotation in (0, 180) else SENSOR_WIDTH
         sensor_width = SENSOR_WIDTH if renderer.rotation in (0, 180) else SENSOR_HEIGHT
@@ -945,13 +984,15 @@ def main(argv: list[str] | None = None) -> int:
 
     def set_view_setting(name: str, value: object) -> None:
         nonlocal last_selected
-        if graphs.logging:
-            notify("Stop temperature logging before changing settings.")
+        if graphs.logging or emissivity_calibration.running:
+            notify("Stop logging or emissivity fitting before changing settings.")
             return
         previous = renderer.view_settings()
         renderer.set_view_setting(name, value)
         persist_settings()
         if name in ("mirror_horizontal", "mirror_vertical") and previous[name] != value:
+            if emissivity_calibration.active:
+                emissivity_calibration.cancel()
             width, height = (
                 (SENSOR_WIDTH, SENSOR_HEIGHT)
                 if renderer.rotation in (0, 180)
@@ -964,7 +1005,7 @@ def main(argv: list[str] | None = None) -> int:
             last_selected = None
 
     def toggle_spots() -> None:
-        if graphs.logging:
+        if graphs.logging or emissivity_calibration.active:
             notify("Stop temperature logging before changing measuring spots.")
             return
         spots.toggle()
@@ -990,12 +1031,15 @@ def main(argv: list[str] | None = None) -> int:
                 message += f" · {algorithm} 2× · {renderer.upsampler.elapsed_ms:.0f} ms"
         if graphs.logging:
             message += " · Settings locked while logging"
+        elif emissivity_calibration.running:
+            message += " · Settings locked while fitting emissivity"
         return {
             **renderer.view_settings(),
             "hardware": hardware.state(),
             "advanced_auto": advanced_auto,
-            "settings_locked": graphs.logging,
+            "settings_locked": graphs.logging or emissivity_calibration.running,
             "distance_calibration": distance_calibration.state(),
+            "emissivity_calibration": emissivity_calibration.state(),
             "status": message,
         }
 
@@ -1051,7 +1095,7 @@ def main(argv: list[str] | None = None) -> int:
         initial_window_size_set = False
         for frame in camera.frames():
             for command in view_panel.poll():
-                if graphs.logging and command.get("action") in (
+                if (graphs.logging or emissivity_calibration.running) and command.get("action") in (
                     "setting",
                     "hardware",
                     "advanced_auto",
@@ -1059,12 +1103,17 @@ def main(argv: list[str] | None = None) -> int:
                     "reset",
                     "distance_calibration",
                 ):
-                    notify("Stop temperature logging before changing settings.")
+                    notify("Stop logging or emissivity fitting before changing settings.")
+                    continue
+                if graphs.logging and command.get("action") == "emissivity_calibration":
+                    notify("Stop temperature logging before emissivity calibration.")
                     continue
                 try:
                     if command.get("action") == "setting":
                         set_view_setting(command["name"], command["value"])
                     elif command.get("action") == "hardware":
+                        if emissivity_calibration.active:
+                            emissivity_calibration.cancel()
                         hardware.set(command["name"], command["value"], command["enabled"])
                         if command["enabled"]:
                             remembered_hardware[command["name"]] = hardware.state()[
@@ -1076,6 +1125,8 @@ def main(argv: list[str] | None = None) -> int:
                         hardware.error = ""
                         renderer._average_raw = None
                     elif command.get("action") == "distance_calibration":
+                        if emissivity_calibration.active:
+                            emissivity_calibration.cancel()
                         operation = command["operation"]
                         if operation in ("select", "measure"):
                             distance_calibration.begin(
@@ -1109,12 +1160,36 @@ def main(argv: list[str] | None = None) -> int:
                             persist_settings()
                         else:
                             raise ValueError("Unknown distance calibration operation")
+                    elif command.get("action") == "emissivity_calibration":
+                        operation = command["operation"]
+                        if operation == "cancel":
+                            emissivity_calibration.cancel()
+                        elif operation == "select":
+                            if pending_save_kind == "graph_log":
+                                raise ValueError("Finish the pending logging dialog first")
+                            distance_calibration.cancel()
+                            emissivity_calibration.begin()
+                            picker.x = picker.y = None
+                        elif operation == "fit":
+                            if pending_save_kind == "graph_log":
+                                raise ValueError("Finish the pending logging dialog first")
+                            emissivity_calibration.start(command["known_celsius"], time.monotonic())
+                        elif operation == "apply":
+                            remembered_hardware["emissivity"] = emissivity_calibration.apply()
+                            persist_settings()
+                        else:
+                            raise ValueError("Unknown emissivity calibration operation")
+                        renderer._average_raw = None
+                        hardware.error = ""
+                        notify(emissivity_calibration.message)
                     elif command.get("action") == "advanced_auto":
                         if not isinstance(command["value"], bool):
                             raise ValueError("Advanced / Auto must be a boolean")
                         advanced_auto = command["value"]
                         persist_settings()
                     elif command.get("action") == "restore_hardware":
+                        if emissivity_calibration.active:
+                            emissivity_calibration.cancel()
                         hardware.restore()
                         remembered_hardware.clear()
                         persist_settings()
@@ -1149,6 +1224,20 @@ def main(argv: list[str] | None = None) -> int:
             renderer.ambient_celsius = ambient.get("value") if ambient.get("available") else None
             rendered = renderer.render_detailed(frame)
             actual_image_source = rendered.image_source
+            try:
+                if emissivity_calibration.active:
+                    previous_reference = emissivity_calibration.reference
+                    emissivity_calibration.update(
+                        raw_temperatures(rendered.raw_counts, offset=50), time.monotonic()
+                    )
+                    if previous_reference != emissivity_calibration.reference:
+                        persist_settings()
+            except (CameraError, ValueError) as exc:
+                notify(f"Emissivity calibration failed: {exc}")
+                try:
+                    emissivity_calibration.cancel()
+                except CameraError as restore_exc:
+                    hardware.error = f"Could not restore emissivity: {restore_exc}"
             if not graphs.logging and distance_calibration.update(rendered.temperatures_celsius):
                 notify(distance_calibration.message)
             layout = toolbar_layout(rendered.image.shape[1])
@@ -1163,17 +1252,21 @@ def main(argv: list[str] | None = None) -> int:
             viewport_size = mouse_viewport_size()
             if show_graph and viewport_size is not None:
                 viewport_size = (viewport_size[0] / 2, viewport_size[1])
-            display, selected = draw_picker(
-                rendered,
-                picker,
-                renderer.scale,
-                viewport_size=viewport_size,
-                toolbar_height=layout.height,
-                temperature_unit=renderer.temperature_unit,
-                spots=spots,
-                pointer_over_image=pointer_monitor.over_image(
-                    rendered.image.shape[0], layout.height
-                ),
+            display, selected = (
+                (rendered.image, None)
+                if emissivity_calibration.active
+                else draw_picker(
+                    rendered,
+                    picker,
+                    renderer.scale,
+                    viewport_size=viewport_size,
+                    toolbar_height=layout.height,
+                    temperature_unit=renderer.temperature_unit,
+                    spots=spots,
+                    pointer_over_image=pointer_monitor.over_image(
+                        rendered.image.shape[0], layout.height
+                    ),
+                )
             )
             if selected is not None:
                 last_selected = selected
@@ -1187,6 +1280,7 @@ def main(argv: list[str] | None = None) -> int:
                 if save_path is not None:
                     try:
                         if kind == "graph_log":
+                            emissivity_calibration.cancel()
                             path = graphs.start_logging(save_path)
                             if distance_calibration.selecting:
                                 distance_calibration.cancel()
@@ -1222,12 +1316,16 @@ def main(argv: list[str] | None = None) -> int:
             # Only the thermal view and sample annotations go into the video.
             # The cursor sampler remains visible locally even when capture is off.
             if recorder.is_recording:
-                recording_view = draw_sample_spots(
-                    display if capture_cursor else rendered.image,
-                    rendered,
-                    spots,
-                    renderer.scale,
-                    renderer.temperature_unit,
+                recording_view = (
+                    rendered.image
+                    if emissivity_calibration.active
+                    else draw_sample_spots(
+                        display if capture_cursor else rendered.image,
+                        rendered,
+                        spots,
+                        renderer.scale,
+                        renderer.temperature_unit,
+                    )
                 )
                 try:
                     recorder.write(
@@ -1241,10 +1339,15 @@ def main(argv: list[str] | None = None) -> int:
                 except (OSError, cv2.error) as exc:
                     stop_recording()
                     notify(f"Recording failed: {exc}")
-            display = draw_sample_spots(
-                display, rendered, spots, renderer.scale, renderer.temperature_unit
-            )
-            display = draw_distance_selection(display, distance_calibration, renderer.scale)
+            if not emissivity_calibration.active:
+                display = draw_sample_spots(
+                    display, rendered, spots, renderer.scale, renderer.temperature_unit
+                )
+                display = draw_distance_selection(display, distance_calibration, renderer.scale)
+            else:
+                display = draw_emissivity_point(
+                    display, emissivity_calibration, renderer.scale, renderer.temperature_unit
+                )
             if show_instructions:
                 display = draw_control_instructions(display)
             if recorder.is_recording:
@@ -1260,6 +1363,8 @@ def main(argv: list[str] | None = None) -> int:
                     if pending_save_kind == "graph_log"
                     else f"Choose a filename for {pending_save_kind}..."
                 )
+            elif emissivity_calibration.active:
+                status = emissivity_calibration.message
             elif distance_calibration.selecting:
                 status = distance_calibration.message
             elif time.monotonic() < status_until:
@@ -1280,7 +1385,7 @@ def main(argv: list[str] | None = None) -> int:
                 stats=rendered.stats,
                 show_graph=show_graph,
                 graph_locked=graphs.logging or pending_save_kind == "graph_log",
-                settings_locked=graphs.logging,
+                settings_locked=graphs.logging or emissivity_calibration.running,
             )
 
             # Capture spot values in this frame's orientation, before click actions can rotate
@@ -1323,6 +1428,23 @@ def main(argv: list[str] | None = None) -> int:
                     show_instructions = not show_instructions
                 elif action == "quit":
                     quit_requested = True
+                elif action is None and emissivity_calibration.active:
+                    if emissivity_calibration.selecting:
+                        position = image_position_at(
+                            click_x, click_y, rendered.image.shape, viewport_size, layout.height
+                        )
+                        if position is not None:
+                            pixel = (position[0] // renderer.scale, position[1] // renderer.scale)
+                            emissivity_calibration.select_point(
+                                pixel,
+                                rendered.temperatures_celsius.shape[::-1],
+                                float(
+                                    raw_temperatures(
+                                        rendered.raw_counts[pixel[1], pixel[0]], offset=50
+                                    )
+                                ),
+                            )
+                            notify(emissivity_calibration.message)
                 elif action is None and distance_calibration.selecting:
                     continue
                 elif action is None and spots.placing:
@@ -1396,6 +1518,10 @@ def main(argv: list[str] | None = None) -> int:
         LOG.error("Unable to run desktop viewer: %s", exc)
         return 2
     finally:
+        try:
+            emissivity_calibration.cancel()
+        except CameraError as exc:
+            LOG.error("Could not restore pre-calibration emissivity: %s", exc)
         persist_settings()
         if last_window_size is not None:
             try:

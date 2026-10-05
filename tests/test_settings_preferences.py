@@ -38,3 +38,15 @@ def test_preferences_round_trip_without_temporary_file(monkeypatch, tmp_path):
     save_settings(saved)
     assert load_settings() == saved
     assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_invalid_emissivity_reference_does_not_discard_other_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    for value in (
+        None,
+        {},
+        {"version": 1, "emissivity": True, "known_celsius": 40},
+        {"version": 1, "emissivity": 0.555, "known_celsius": 40},
+    ):
+        save_settings({"emissivity_calibration": value, "display": {"temperature_unit": "F"}})
+        assert load_settings() == {"display": {"temperature_unit": "F"}, "hardware": {}}

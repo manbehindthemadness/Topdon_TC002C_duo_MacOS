@@ -354,15 +354,59 @@ not a full camera calibration. The front-lens measurement also approximates the
 optical origin. Verify accuracy at additional measured distances before relying
 on it for temperature compensation.
 
+## Emissivity calibration with a known temperature
+
+Camera → Emissivity calibration fits the camera's global emissivity setting to
+an independently measured surface temperature:
+
+1. Click **Select reference point**. Measuring-spot, cursor and distance-detection
+   markers disappear. Click the reference surface in the main thermal image;
+   its own reference marker remains visible with a live temperature label.
+2. The selected pixel's current temperature is copied into **Known surface
+   temperature**, in the selected °C or °F units. Edit it to your independently
+   measured temperature. Live updates preserve your edit. Selecting a new point
+   imports its temperature again.
+3. Click **Fit emissivity** and keep the camera and reference steady. The fit
+   temporarily probes the camera's supported 0.01–1.00 emissivity range, waits
+   one second after each write, and collects five stable readings. Other settings
+   are locked during fitting, and temperature logging cannot start.
+4. A successful fit saves the calibration separately, restores the prior
+   emissivity, clears the reference marker and offers the fitted value.
+   **Apply emissivity to camera** keeps it as a saved hardware preference and
+   restores the markers. **Close calibration** ends point selection and restores
+   the markers while retaining any saved fit. Closing during fitting also restores
+   the previous setting.
+
+**Reset display settings** and **Restore camera settings** preserve both the
+distance reference and the saved emissivity calibration, including across
+restarts. Restore returns hardware settings to their original values; use
+**Apply saved emissivity** to reapply the retained fit when appropriate.
+
+The fit reads the native camera-corrected plane rather than display smoothing,
+palette pixels or AI output. It tests the observed response rather than assuming
+a radiometric formula. It stops without a result for weak or inconsistent
+response, an unreachable temperature, unstable readings, a timeout, or when the
+camera's 0.01 emissivity steps cannot match within 0.3 °C. This matching tolerance
+is not a claim about the camera's absolute temperature accuracy.
+
+Use an independent surface-temperature reference and appropriate ambient,
+reflected-temperature and distance settings. The fitted emissivity is specific
+to the selected material and conditions, while applying it affects the entire
+image. The procedure follows the known-temperature adjustment approach in
+[FLIR's thermographic measurement guidance](https://support.flir.com/docdownload/assets/web/4jau/en-us/T505000.xml.html).
+The workflow and feedback fit are covered by simulated-camera tests; a physical
+trial with a measured reference is still required for this camera.
+
 ## Automatic controls and future calibrations
 
 Planned Auto behavior: adapt brightness, contrast, general/spatial/temporal noise
 reduction and detail enhancement using image histograms, estimated noise, motion
 and edge strength. These mappings still need validation on this camera.
 Ambient temperature stays manual and is excluded from automatic calculation.
-Distance can use the manual square calibration above; automatic target detection
-remains future work. Emissivity, reflected temperature and optical transmission
-stay manual until suitable reference-based calibrations are available. Palettes,
+Distance uses automatic square detection with a measured reference. Emissivity
+has the known-temperature fitting workflow above; both still need accuracy
+validation against physical references. Reflected temperature and optical
+transmission stay manual until suitable reference-based calibrations are available. Palettes,
 mirrors and overlays remain user preferences. Weather humidity is a possible
 optional outdoor estimate, with its source and age shown; it is not a measured
 indoor value. Advanced / Auto is currently a placeholder.
