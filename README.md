@@ -305,6 +305,33 @@ obtained upstream code, verified ACNet weights, and a successful local test.
 Large captures, original configuration payloads and extracted research material
 remain local under the gitignored `diagnostics/telemetry-research/` directory.
 
+## Calibrate with household objects
+
+Open **Camera** from the main window to find the calibration controls:
+
+- **Post-it → distance:** use a standard 3 × 3 inch note (nominally 76 × 76 mm;
+  measure yours). Hold it flat in front of a warm palm so its cooler square has
+  visible edges. Enter its size and a tape-measured distance from the front lens,
+  detect it, then save the reference. At another distance, measure the same note
+  and apply the estimated distance to the camera.
+- **Shiny spoon → reflected temperature:** show the reflector target, cover the
+  entire center circle with shiny bare metal, and measure while holding steady.
+  A stable reading saves automatically. Apply the saved reflected temperature to
+  update the camera. This experimental method depends on spoon orientation;
+  compare with a crumpled then flattened foil reflector before relying on it.
+- **Known surface temperature → emissivity:** select a point and enter an
+  independently measured surface temperature, fit emissivity, then apply it.
+
+All three saved calibration references load automatically when the program
+starts and appear in their Camera sections. Values you have **applied** to the
+camera also restore automatically after connection. Saving a reference alone
+keeps it available for later use; it does not apply a new camera setting. For
+Post-it distance, the saved reference is reused for new measurements rather than
+reusing an unfinished distance estimate. Reset display and Restore camera
+settings preserve saved calibration references; Restore camera settings clears
+applied hardware preferences until you apply them again. Repeat calibration when
+the camera, target material, or relevant measurement conditions change.
+
 ## Distance calibration with a square
 
 Camera → Distance calibration uses a **76 × 76 mm Post-it** by default. You can
@@ -397,6 +424,33 @@ image. The procedure follows the known-temperature adjustment approach in
 The workflow and feedback fit are covered by simulated-camera tests; a physical
 trial with a measured reference is still required for this camera.
 
+## Reflected-temperature calibration
+
+Camera → Reflected-temperature calibration uses a small circle at the center
+of the image. Show the target, cover the entire circle with a shiny bare-metal
+spoon or foil reflector near the subject, and click **Measure stable temperature**.
+Other measurement markers are hidden during calibration. The reading uses the
+median of native temperature pixels inside the circle, with a one-second settling
+period and at least two seconds of stability within 0.3 °C. It times out after
+30 seconds if the reading does not settle.
+
+Measurement temporarily sets emissivity to 1.00 and optical transmission to 100%,
+then restores their previous values and override states on success, cancellation,
+or failure. Other environmental corrections remain at their configured values.
+A stable result is saved independently and clears the circle. **Apply saved
+reflected temperature** writes it to the camera at its 0.1 °C precision. The saved
+reference survives restarting, Reset display, and Restore camera settings; the
+Camera panel displays it in the selected Celsius/Fahrenheit unit. Settings and
+logging are locked during measurement.
+
+A spoon is an experimental reflector: curvature makes its reading depend on
+orientation, and it may reflect the operator or camera. Compare it against the
+[FLIR foil reflector procedure](https://support.flir.com/docdownload/assets/web/2p5q/en-us/T505000.xml.html)
+(crumpled then flattened aluminum foil) before relying on it. A steady reading
+alone cannot establish that a material is reflective or that the calibration is
+accurate. This camera's distance and atmospheric corrections still need physical
+validation for this procedure.
+
 ## Automatic controls and future calibrations
 
 Planned Auto behavior: adapt brightness, contrast, general/spatial/temporal noise
@@ -405,8 +459,8 @@ and edge strength. These mappings still need validation on this camera.
 Ambient temperature stays manual and is excluded from automatic calculation.
 Distance uses automatic square detection with a measured reference. Emissivity
 has the known-temperature fitting workflow above; both still need accuracy
-validation against physical references. Reflected temperature and optical
-transmission stay manual until suitable reference-based calibrations are available. Palettes,
+validation against physical references. Reflected temperature has an experimental reflector workflow; optical
+transmission remains manual until a suitable reference-based calibration is available. Palettes,
 mirrors and overlays remain user preferences. Weather humidity is a possible
 optional outdoor estimate, with its source and age shown; it is not a measured
 indoor value. Advanced / Auto is currently a placeholder.

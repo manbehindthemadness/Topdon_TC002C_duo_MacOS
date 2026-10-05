@@ -112,10 +112,12 @@ def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(viewer,
 
     distance = DistanceReference(0.076, 0.5, 48).as_dict()
     emissivity = {"version": 1, "emissivity": 0.5, "known_celsius": 40}
+    reflected = {"version": 1, "celsius": 24.2}
     save_settings(
         {
             "distance_calibration": distance,
             "emissivity_calibration": emissivity,
+            "reflected_calibration": reflected,
             "display": {"mirror_horizontal": True, "temperature_unit": "F"},
             "hardware": {"emissivity": 0.5},
         }
@@ -137,6 +139,7 @@ def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(viewer,
             saved = load_settings()
             assert saved["distance_calibration"] == distance
             assert saved["emissivity_calibration"] == emissivity
+            assert saved["reflected_calibration"] == reflected
             state = panel.update.call_args.args[0]
             assert state["distance_calibration"]["reference"] == distance
             assert state["emissivity_calibration"]["reference"] == emissivity
@@ -688,3 +691,119 @@ def test_invalid_view_settings_are_rejected(name, value):
     with pytest.raises(ValueError):
         renderer.set_view_setting(name, value)
     assert renderer.view_settings() == VIEW_DEFAULTS
+
+
+def test_reflector_workflow_restores_then_applies_saved_native_reading(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings
+
+    panel = Mock()
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    settings = {
+        "emissivity": {"value": 0.8, "enabled": True, "available": True},
+        "transmission": {"value": 95, "enabled": False, "available": True},
+        "reflected": {"value": 22, "enabled": False, "available": True},
+    }
+    viewer.hardware.state.return_value.update(settings)
+    viewer.hardware.set.side_effect = lambda name, value, enabled: settings[name].update(
+        value=value, enabled=enabled
+    )
+    words = np.frombuffer(make_frame(), dtype="<u2").copy()
+    words[HEADER_U16 : SENSOR_PIXELS + HEADER_U16] = round((24.5 + 50) * 64)
+    viewer.camera.frames.return_value = iter([words.tobytes()] * 100)
+    step = 0
+    applied = False
+    target = Mock(wraps=desktop.draw_reflector_target)
+    monkeypatch.setattr(desktop, "draw_reflector_target", target)
+
+    def poll():
+        nonlocal step, applied
+        step += 1
+        if step == 1:
+            return [{"action": "reflected_calibration", "operation": "select"}]
+        if step == 2:
+            return [{"action": "reflected_calibration", "operation": "measure"}]
+        state = panel.update.call_args.args[0]["reflected_calibration"]
+        if state["reference"] and not applied:
+            assert not state["active"]
+            assert settings["emissivity"]["value"] == 0.8
+            assert settings["transmission"]["value"] == 95
+            assert load_settings()["reflected_calibration"]["celsius"] == 24.5
+            assert "reflected" not in load_settings()["hardware"]
+            applied = True
+            return [{"action": "reflected_calibration", "operation": "apply"}]
+        return []
+
+    panel.poll.side_effect = poll
+
+    def key(_delay):
+        viewer.clock[0] += 0.25
+        return ord("q") if applied else -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", key)
+    assert desktop.main([]) == 0
+    assert applied and target.call_count > 0
+    assert load_settings()["hardware"]["reflected"] == 24.5
+
+
+def test_reflector_controls_units_and_measurement_lock():
+    script = """
+from PySide6.QtWidgets import QApplication
+from topdon_duo.view_window import ReflectedCalibrationControls
+app = QApplication([])
+commands = []
+controls = ReflectedCalibrationControls(commands.append)
+controls.select.click()
+assert commands == [{"action": "reflected_calibration", "operation": "select"}]
+state = {"active": True, "running": True, "reference": {"version": 1, "celsius": 20}, "status": "Measuring"}
+controls.update_state(state, "F", True)
+assert "68.0 °F" in controls.status.text()
+assert not controls.select.isEnabled() and not controls.measure.isEnabled() and not controls.apply.isEnabled()
+assert controls.cancel.isEnabled()
+controls.cancel.click()
+assert commands[-1]["operation"] == "cancel"
+controls.update_state({"reference": state["reference"]}, "C", False)
+assert controls.apply.isEnabled() and not controls.measure.isEnabled() and not controls.cancel.isEnabled()
+assert "20.0 °C" in controls.status.text()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env=popup_environment(),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_startup_loads_all_calibration_references_and_applied_camera_values(viewer, monkeypatch):
+    from topdon_duo.distance_calibration import DistanceReference
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    references = {
+        "distance_calibration": DistanceReference(0.076, 0.5, 48).as_dict(),
+        "emissivity_calibration": {"version": 1, "emissivity": 0.5, "known_celsius": 40},
+        "reflected_calibration": {"version": 1, "celsius": 24.2},
+    }
+    applied = {"distance": 1.2, "emissivity": 0.5, "reflected": 24.2}
+    save_settings({**references, "hardware": applied})
+    settings = viewer.hardware.state.return_value
+    for name in applied:
+        settings[name] = {"value": 0, "enabled": False, "available": True}
+    viewer.hardware.set.side_effect = lambda name, value, enabled: settings[name].update(
+        value=value, enabled=enabled
+    )
+    panel = Mock()
+    panel.poll.return_value = []
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    state = panel.update.call_args.args[0]
+    for name, reference in references.items():
+        assert state[name]["reference"] == reference
+        assert load_settings()[name] == reference
+    for name, value in applied.items():
+        viewer.hardware.set.assert_any_call(name, value, True)
+        assert state["hardware"][name]["value"] == value
+        assert state["hardware"][name]["enabled"]
+    assert load_settings()["hardware"] == applied

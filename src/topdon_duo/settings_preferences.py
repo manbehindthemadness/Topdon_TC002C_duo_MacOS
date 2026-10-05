@@ -5,6 +5,7 @@ import json
 from .distance_calibration import DistanceReference
 from .emissivity_calibration import validate_reference
 from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS
+from .reflected_calibration import validate_reference as validate_reflected_reference
 from .view_settings import validate_view_setting
 from .window_preferences import _path
 
@@ -45,6 +46,12 @@ def load_settings() -> dict:
         pass
     try:
         result["emissivity_calibration"] = validate_reference(saved.get("emissivity_calibration"))
+    except (TypeError, ValueError):
+        pass
+    try:
+        result["reflected_calibration"] = validate_reflected_reference(
+            saved.get("reflected_calibration")
+        )
     except (TypeError, ValueError):
         pass
     return result

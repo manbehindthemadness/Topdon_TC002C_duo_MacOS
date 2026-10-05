@@ -203,11 +203,13 @@ class DistanceCalibrationControls(QWidget):
         heading.setStyleSheet("font-size: 16px; font-weight: bold")
         layout.addWidget(heading)
         instructions = QLabel(
-            "Default target: a 76 x 76 mm Post-it (edit the size if needed). "
+            "Use a standard 3 × 3 inch Post-it (76 × 76 mm; measure yours and edit the size if needed). "
             "Hold the cooler note flat in front of your warm palm, with skin "
             "visible around its edges. Face it toward the camera and hold steady "
-            "for automatic detection. Measure from the front lens. "
-            "Estimates need independent validation."
+            "for automatic detection. Enter a tape-measured distance from the front lens, "
+            "Detect reference square, then Save reference. Use Measure square at a new distance "
+            "and Apply distance to camera to update the camera. Saved references load at startup; "
+            "applied distance settings are also restored. Check estimates against a tape measure."
         )
         instructions.setWordWrap(True)
         layout.addWidget(instructions)
@@ -457,6 +459,66 @@ class EmissivityCalibrationControls(QWidget):
         self.status.setText(message)
 
 
+class ReflectedCalibrationControls(QWidget):
+    def __init__(self, send):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        heading = QLabel("Reflected-temperature calibration")
+        heading.setStyleSheet("font-size: 16px; font-weight: bold")
+        layout.addWidget(heading)
+        instructions = QLabel(
+            "Cover the center sampling circle with a shiny, bare-metal spoon or foil reflector. "
+            "Keep it steady and avoid reflecting yourself or the camera. Spoon curvature makes the reading "
+            "orientation-dependent; compare with crumpled then flattened foil before relying on calibration. "
+            "Choose Show reflector target, cover the entire circle, then Measure stable temperature. "
+            "The stable result saves automatically and clears the circle. Apply saved reflected temperature "
+            "updates the camera. Saved references load at startup; applied settings are also restored. "
+            "Measure temporarily uses emissivity 1 and optical transmission 100%, then restores both settings."
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+        self.select = QPushButton("Show reflector target")
+        self.measure = QPushButton("Measure stable temperature")
+        self.apply = QPushButton("Apply saved reflected temperature")
+        self.cancel = QPushButton("Close calibration")
+        for button, operation in (
+            (self.select, "select"),
+            (self.measure, "measure"),
+            (self.apply, "apply"),
+            (self.cancel, "cancel"),
+        ):
+            button.clicked.connect(
+                lambda _checked=False, operation=operation: send(
+                    {"action": "reflected_calibration", "operation": operation}
+                )
+            )
+        for buttons in ((self.select, self.measure), (self.apply, self.cancel)):
+            row = QHBoxLayout()
+            for button in buttons:
+                row.addWidget(button)
+            layout.addLayout(row)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.update_state({}, "C", False)
+
+    def update_state(self, state, unit, locked):
+        running = bool(state.get("running"))
+        self.select.setEnabled(not locked)
+        self.measure.setEnabled(not locked and bool(state.get("active")))
+        self.apply.setEnabled(not locked and bool(state.get("reference")))
+        self.cancel.setEnabled(bool(state.get("active")) and (not locked or running))
+        message = state.get("status", "Show the sampling target to begin.")
+        reference = state.get("reference")
+        if reference:
+            value = reference["celsius"]
+            if unit == "F":
+                value = value * 1.8 + 32
+            message += f" Saved: {value:.1f} °{unit}."
+        self.status.setText(message)
+
+
 class ViewWindow(QWidget):
     def __init__(self, send) -> None:
         super().__init__()
@@ -613,6 +675,8 @@ class ViewWindow(QWidget):
         rows.addWidget(self.distance_calibration)
         self.emissivity_calibration = EmissivityCalibrationControls(self._send)
         rows.addWidget(self.emissivity_calibration)
+        self.reflected_calibration = ReflectedCalibrationControls(self._send)
+        rows.addWidget(self.reflected_calibration)
         rows.addStretch()
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -683,6 +747,11 @@ class ViewWindow(QWidget):
         self.emissivity_calibration.update_state(
             state.get("emissivity_calibration", {}),
             state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]),
+            self._settings_locked,
+        )
+        self.reflected_calibration.update_state(
+            state.get("reflected_calibration", {}),
+            state.get("temperature_unit", "C"),
             self._settings_locked,
         )
         self.status.setText(state.get("status", ""))
