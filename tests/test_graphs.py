@@ -176,3 +176,27 @@ def test_adding_csv_extension_does_not_overwrite_an_unselected_file(tmp_path):
         assert not worker.logging
     finally:
         worker.close()
+
+
+def test_capture_resizes_real_worker_cache_without_changing_live_graphs():
+    worker = graphs.GraphWorker()
+    live_size = (576, 850)
+    capture_size = (576, 800)
+    try:
+        assert not worker.image(capture_size, resize=True).any()
+        worker.submit(snapshot(size=live_size))
+        with worker._condition:
+            assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
+            cached = worker._image
+        worker.pause()
+        captured = worker.image(capture_size, resize=True)
+        assert captured.shape == (800, 576, 3)
+        assert captured.any()
+        assert np.array_equal(
+            captured, graphs.cv2.resize(cached, capture_size, interpolation=graphs.cv2.INTER_AREA)
+        )
+        assert worker.image(live_size) is cached
+        assert not worker.image(capture_size).any()
+        assert len(worker._master) == 1
+    finally:
+        worker.close()

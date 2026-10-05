@@ -377,6 +377,7 @@ def save_capture(
     selected_pixel: tuple[int, int] | None = None,
     display_unit: str = "C",
     base_path: Path | None = None,
+    graph_image: np.ndarray | None = None,
 ) -> list[Path]:
     """Save a viewable PNG plus lossless raw/Celsius data and JSON metadata."""
     directory_existed = output_directory.exists()
@@ -396,6 +397,8 @@ def save_capture(
     capture_image = draw_temperature_readout(
         rendered.image, rendered.stats, ambient_celsius, display_unit
     )
+    if graph_image is not None:
+        capture_image = np.concatenate((capture_image, graph_image), axis=1)
     if not cv2.imwrite(str(png_path), capture_image):
         raise OSError(f"could not write {png_path}")
     np.savez_compressed(
@@ -421,6 +424,7 @@ def save_capture(
         "temperature_stats_celsius": rendered.stats.as_dict(),
         "radiometric_file": data_path.name,
         "image_file": png_path.name,
+        "graphs_included": graph_image is not None,
     }
     if selected_pixel is not None:
         x, y = selected_pixel
@@ -871,6 +875,8 @@ def main(argv: list[str] | None = None) -> int:
     actual_image_source = renderer.image_source
     pending_save_kind: str | None = None
     capture_cursor = False
+    capture_graphs = False
+    recording_graphs = False
     timelapse_fpm = args.timelapse_fpm
     status_message = "Ready"
     status_until = 0.0
@@ -1105,6 +1111,7 @@ def main(argv: list[str] | None = None) -> int:
             if pending_save_kind in ("video", "timelapse")
             else None,
             "capture_cursor": capture_cursor,
+            "capture_graphs": capture_graphs,
             "frames_per_minute": timelapse_fpm,
             "max_fpm": TIMELAPSE_MAX_FPM,
             "status": status,
@@ -1294,6 +1301,12 @@ def main(argv: list[str] | None = None) -> int:
                     notify(f"Capture window failed: {command.get('message', '')}")
                 elif action == "rate":
                     set_timelapse_fpm(int(command["value"]))
+                elif action == "graphs":
+                    if not recorder.is_recording and pending_save_kind not in (
+                        "video",
+                        "timelapse",
+                    ):
+                        capture_graphs = bool(command["value"])
                 elif action == "cursor":
                     capture_cursor = bool(command["value"])
                 elif action == "image":
@@ -1301,6 +1314,11 @@ def main(argv: list[str] | None = None) -> int:
                 elif action in ("video", "timelapse"):
                     set_timelapse_fpm(int(command["frames_per_minute"]))
                     capture_cursor = bool(command["capture_cursor"])
+                    if not recorder.is_recording and pending_save_kind not in (
+                        "video",
+                        "timelapse",
+                    ):
+                        capture_graphs = bool(command.get("capture_graphs", capture_graphs))
                     request_save(action)
             renderer.camera_preview = hardware.preview_active
             renderer.camera_color = "palette" in hardware.enabled
@@ -1390,11 +1408,12 @@ def main(argv: list[str] | None = None) -> int:
                             _restore_user_ownership([path])
                             notify(f"Logging temperatures to {path.name}")
                         elif kind in ("video", "timelapse"):
+                            recording_graphs = capture_graphs and show_graph
                             recorder.start(
                                 save_path,
                                 (
                                     rendered.image.shape[0] + READOUT_HEIGHT,
-                                    rendered.image.shape[1],
+                                    rendered.image.shape[1] * (2 if recording_graphs else 1),
                                     3,
                                 ),
                                 kind,
@@ -1410,13 +1429,24 @@ def main(argv: list[str] | None = None) -> int:
                                 last_selected,
                                 renderer.temperature_unit,
                                 base_path=save_path,
+                                graph_image=(
+                                    graphs.image(
+                                        (
+                                            rendered.image.shape[1],
+                                            rendered.image.shape[0] + READOUT_HEIGHT,
+                                        ),
+                                        resize=True,
+                                    )
+                                    if capture_graphs and show_graph
+                                    else None
+                                ),
                             )
                             notify(f"Saved {saved[0].name}")
                     except (OSError, ValueError, cv2.error) as exc:
                         notify(f"Capture failed: {exc}")
                 else:
                     notify("Save cancelled")
-            # Only the thermal view and sample annotations go into the video.
+            # Captures omit application controls; the graph pane is optional.
             # The cursor sampler remains visible locally even when capture is off.
             if recorder.is_recording:
                 recording_view = (
@@ -1431,14 +1461,22 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 try:
-                    recorder.write(
-                        draw_temperature_readout(
-                            recording_view,
-                            rendered.stats,
-                            renderer.ambient_celsius,
-                            renderer.temperature_unit,
-                        )
+                    recording_image = draw_temperature_readout(
+                        recording_view,
+                        rendered.stats,
+                        renderer.ambient_celsius,
+                        renderer.temperature_unit,
                     )
+                    if recording_graphs:
+                        graph_image = (
+                            graphs.image(
+                                (recording_image.shape[1], recording_image.shape[0]), resize=True
+                            )
+                            if show_graph
+                            else np.zeros_like(recording_image)
+                        )
+                        recording_image = np.concatenate((recording_image, graph_image), axis=1)
+                    recorder.write(recording_image)
                 except (OSError, cv2.error) as exc:
                     stop_recording()
                     notify(f"Recording failed: {exc}")

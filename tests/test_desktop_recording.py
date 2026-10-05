@@ -737,3 +737,99 @@ def test_logging_blocks_camera_settings_toolbar_and_shortcuts_then_unlocks(viewe
         False,
     ]
     assert all(not call.args[0].spots for call in viewer.graphs.submit.call_args_list)
+
+
+@pytest.mark.parametrize("mode", ["video", "timelapse"])
+@pytest.mark.parametrize("include,visible", [(False, True), (True, False), (True, True)])
+def test_optional_graph_recording_uses_visible_pane_and_keeps_dimensions(
+    viewer, monkeypatch, mode, include, visible
+):
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    from topdon_duo.graphs import GraphWorker
+
+    cache = GraphWorker()
+    cache.close()
+    # Use the real cache lookup: the live pane includes the toolbar's height,
+    # while saved images include the temperature readout instead.
+    cache._image = np.full(
+        (576 + desktop.toolbar_layout(768).height, 768, 3), (12, 34, 56), dtype=np.uint8
+    )
+    viewer.graphs.image.side_effect = cache.image
+    step = 0
+
+    def key(_delay):
+        nonlocal step
+        step += 1
+        viewer.clock[0] += 1 if mode == "timelapse" else 0.04
+        if step == 1 and visible:
+            return ord("g")
+        if step == 2:
+            viewer.panel.events.extend(
+                [
+                    {"action": "graphs", "value": include},
+                    {
+                        "action": mode,
+                        "frames_per_minute": 60,
+                        "capture_cursor": False,
+                        "capture_graphs": include,
+                    },
+                ]
+            )
+        if step == 7:
+            viewer.panel.events.append({"action": "graphs", "value": False})
+            if visible:
+                return ord("g")
+        return ord("q") if step == 10 else -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", key)
+    assert desktop.main([]) == 0
+    frames = viewer.writer.frames
+    assert frames
+    included = include and visible
+    assert all(
+        frame.shape == (576 + desktop.READOUT_HEIGHT, 1536 if included else 768, 3)
+        for frame in frames
+    )
+    if included:
+        assert np.all(frames[0][:, 768:] == (12, 34, 56))
+        assert not frames[-1][:, 768:].any()
+
+
+@pytest.mark.parametrize("visible", [False, True])
+def test_image_graph_capture_preserves_native_radiometric_data(viewer, monkeypatch, visible):
+    import json
+
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    from topdon_duo.graphs import GraphWorker
+
+    cache = GraphWorker()
+    cache.close()
+    # Use the real cache lookup: the live pane includes the toolbar's height,
+    # while saved images include the temperature readout instead.
+    cache._image = np.full(
+        (576 + desktop.toolbar_layout(768).height, 768, 3), (12, 34, 56), dtype=np.uint8
+    )
+    viewer.graphs.image.side_effect = cache.image
+    viewer.dialog.selected = viewer.dialog.selected.with_suffix(".png")
+    step = 0
+
+    def key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1 and visible:
+            return ord("g")
+        if step == 2:
+            viewer.panel.events.extend([{"action": "graphs", "value": True}, {"action": "image"}])
+        return ord("q") if step == 6 else -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", key)
+    assert desktop.main([]) == 0
+    image = cv2.imread(str(viewer.dialog.selected))
+    assert image.shape == (576 + desktop.READOUT_HEIGHT, 1536 if visible else 768, 3)
+    if visible:
+        assert np.all(image[:, 768:] == (12, 34, 56))
+    metadata = json.loads(viewer.dialog.selected.with_suffix(".json").read_text())
+    assert metadata["graphs_included"] is visible
+    with np.load(viewer.dialog.selected.with_suffix(".npz")) as data:
+        assert data["raw_counts"].shape == (192, 256)
+        assert data["temperatures_celsius"].shape == (192, 256)

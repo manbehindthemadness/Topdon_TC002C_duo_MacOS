@@ -26,6 +26,13 @@ from topdon_duo.capture_window import CaptureWindow
 app = QApplication([])
 messages = []
 window = CaptureWindow(messages.append)
+window.graphs.setChecked(True)
+assert messages[-1] == {"action": "graphs", "value": True}
+window.update_state({"capture_graphs": True, "recording_mode": "video"})
+assert window.graphs.isChecked() and not window.graphs.isEnabled()
+window.update_state({})
+assert not window.graphs.isChecked() and window.graphs.isEnabled()
+messages.clear()
 window.show()
 app.processEvents()
 assert window.windowTitle() == "Capture"
@@ -44,7 +51,7 @@ assert messages[-1] == {"action": "rate", "value": 120}
 window.cursor.click()
 assert messages[-1] == {"action": "cursor", "value": True}
 window.timelapse.click()
-assert messages[-1] == {"action": "timelapse", "frames_per_minute": 120, "capture_cursor": True}
+assert messages[-1] == {"action": "timelapse", "frames_per_minute": 120, "capture_cursor": True, "capture_graphs": False}
 window.update_state({"recording_mode": "timelapse", "frames_per_minute": 120,
                      "capture_cursor": True, "status": "REC timelapse | 12.0s | 25 frames | 120/min"})
 assert not window.rate.isEnabled()

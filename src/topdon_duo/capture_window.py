@@ -52,6 +52,11 @@ class CaptureWindow(QWidget):
         layout.addLayout(form)
         self.cursor = QCheckBox("Capture cursor")
         layout.addWidget(self.cursor)
+        self.graphs = QCheckBox("Include graphs when visible")
+        self.graphs.setToolTip(
+            "Include the graph pane in PNG, video and timelapse captures. Show graphs before starting a recording."
+        )
+        layout.addWidget(self.graphs)
         buttons = QHBoxLayout()
         self.video = QPushButton("Record video")
         self.timelapse = QPushButton("Record timelapse")
@@ -72,6 +77,10 @@ class CaptureWindow(QWidget):
             lambda checked: self._send({"action": "cursor", "value": checked})
         )
 
+        self.graphs.toggled.connect(
+            lambda checked: self._send({"action": "graphs", "value": checked})
+        )
+
     def _record(self, mode: str) -> None:
         self.rate.interpretText()
         self._send(
@@ -79,6 +88,7 @@ class CaptureWindow(QWidget):
                 "action": mode,
                 "frames_per_minute": self.rate.value(),
                 "capture_cursor": self.cursor.isChecked(),
+                "capture_graphs": self.graphs.isChecked(),
             }
         )
 
@@ -91,11 +101,13 @@ class CaptureWindow(QWidget):
         pending = state.get("pending_recording")
         locked = mode or pending
         self.rate.setEnabled(not locked)
-        with QSignalBlocker(self.rate), QSignalBlocker(self.cursor):
+        self.graphs.setEnabled(not locked)
+        with QSignalBlocker(self.rate), QSignalBlocker(self.cursor), QSignalBlocker(self.graphs):
             self.rate.setMaximum(state.get("max_fpm", 1500))
             if locked or not self.rate.hasFocus():
                 self.rate.setValue(state.get("frames_per_minute", 60))
             self.cursor.setChecked(state.get("capture_cursor", False))
+            self.graphs.setChecked(state.get("capture_graphs", False))
         for kind, button in (("video", self.video), ("timelapse", self.timelapse)):
             button.setEnabled(not locked or locked == kind)
             if pending == kind:

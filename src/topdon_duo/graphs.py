@@ -144,11 +144,16 @@ class GraphWorker:
                 self._latest = None
                 self._condition.notify()
 
-    def image(self, size: tuple[int, int]) -> np.ndarray:
+    def image(self, size: tuple[int, int], *, resize: bool = False) -> np.ndarray:
+        """Return the cached pane; captures can resize it without resampling history."""
         with self._condition:
             result = self._image
         width, height = size
-        if result is None or result.shape[:2] != (height, width):
+        if result is None:
+            return np.zeros((height, width, 3), np.uint8)
+        if result.shape[:2] != (height, width):
+            if resize:
+                return cv2.resize(result, (width, height), interpolation=cv2.INTER_AREA)
             return np.zeros((height, width, 3), np.uint8)
         return result
 

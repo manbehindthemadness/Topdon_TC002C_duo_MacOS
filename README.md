@@ -178,6 +178,15 @@ field before starting. It defaults to **60** (one frame each second) and support
 the initial rate with `--timelapse-fpm 120`. Both modes play back at 25 fps; the
 default timelapse therefore plays 25 times faster than real time.
 
+The Capture popup's **Include graphs when visible** checkbox optionally appends
+visible graphs to PNG, video and timelapse captures. It defaults to off. Show the
+graphs before starting a recording; its graph layout stays fixed until recording
+ends. Hiding graphs during a recording leaves that pane blank and pauses graph
+updates. The checkbox is locked while a recording or its Save dialog is active.
+PNG raw/Celsius arrays retain their native dimensions; graphs only affect the
+viewable image. Graph captures omit application buttons and use the graph's
+existing 0.5-second update cadence.
+
 Recordings include fixed sample spots and their live temperature readings.
 The popup's **Capture cursor** checkbox is unchecked by default; checking it includes the moving
 sampler crosshair and temperature reading whenever the pointer is over the
