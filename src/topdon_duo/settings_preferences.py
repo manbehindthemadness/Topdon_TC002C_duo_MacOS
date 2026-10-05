@@ -35,7 +35,7 @@ def load_settings() -> dict:
     rotation = saved.get("rotation")
     if type(rotation) is int and rotation in (0, 90, 180, 270):
         result["rotation"] = rotation
-    for name in ("advanced_auto", "show_graph"):
+    for name in ("advanced_auto", "show_graph", "auto_calibrate"):
         if isinstance(saved.get(name), bool):
             result[name] = saved[name]
     try:

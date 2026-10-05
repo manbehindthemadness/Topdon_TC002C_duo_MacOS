@@ -396,3 +396,120 @@ Fast scene changes and delayed header min/max are deliberately accepted;
 those are not reliable shutter/corruption detectors. Replay of the captured
 freeze/recovery passes. No auto-shutter settings were changed; original
 settings and the unresolved auto-shutter readback remain as documented above.
+
+Host control of auto calibration (2026-10-05)
+--------------------------------------------
+Current protection was committed/pushed as 4f04f54 (379 tests passed).
+Viewer closed; single USB owner used for the experiments below. Original
+brightness, contrast, enhancement and thermometry blocks were recorded in
+local diagnostics/auto-calibrate-audit/probe.json before any control writes.
+
+Primary vendor documentation now located:
+https://web-file.topdon.com/topdon-web/information_download/TopInfrared-User-Manual.pdf
+Page 7 explicitly describes both a one-shot manual shutter calibration and
+an Auto Shutter on/off switch. It notes that disabling automatic calibration
+can compromise temperature accuracy. The manual predates the Duo and covers
+several TOPDON products, so the local hardware observations remain necessary.
+The TC002C Duo manual confirms that clicks are automatic shutter operation:
+https://web-file.topdon.com/topdon-web/information_download/TC002C-Duo-User-Manual-EN.pdf
+
+Recovered phone implementation (HikCmdUtil.java, lines 443..483):
+- shutter(userId) calls USB_SetImageManualCorrect(userId).
+- setAutoShutter(userId, enabled) uses USB_SetSystemSerialData with byMode=2,
+  wDeviceCMDFlag=0, dwDeviceCMD=0x2001, dwValue=enabled ? 1 : 0.
+- It then polls USB_GetCommandState, sleeping 50 ms while status is busy.
+- Only auto enable/disable and the unrelated cover-calibration command occur
+  in this serial-control call site. No calibration interval, temperature-change
+  threshold, or 'calibration needed' getter has been established for this model.
+- SDK Linux ConvertData<USB_SYSTEM_SERIAL_DATA_TRANSMISSION> at 0x200888 packs
+  exactly 11 bytes: mode byte 0, flag uint16 at 1, command uint32 at 3, value uint32
+  at 7. ParseRecvData at0x1fe102 unpacks the same fields. Native C struct padding
+  and dwSize must NOT be included in the USB payload.
+
+One-shot manual calibration, validated by frame flags:
+  Select [2,4] via selector 5; GET_LEN selector 2 returns 1; SET_CUR selector 2
+  with payload 01. All requests retain wIndex0x0A00.
+  Payload 00 had no flagged event in two tests. Payload 01 triggered flagged
+  events after two separate requests (12.037 -> 12.787 s; 34.027 -> 34.772 s).
+  Another payload 01 event was observed with auto commanded off in each of two
+  subsequent runs. The one-byte payload's channel/trigger interpretation is
+  not independently defined here; payload 01 is the observed working value.
+  Some manual control transfers delay the capture loop about 0.7 seconds,
+  leaving only the final two flagged frames observable on this single-thread
+  transport. Do not interpret those two frames as the entire mechanical cycle.
+  Their raw planes were changing, unlike the repeated plane in the first
+  automatic trace: the firmware flag must be honored even without identical
+  pixels. No configuration-block changes resulted from manual triggering.
+
+Auto switch wire payloads:
+  Select [1,24] via selector 5; GET_LEN selector 1 returns 11; SET_CUR selector 1:
+  off: 0200000120000000000000
+  on:  0200000120000001000000
+  GET command status directly from selector 6 (GET_LEN then GET_CUR), without
+  changing the selector 5 command selection. 00=success, 01=busy; other codes
+  are errors as documented above. Do not reselect [1,3] to poll command state.
+
+Experimental caveat: the first off/on harness incorrectly polled [1,3], which
+is not the status selector. Its status values must be discarded, and its
+absence of automatic events is not sufficient evidence of suppression. The
+corrected harness (schedule_probe_v2.py) uses selector 6; off, manual and on
+commands returned status 00. Its trace and results are stored separately as
+schedule-trace-v2.npz and schedule-probe-v2.json. After commanding on, a fresh
+16-frame frozen-data event began about 0.75 seconds after the request. This
+corroborates the switch's action on the actual camera, beyond transfer success.
+
+Original auto readback remains unavailable: mode 1/flag 0/command0x2001 read
+requests returned eleven zeros, with no command echo, after several delays.
+These zeros must not be interpreted as an original 'off' value. The first
+switch experiment waited for an uncommanded frozen-data event before sending
+'off'; original enabled operation was inferred from that behavior, not read
+from a valid getter. Every switch experiment sends on again in its finally
+block. All four saved configuration blocks are compared before/after.
+
+Integration design supported by this research:
+- Offer 'Calibrate now' using the verified one-shot command, and an automatic
+  calibration mode using the phone's auto-shutter command. Retain automatic
+  operation as the default and re-enable it on exit/error after a manual window.
+- Queue commands to the existing camera USB owner. Do not run calibration
+  commands through a second camera connection or block the GUI with a transfer.
+- For controlled experiments, calibrate before acquisition, temporarily disable
+  firmware automation, and issue intentional calibrations at planned boundaries
+  or a host-selected interval. Continue to flag the resulting unavailable data.
+- Manual scheduling moves the gaps; it cannot supply temperature measurements
+  while the shutter obstructs the scene. Preserve pause timestamps/reasons for
+  later analysis instead of treating held readings as fresh measurements.
+- No universal accurate interval has been established. Sensor warm-up and
+  ambient changes can require calibration; scene temperatures alone cannot
+  distinguish real changes from detector drift. A longer thermal-drift test
+  with an independent stable reference is needed to quantify accuracy and
+  validate extended suppression. Power-cycle persistence is also untested.
+
+Corrected switch experiment result:
+  baseline: 250 frames, approximately 10 seconds, no frozen frames.
+  auto commanded off: approximately 60 seconds, with one requested manual
+  calibration at 40.106 seconds; two final flagged frames followed at 40.853.
+  No other flagged events occurred in that off window.
+  auto commanded on: request completed at 70.147 seconds; 16 consecutive
+  flagged frames at 70.901..71.498, live again at 71.538. Continued acquisition
+  for approximately 75 seconds in restored mode, 3,608 total frames.
+  The switch's behavior is corroborated within this bounded test; indefinite
+  suppression under sensor/ambient temperature drift remains unverified.
+
+Final read-only verification after all experiments:
+  selector 6 status 00 after auto restore; all four original configuration blocks
+  still byte-for-byte equal to the initial snapshot. A serial mode 1 read after
+  correct selector 6 status polling also returned status 00 plus eleven zeros,
+  so the getter still provides no usable auto-state readback. USB ownership
+  was released and the viewer can reopen. Evidence: final-verification.json.
+
+Camera-control integration (2026-10-05)
+-------------------------------------
+User decision supersedes the default proposed above: Auto calibrate defaults
+to off in Camera settings, with a saved on/off preference applied on launch.
+Calibrate now is available from the image context menu, including with no
+spots. Logging and active reference measurements lock these controls. Commands
+run through the existing camera owner, poll selector 6 with a bounded deadline,
+and do not use the unavailable mailbox getter as verification. Exit re-enables
+automatic operation, including after an uncertain failed auto-switch write;
+the saved user preference remains unchanged. Numeric hardware restore and
+display reset preserve the switch choice and saved calibration references.

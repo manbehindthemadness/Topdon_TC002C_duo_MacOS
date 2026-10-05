@@ -109,6 +109,8 @@ class HardwareControls:
         self.values: dict[str, float] = {}
         self.error = ""
         self.snapshot_path: Path | None = None
+        self.auto_calibrate: bool | None = None
+        self._auto_calibrate_owned = False
 
     def _transfer(self, request_type, request, selector, data):
         try:
@@ -125,7 +127,8 @@ class HardwareControls:
             time.sleep(delay)
         response = bytes(self._transfer(0xA1, 0x85, selector, 4))
         size = int.from_bytes(response, "little")
-        if len(response) not in (2, 4) or size != BLOCK_LENGTHS[selector, command]:
+        expected = {**BLOCK_LENGTHS, (1, 24): 11, (2, 4): 1}[selector, command]
+        if len(response) not in (2, 4) or size != expected:
             raise CameraError("Camera returned an unsupported control layout")
         return size
 
@@ -145,6 +148,43 @@ class HardwareControls:
             if self.read(*key) == payload:
                 return
         raise CameraError("Camera did not apply this setting")
+
+    def _calibration_command(self, selector: int, command: int, payload: bytes) -> None:
+        size = self._select(selector, command)
+        if size != len(payload) or self._transfer(0x21, 1, selector, payload) != size:
+            raise CameraError("Incomplete camera calibration command")
+        # Selector 6 is the direct command status control. Reselecting a command
+        # here can interfere with pending serial commands; the mailbox getter
+        # cannot read back the auto-calibration setting on this firmware.
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            length = bytes(self._transfer(0xA1, 0x85, 6, 4))
+            if len(length) not in (2, 4) or int.from_bytes(length, "little") != 1:
+                raise CameraError("Unsupported camera command status layout")
+            status = bytes(self._transfer(0xA1, 0x81, 6, 1))
+            if status == b"\x00":
+                return
+            if status != b"\x01":
+                raise CameraError(f"Camera calibration command rejected (status {status.hex()})")
+            time.sleep(0.05)
+        raise CameraError("Camera calibration command timed out")
+
+    def set_auto_calibrate(self, enabled: bool) -> None:
+        if type(enabled) is not bool:
+            raise ValueError("Auto calibrate state must be a boolean")
+        self._auto_calibrate_owned = True
+        self._calibration_command(1, 24, struct.pack("<BHII", 2, 0, 0x2001, int(enabled)))
+        self.auto_calibrate = enabled
+
+    def calibrate_now(self) -> None:
+        self._calibration_command(2, 4, b"\x01")
+
+    def restore_auto_calibrate(self) -> None:
+        # The getter is unavailable; return to the observed original automatic
+        # operation when relinquishing ownership, including after failed writes.
+        if self._auto_calibrate_owned:
+            self.set_auto_calibrate(True)
+            self._auto_calibrate_owned = False
 
     def load(self) -> None:
         if self.original:

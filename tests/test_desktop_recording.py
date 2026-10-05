@@ -405,7 +405,7 @@ def test_timelapse_cli_default_and_validation():
 
 
 def test_hardware_ambient_changes_and_restore_drive_measurements(viewer, monkeypatch, tmp_path):
-    from test_hardware_controls import Device
+    from test_hardware_controls import CalibrationDevice as Device
 
     from topdon_duo.hardware_controls import HardwareControls
 
@@ -442,7 +442,7 @@ def test_hardware_ambient_changes_and_restore_drive_measurements(viewer, monkeyp
 def test_camera_preferences_survive_restart_and_restore_clears_overrides(
     viewer, monkeypatch, tmp_path
 ):
-    from test_hardware_controls import Device
+    from test_hardware_controls import CalibrationDevice as Device
 
     from topdon_duo.hardware_controls import HardwareControls
     from topdon_duo.settings_preferences import load_settings

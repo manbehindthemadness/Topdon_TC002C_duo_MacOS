@@ -106,6 +106,7 @@ The controls are available from the toolbar as well as the keyboard:
 | Rotate clockwise | **Rotate** or `O` |
 | Toggle metric/imperial units (°C + centimeters / °F + inches) | **Units** or `F` |
 | Open camera controls | **Camera** or `V` |
+| Calibrate the camera once | Right-click the thermal image → **Calibrate now** |
 | Show/hide graph area | **Show graph** / **Hide graph** or `G` |
 | Start/stop temperature logging | **Log to CSV** / **Stop logging** at the top of the graph area, or `L` |
 | Show control help | **Help** or Space |
@@ -224,7 +225,7 @@ dimensions with black borders, preserving its aspect ratio.
 The main thermal image window remembers its resized dimensions across viewer
 restarts. The **Camera** popup also remembers its window size across closes and viewer restarts,
 and groups display, AI enhancement, and camera adjustments.
-Display preferences, selected temperature unit, rotation, Advanced / Auto state
+Display preferences, selected temperature unit, rotation, Auto calibrate and Advanced / Auto states
 and successfully applied hardware overrides are saved as `settings.json` beside
 `main-window.json` in the application configuration directory. Changes save as
 they are applied and on exit. Saved overrides are reapplied after reading and
@@ -233,6 +234,13 @@ still restored on exit. Restore camera settings also clears saved hardware
 overrides; Reset display settings saves the display defaults. Explicit
 `--rotate` and `--image-source` options override remembered values. Invalid saved
 fields are ignored independently so valid preferences can still load.
+**Auto calibrate** is at the top of Camera settings and defaults to off. Its
+saved choice is applied on startup. Right-click the thermal image and choose
+**Calibrate now** to request one calibration. Both controls are disabled while
+logging or measuring a calibration reference. Automatic camera calibration is
+re-enabled when the viewer exits; the saved switch choice is retained for the
+next launch. Restore camera settings and Reset display settings keep this choice.
+
 Each control has a title and editable value; only numeric ranges have sliders.
 The **Units** toggle and Camera's **Measurement units** selection switch together:
 metric uses Celsius and centimeters; imperial uses Fahrenheit and inches. Ambient,
@@ -241,7 +249,7 @@ steps accordingly. Distance sliders retain the camera's 1 cm precision, and
 pending edits survive unit changes. Hardware writes and saved hardware overrides
 remain in Celsius and meters, so switching units does not change calibration.
 Choice and on/off controls use dropdowns. On/off settings use two columns within Display controls, above
-AI enhancement and camera adjustments. All available inputs stay enabled. The single
+AI enhancement and camera adjustments. All available inputs stay enabled. The
 **Advanced / Auto** checkbox is reserved for future automatic control behavior. Hardware rows include ambient and reflected temperature,
 distance, emissivity, humidity, optical transmission, center overlay, brightness,
 contrast, noise reduction mode and levels, detail enhancement, and camera palettes.

@@ -59,6 +59,9 @@ menu.update_state(state)
 app.processEvents()
 assert menu.isVisible()
 assert menu.actions()[0].defaultWidget() is menu.clear_all
+assert menu.calibrate_now.isEnabled()
+menu.calibrate_now.trigger()
+assert commands.pop() == {"action": "calibrate_now"}
 assert not menu.checkboxes[2].isChecked() and menu.checkboxes[4].isChecked()
 menu.checkboxes[2].click()
 assert commands[-1] == {"action": "enable", "spot": 2, "enabled": True}
@@ -73,6 +76,7 @@ menu.placing.click()
 assert commands[-1] == {"action": "placing", "enabled": False}
 menu.update_state({**state, "locked": True})
 assert not menu.clear_all.isEnabled() and not menu.placing.isEnabled()
+assert not menu.calibrate_now.isEnabled()
 assert all(not check.isEnabled() for check in menu.checkboxes.values())
 assert all(not button.isEnabled() for button in menu.clear_buttons.values())
 menu.update_state({"spots": [], "placing": False})
@@ -284,3 +288,54 @@ assert commands[-1] == {"action": "rename", "spot": 1, "name": "Motor"}
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monkeypatch):
+    from unittest.mock import call
+
+    from topdon_duo.settings_preferences import load_settings
+
+    panel = Mock()
+    settings = Mock()
+    monkeypatch.setattr(desktop, "SpotsPanel", lambda: panel)
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: settings)
+    panel.poll.side_effect = [
+        [{"action": "calibrate_now"}],
+        [{"action": "calibrate_now"}],
+        [],
+    ]
+    settings.poll.side_effect = [
+        [{"action": "auto_calibrate", "value": True}],
+        [{"action": "auto_calibrate", "value": False}],
+        [],
+    ]
+    step = 0
+
+    def wait_key(_):
+        nonlocal step
+        step += 1
+        if step == 1:
+            viewer.graphs.logging = True
+        if step == 2:
+            viewer.graphs.logging = False
+        return ord("q") if step == 3 else -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_: 1)
+    assert desktop.main([]) == 0
+    assert viewer.hardware.set_auto_calibrate.call_args_list == [call(False), call(True)]
+    viewer.hardware.calibrate_now.assert_called_once()
+    viewer.hardware.restore_auto_calibrate.assert_called_once()
+    assert load_settings()["auto_calibrate"] is True
+    assert settings.update.call_args.args[0]["auto_calibrate"] is True
+    # Reload uses the saved switch, rather than replacing it with the default.
+    viewer.hardware.set_auto_calibrate.reset_mock()
+    viewer.hardware.calibrate_now.reset_mock()
+    panel.poll.side_effect = None
+    panel.poll.return_value = []
+    settings.poll.side_effect = None
+    settings.poll.return_value = []
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
+    assert desktop.main([]) == 0
+    viewer.hardware.set_auto_calibrate.assert_called_once_with(True)
+    viewer.hardware.calibrate_now.assert_not_called()

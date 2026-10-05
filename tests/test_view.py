@@ -290,7 +290,10 @@ assert scroll.verticalScrollBar().value() > 0
 assert messages == []
 scroll.verticalScrollBar().setValue(0)
 
-assert window.findChildren(QCheckBox) == [window.advanced_auto]
+assert window.findChildren(QCheckBox) == [window.auto_calibrate, window.advanced_auto]
+assert not window.auto_calibrate.isChecked()
+window.auto_calibrate.click()
+assert messages.pop() == {"action": "auto_calibrate", "value": True}
 assert window.advanced_auto.text() == "Advanced / Auto"
 for row in (*window.rows.values(), *window.hardware_rows.values()):
     assert row.input.isEnabled() == (row is not window.rows["color_palette"])
@@ -454,6 +457,7 @@ for control_row in (*window.rows.values(), *window.hardware_rows.values()):
     assert not control_row.timer.isActive()
     control_row._emit()
 assert not window.advanced_auto.isEnabled()
+assert not window.auto_calibrate.isEnabled()
 assert not window.reset_button.isEnabled() and not window.restore_button.isEnabled()
 window._reset_display()
 window._restore_hardware()
@@ -465,6 +469,7 @@ assert not window.tidy_model.browse.isEnabled()
 assert len(messages) == count
 window.update_state({**state, "temperature_unit": "C", "settings_locked": False})
 assert window.advanced_auto.isEnabled()
+assert window.auto_calibrate.isEnabled()
 assert window.reset_button.isEnabled() and window.restore_button.isEnabled()
 assert all(control_row.input.isEnabled()
            for control_row in (*window.rows.values(), *window.hardware_rows.values())

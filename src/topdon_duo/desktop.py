@@ -1010,6 +1010,8 @@ def main(argv: list[str] | None = None) -> int:
     saved_settings = load_settings()
     remembered_hardware = saved_settings.get("hardware", {}).copy()
     advanced_auto = saved_settings.get("advanced_auto", True)
+    auto_calibrate = saved_settings.get("auto_calibrate", False)
+    calibration_available = False
     show_graph = saved_settings.get("show_graph", False)
     requested_window_size = None
     saved_window_size = load_main_window_size()
@@ -1070,6 +1072,7 @@ def main(argv: list[str] | None = None) -> int:
                     "hardware": remembered_hardware,
                     "rotation": renderer.rotation,
                     "advanced_auto": advanced_auto,
+                    "auto_calibrate": auto_calibrate,
                     "show_graph": show_graph,
                     "distance_calibration": (
                         distance_calibration.reference.as_dict()
@@ -1244,6 +1247,7 @@ def main(argv: list[str] | None = None) -> int:
         return {
             "spots": spots.state(),
             "placing": spots.placing,
+            "calibration_available": calibration_available and not renderer.measurement_status,
             "locked": bool(
                 graphs.logging
                 or pending_save_kind == "graph_log"
@@ -1309,6 +1313,7 @@ def main(argv: list[str] | None = None) -> int:
                 else "app"
             ),
             "advanced_auto": advanced_auto,
+            "auto_calibrate": auto_calibrate,
             "settings_locked": graphs.logging
             or emissivity_calibration.running
             or reflected_calibration.running,
@@ -1365,6 +1370,12 @@ def main(argv: list[str] | None = None) -> int:
         except CameraError as exc:
             hardware.error = str(exc)
             LOG.warning("Could not read hardware settings: %s", exc)
+        try:
+            hardware.set_auto_calibrate(auto_calibrate)
+            calibration_available = True
+        except CameraError as exc:
+            hardware.error = f"Could not set Auto calibrate: {exc}"
+            LOG.warning("%s", hardware.error)
         cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL)
         cv2.setMouseCallback(WINDOW_NAME, picker.callback)
         set_black_window_backgrounds(WINDOW_NAME)
@@ -1379,7 +1390,15 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 try:
                     action = command["action"]
-                    if action == "placing":
+                    if action == "calibrate_now":
+                        if not spots_state()["calibration_available"]:
+                            raise ValueError(
+                                "Camera calibration is unavailable or already in progress"
+                            )
+                        hardware.calibrate_now()
+                        renderer._recover_measurements = True
+                        notify("Calibration requested")
+                    elif action == "placing":
                         if type(command["enabled"]) is not bool:
                             raise ValueError("Placement state must be a boolean")
                         spots.placing = command["enabled"]
@@ -1393,7 +1412,7 @@ def main(argv: list[str] | None = None) -> int:
                         spots.clear()
                     else:
                         raise ValueError("Unknown spot menu operation")
-                except (KeyError, ValueError, TypeError) as exc:
+                except (CameraError, KeyError, ValueError, TypeError) as exc:
                     notify(f"Spot change rejected: {exc}")
             for command in view_panel.poll():
                 if (
@@ -1404,6 +1423,7 @@ def main(argv: list[str] | None = None) -> int:
                     "setting",
                     "hardware",
                     "advanced_auto",
+                    "auto_calibrate",
                     "restore_hardware",
                     "reset",
                     "distance_calibration",
@@ -1426,6 +1446,16 @@ def main(argv: list[str] | None = None) -> int:
                         reflected_calibration.cancel()
                     if command.get("action") == "setting":
                         set_view_setting(command["name"], command["value"])
+                    elif command.get("action") == "auto_calibrate":
+                        if emissivity_calibration.active:
+                            emissivity_calibration.cancel()
+                        if reflected_calibration.active:
+                            reflected_calibration.cancel()
+                        hardware.set_auto_calibrate(command["value"])
+                        auto_calibrate = command["value"]
+                        calibration_available = True
+                        persist_settings()
+                        hardware.error = ""
                     elif command.get("action") == "hardware":
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
@@ -1988,6 +2018,10 @@ def main(argv: list[str] | None = None) -> int:
             hardware.restore()
         except (CameraError, ValueError) as exc:
             LOG.error("Could not restore camera settings: %s", exc)
+        try:
+            hardware.restore_auto_calibrate()
+        except CameraError as exc:
+            LOG.error("Could not restore automatic camera calibration: %s", exc)
         camera.close()
         cv2.destroyAllWindows()
     return 0

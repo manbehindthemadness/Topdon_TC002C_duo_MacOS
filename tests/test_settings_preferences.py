@@ -39,6 +39,7 @@ def test_preferences_round_trip_without_temporary_file(monkeypatch, tmp_path):
         "hardware": {"ambient": 27.5, "palette": 11, "detail_enabled": 0},
         "rotation": 270,
         "advanced_auto": False,
+        "auto_calibrate": True,
     }
     save_settings(saved)
     assert load_settings() == saved

@@ -592,6 +592,14 @@ class ViewWindow(QWidget):
         heading = QLabel("Camera")
         heading.setStyleSheet("font-size: 20px; font-weight: bold")
         layout.addWidget(heading)
+        self.auto_calibrate = QCheckBox("Auto calibrate")
+        self.auto_calibrate.setToolTip(
+            "Allow the camera to calibrate automatically. Use Calibrate now in the image's right-click menu when off."
+        )
+        self.auto_calibrate.toggled.connect(
+            lambda value: self._send({"action": "auto_calibrate", "value": value})
+        )
+        layout.addWidget(self.auto_calibrate)
         description = QLabel(
             "Adjust controls directly. Use Restore camera settings to return to the "
             "original values. Camera overrides are also restored on exit."
@@ -801,6 +809,9 @@ class ViewWindow(QWidget):
             for row in (*self.rows.values(), *self.hardware_rows.values()):
                 row.timer.stop()
         self.advanced_auto.setEnabled(not self._settings_locked)
+        self.auto_calibrate.setEnabled(not self._settings_locked)
+        with QSignalBlocker(self.auto_calibrate):
+            self.auto_calibrate.setChecked(state.get("auto_calibrate", False))
         self.reset_button.setEnabled(not self._settings_locked)
         self.restore_button.setEnabled(not self._settings_locked)
         with QSignalBlocker(self.advanced_auto):

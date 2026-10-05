@@ -179,3 +179,75 @@ def test_zero_brightness_keeps_camera_preview_selected():
     result = renderer.render_detailed(dark)
     assert result.image_source == "preview"
     assert not np.any(result.image)
+
+
+class CalibrationDevice(Device):
+    def __init__(self):
+        super().__init__()
+        self.blocks.update({(1, 24): bytearray(11), (2, 4): bytearray(1)})
+        self.statuses = [b"\x00"]
+        self.status_selection = None
+
+    def ctrl_transfer(self, kind, request, value, index, data, timeout):
+        if value == 0x0600:
+            assert kind == 0xA1 and index == 0x0A00
+            self.status_selection = self.selected
+            if request == 0x85:
+                assert data == 4
+                return b"\x01\x00"
+            assert request == 0x81 and data == 1
+            return self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+        return super().ctrl_transfer(kind, request, value, index, data, timeout)
+
+
+def test_calibration_commands_poll_direct_status_and_restore_automatic_operation(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(module.time, "sleep", lambda _: None)
+    device = CalibrationDevice()
+    control = HardwareControls(SimpleNamespace(device=device))
+    device.statuses = [b"\x01", b"\x00"]
+    control.set_auto_calibrate(False)
+    assert control.auto_calibrate is False
+    assert device.writes == [((1, 24), bytes.fromhex("0200000120000000000000"))]
+    assert device.status_selection == (1, 24)
+    control.calibrate_now()
+    assert device.writes[-1] == ((2, 4), b"\x01")
+    assert device.status_selection == (2, 4)
+    assert control.auto_calibrate is False
+    control.restore_auto_calibrate()
+    assert device.writes[-1] == ((1, 24), bytes.fromhex("0200000120000001000000"))
+    assert control.auto_calibrate is True
+    count = len(device.writes)
+    control.restore_auto_calibrate()
+    assert len(device.writes) == count
+
+
+def test_failed_auto_command_keeps_previous_state_and_can_restore(monkeypatch):
+    from types import SimpleNamespace
+
+    device = CalibrationDevice()
+    control = HardwareControls(SimpleNamespace(device=device))
+    control.set_auto_calibrate(True)
+    device.statuses = [b"\x09"]
+    with pytest.raises(CameraError, match="rejected"):
+        control.set_auto_calibrate(False)
+    assert control.auto_calibrate is True
+    device.statuses = [b"\x00"]
+    control.restore_auto_calibrate()
+    assert control.auto_calibrate is True
+    with pytest.raises(ValueError, match="boolean"):
+        control.set_auto_calibrate(1)
+
+
+def test_busy_calibration_command_has_bounded_timeout(monkeypatch):
+    from types import SimpleNamespace
+
+    clock = iter(np.arange(0, 100, 0.25))
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(module.time, "sleep", lambda _: None)
+    device = CalibrationDevice()
+    device.statuses = [b"\x01"]
+    control = HardwareControls(SimpleNamespace(device=device))
+    with pytest.raises(CameraError, match="timed out"):
+        control.calibrate_now()

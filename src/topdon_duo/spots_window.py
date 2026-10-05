@@ -53,6 +53,8 @@ class SpotsMenu(QMenu):
         self.clear_all = QPushButton("Clear all spots")
         self.clear_all.clicked.connect(lambda: self._send({"action": "clear_all"}))
         self._widget(self.clear_all)
+        self.calibrate_now = self.addAction("Calibrate now")
+        self.calibrate_now.triggered.connect(lambda: self._send({"action": "calibrate_now"}))
         self.placing = QCheckBox("Add spots")
         self.placing.toggled.connect(
             lambda enabled: self._send({"action": "placing", "enabled": enabled})
@@ -108,6 +110,7 @@ class SpotsMenu(QMenu):
             self._state = numbers
             self._build(spots)
         locked = bool(state.get("locked"))
+        self.calibrate_now.setEnabled(not locked and state.get("calibration_available", True))
         self.clear_all.setEnabled(bool(spots) and not locked)
         self.lock_message.setVisible(locked)
         with QSignalBlocker(self.placing):
