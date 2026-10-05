@@ -29,7 +29,7 @@ def viewer(monkeypatch, tmp_path):
 
     graphs.start_logging.side_effect = start_logging
     graphs.stop_logging.side_effect = stop_logging
-    graphs.image.side_effect = lambda size: np.zeros((size[1], size[0], 3), np.uint8)
+    graphs.image.side_effect = lambda size, **_kwargs: np.zeros((size[1], size[0], 3), np.uint8)
     monkeypatch.setattr(desktop, "GraphWorker", lambda: graphs)
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 30
@@ -397,7 +397,7 @@ def test_save_dialog_uses_mp4_filename_and_filter(monkeypatch, tmp_path):
 
 
 def test_timelapse_cli_default_and_validation():
-    assert desktop.parse_args([]).timelapse_fpm == 60
+    assert desktop.parse_args([]).timelapse_fpm is None
     assert desktop.parse_args(["--timelapse-fpm", "120"]).timelapse_fpm == 120
     for value in ("0", "-1", "1501"):
         with pytest.raises(SystemExit):
@@ -937,3 +937,268 @@ def test_startup_calibration_is_not_requested_without_valid_camera_data(viewer, 
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.calibrate_now.assert_not_called()
+
+
+@pytest.mark.parametrize("event_scale", [None, 0.5])
+def test_resized_graph_window_keeps_spots_and_controls_aligned(viewer, monkeypatch, event_scale):
+    from topdon_duo.graphs import graph_interval_rect
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    save_settings({"show_graph": True})
+    native_height = 576 + desktop.toolbar_layout(768).height
+    window = [1536, native_height]
+    spots = desktop.SampleSpots(pixels=[(80, 60)])
+    monkeypatch.setattr(desktop, "SampleSpots", lambda: spots)
+    monkeypatch.setattr(desktop, "window_resize_size", lambda _name: tuple(window))
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(
+        desktop,
+        "mouse_viewport_size",
+        lambda: tuple(value * event_scale for value in window) if event_scale else None,
+    )
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        callback = viewer.set_mouse.call_args.args[1]
+        if step == 1:
+            window[:] = [2400, 1200]
+            layout = desktop.GraphWindowLayout.fit((768, native_height), tuple(window))
+            factor = event_scale or 1
+            scale_x = layout.camera_size[0] / 768 * factor
+            scale_y = layout.camera_size[1] / native_height * factor
+            toolbar = desktop.toolbar_layout(768).height
+            callback(
+                cv2.EVENT_LBUTTONDOWN,
+                round(240 * scale_x),
+                round((180 + toolbar) * scale_y),
+                0,
+                None,
+            )
+            callback(
+                cv2.EVENT_MOUSEMOVE,
+                round(270 * scale_x),
+                round((210 + toolbar) * scale_y),
+                cv2.EVENT_FLAG_LBUTTON,
+                None,
+            )
+            callback(
+                cv2.EVENT_LBUTTONUP, round(270 * scale_x), round((210 + toolbar) * scale_y), 0, None
+            )
+        elif step == 2:
+            assert spots.pixels == [(90, 70)]
+            layout = desktop.GraphWindowLayout.fit((768, native_height), tuple(window))
+            x0, y0, x1, y1 = graph_interval_rect(layout.graph_size[0])
+            factor = event_scale or 1
+            callback(
+                cv2.EVENT_LBUTTONUP,
+                round((layout.camera_size[0] + (x0 + x1) / 2) * factor),
+                round((y0 + y1) / 2 * factor),
+                0,
+                None,
+            )
+        elif step == 3:
+            return ord("2")
+        elif step == 4:
+            return 13
+        elif step == 5:
+            return ord("q")
+        return -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert viewer.displayed[0].shape[:2] == (native_height, 1536)
+    assert all(image.shape[:2] == (1200, 2400) for image in viewer.displayed[1:])
+    assert viewer.graphs.submit.call_args.args[0].size == (1200, 1200)
+    assert spots.pixels == [(90, 70)]
+    assert load_settings()["graph_interval"] == 2
+
+
+def test_spots_save_immediately_and_restore_on_restart(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings
+
+    spots = desktop.SampleSpots(pixels=[(80, 60), (120, 90)])
+    spots.rename(2, "Motor")
+    spots.set_enabled(2, False)
+    spots.clear(1)
+    spots.placing = True
+    monkeypatch.setattr(desktop, "SampleSpots", lambda: spots)
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            spots.move(2, (125, 95))
+            return -1
+        assert load_settings()["spots"]["items"][0]["x"] == 125
+        return ord("q")
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    saved = load_settings()["spots"]
+    assert saved["items"] == [{"number": 2, "x": 125, "y": 95, "name": "Motor", "enabled": False}]
+    restored = type(spots)()
+    monkeypatch.setattr(desktop, "SampleSpots", lambda: restored)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    assert restored.saved_state() == saved
+    assert restored.next_number == 3
+
+
+def test_ambient_input_keeps_requested_value_but_sends_quantized_temperature(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings
+
+    panel = Mock()
+    panel.poll.side_effect = [
+        [{"action": "hardware", "name": "ambient", "value": 22.2222222222, "enabled": True}]
+    ]
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    setting = viewer.hardware.state.return_value["ambient"]
+    viewer.hardware.set.side_effect = lambda name, value, enabled: setting.update(value=value)
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    viewer.hardware.set.assert_called_once_with("ambient", 22.2, True)
+    assert panel.update.call_args.args[0]["hardware"]["ambient"]["value"] == 22.2222222222
+    assert viewer.draw_toolbar.call_args.args[1] == 22.2
+    assert load_settings()["ambient_input_celsius"] == 22.2222222222
+    viewer.hardware.set.reset_mock()
+    panel.poll.side_effect = None
+    panel.poll.return_value = []
+    assert desktop.main([]) == 0
+    viewer.hardware.set.assert_called_once_with("ambient", 22.2, True)
+    assert panel.update.call_args.args[0]["hardware"]["ambient"]["value"] == 22.2222222222
+
+
+def test_graph_configuration_button_settings_persist_and_lock(viewer, monkeypatch):
+    from topdon_duo.graph_settings import GRAPH_DEFAULTS
+    from topdon_duo.graphs import graph_config_rect
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    save_settings({"show_graph": True})
+    panel = Mock()
+    panel.poll.return_value = []
+    monkeypatch.setattr(desktop, "GraphPanel", lambda: panel)
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    settings = {
+        **GRAPH_DEFAULTS,
+        "range_mode": "fixed",
+        "range_seconds": 600,
+        "history_points": 8192,
+    }
+    step = 0
+
+    def key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            x0, y0, x1, y1 = graph_config_rect(768)
+            callback = viewer.set_mouse.call_args.args[1]
+            callback(cv2.EVENT_LBUTTONUP, 768 + (x0 + x1) // 2, (y0 + y1) // 2, 0, None)
+            panel.poll.return_value = [{"action": "settings", "settings": settings}]
+        elif step == 2:
+            assert load_settings()["graph_settings"] == settings
+            viewer.graphs.logging = True
+            panel.poll.return_value = [{"action": "settings", "settings": GRAPH_DEFAULTS}]
+        elif step == 3:
+            assert load_settings()["graph_settings"] == settings
+            return ord("q")
+        return -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", key)
+    assert desktop.main([]) == 0
+    panel.open.assert_called_once()
+    assert panel.update.call_args.args[0]["locked"]
+    assert [call.args[0] for call in viewer.graphs.configure.call_args_list] == [
+        GRAPH_DEFAULTS,
+        settings,
+    ]
+    panel.close.assert_called_once()
+
+
+@pytest.mark.parametrize("logging", [False, True])
+def test_graph_reset_button_only_clears_chart_history_and_obeys_logging_lock(
+    viewer, monkeypatch, logging
+):
+    from topdon_duo.graphs import graph_reset_rect
+    from topdon_duo.settings_preferences import save_settings
+
+    save_settings({"show_graph": True})
+    spots = desktop.SampleSpots(pixels=[(80, 60)])
+    spots.rename(1, "Motor")
+    monkeypatch.setattr(desktop, "SampleSpots", lambda: spots)
+    viewer.graphs.logging = logging
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            x0, y0, x1, y1 = graph_reset_rect(768)
+            callback = viewer.set_mouse.call_args.args[1]
+            callback(cv2.EVENT_LBUTTONUP, 768 + (x0 + x1) // 2, (y0 + y1) // 2, 0, None)
+            return -1
+        return ord("q")
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", key)
+    assert desktop.main([]) == 0
+    assert viewer.graphs.clear_history.call_count == (0 if logging else 1)
+    assert spots.pixels == [(80, 60)] and spots.name(1) == "Motor"
+    viewer.graphs.configure.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "cursor,graphs", [(False, False), (True, False), (False, True), (True, True)]
+)
+def test_capture_checkboxes_save_immediately_and_restore_on_restart(
+    viewer, monkeypatch, cursor, graphs
+):
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    save_settings({"capture_cursor": not cursor, "capture_graphs": not graphs})
+    viewer.panel.events = [
+        {"action": "cursor", "value": cursor},
+        {"action": "graphs", "value": graphs},
+    ]
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+
+    def quit_after_check(_delay):
+        settings = load_settings()
+        assert settings["capture_cursor"] is cursor
+        assert settings["capture_graphs"] is graphs
+        return ord("q")
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", quit_after_check)
+    assert desktop.main([]) == 0
+    assert viewer.panel.state["capture_cursor"] is cursor
+    assert viewer.panel.state["capture_graphs"] is graphs
+    # A fresh launch must initialize both the UI and capture behavior from preferences.
+    assert desktop.main([]) == 0
+    assert viewer.panel.state["capture_cursor"] is cursor
+    assert viewer.panel.state["capture_graphs"] is graphs
+    assert viewer.panel.state["recording_mode"] is None
+
+
+def test_timelapse_rate_saves_immediately_reloads_and_respects_cli_override(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings
+
+    viewer.panel.events = [{"action": "rate", "value": 120}]
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+
+    def quit_after_saved_rate(_delay):
+        assert load_settings()["timelapse_fpm"] == 120
+        return ord("q")
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", quit_after_saved_rate)
+    assert desktop.main([]) == 0
+    assert viewer.panel.state["frames_per_minute"] == 120
+    assert desktop.main([]) == 0
+    assert viewer.panel.state["frames_per_minute"] == 120
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main(["--timelapse-fpm", "240"]) == 0
+    assert viewer.panel.state["frames_per_minute"] == 240
+    assert load_settings()["timelapse_fpm"] == 240

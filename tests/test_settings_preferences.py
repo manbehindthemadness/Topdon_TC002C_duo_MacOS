@@ -18,6 +18,9 @@ def test_invalid_preferences_preserve_independent_valid_fields(monkeypatch, tmp_
                 "hardware": {"ambient": 35.1, "distance": -1, "emissivity": True, "unknown": 2},
                 "rotation": True,
                 "advanced_auto": "yes",
+                "capture_cursor": "yes",
+                "capture_graphs": 1,
+                "timelapse_fpm": True,
             }
         )
     )
@@ -40,6 +43,9 @@ def test_preferences_round_trip_without_temporary_file(monkeypatch, tmp_path):
         "rotation": 270,
         "advanced_auto": False,
         "auto_calibrate": True,
+        "capture_cursor": True,
+        "capture_graphs": False,
+        "timelapse_fpm": 120,
         "graph_interval": 0.2,
     }
     save_settings(saved)
@@ -66,3 +72,10 @@ def test_invalid_graph_interval_preserves_other_preferences(monkeypatch, tmp_pat
         path.parent.mkdir(exist_ok=True)
         path.write_text(json.dumps({"graph_interval": value, "show_graph": True}))
         assert load_settings() == {"display": {}, "hardware": {}, "show_graph": True}
+
+
+def test_invalid_timelapse_rate_preserves_valid_preferences(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    for value in (True, "120", 0, -1, 1501, 120.5, None):
+        save_settings({"timelapse_fpm": value, "capture_graphs": True})
+        assert load_settings() == {"display": {}, "hardware": {}, "capture_graphs": True}

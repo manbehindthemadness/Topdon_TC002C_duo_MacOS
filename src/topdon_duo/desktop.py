@@ -25,18 +25,23 @@ from .camera import (
     raw_temperatures,
 )
 from .capture_panel import CapturePanel
+from .dialog_preferences import load_dialog_directory, remember_dialog_directory
 from .distance_calibration import DistanceCalibrator
 from .emissivity_calibration import EmissivityCalibrator
+from .graph_panel import GraphPanel
+from .graph_settings import GRAPH_DEFAULTS, validate_graph_settings
 from .graphs import (
     GRAPH_INTERVAL,
     GraphIntervalEditor,
     GraphSnapshot,
     GraphWorker,
     draw_graph_logging_control,
+    graph_config_rect,
     graph_interval_rect,
     graph_log_button_rect,
+    graph_reset_rect,
 )
-from .hardware_controls import HardwareControls
+from .hardware_controls import HARDWARE_CONTROLS, HardwareControls
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
 from .reflected_calibration import ReflectedCalibrator
@@ -48,6 +53,7 @@ from .render import (
     draw_temperature_readout,
 )
 from .settings_preferences import load_settings, save_settings
+from .spot_preferences import validate_spots
 from .spots_panel import SpotsPanel
 from .view_panel import ViewPanel
 from .view_settings import VIEW_DEFAULTS
@@ -119,6 +125,50 @@ class MousePicker:
 class ToolbarLayout:
     height: int
     buttons: dict[str, tuple[int, int, int, int]]
+
+
+@dataclass(frozen=True)
+class GraphWindowLayout:
+    canvas_size: tuple[int, int]
+    camera_size: tuple[int, int]
+
+    @classmethod
+    def fit(cls, camera_size, window_size=None):
+        source_width, source_height = camera_size
+        width, height = window_size or (source_width * 2, source_height)
+        width, height = max(2, width), max(1, height)
+        scale = min((width // 2) / source_width, height / source_height)
+        camera = (max(1, round(source_width * scale)), max(1, round(source_height * scale)))
+        return cls((width, height), camera)
+
+    @property
+    def graph_size(self):
+        return self.canvas_size[0] - self.camera_size[0], self.canvas_size[1]
+
+    def camera_viewport(self, event_viewport=None):
+        width, height = event_viewport or self.canvas_size
+        return (
+            self.camera_size[0] * width / self.canvas_size[0],
+            self.camera_size[1] * height / self.canvas_size[1],
+        )
+
+    def graph_control_at(self, x, y, rectangle, event_viewport=None):
+        if event_viewport:
+            if min(event_viewport) <= 0:
+                return False
+            x = x * self.canvas_size[0] / event_viewport[0]
+            y = y * self.canvas_size[1] / event_viewport[1]
+        x0, y0, x1, y1 = rectangle(self.graph_size[0])
+        return x0 <= x - self.camera_size[0] <= x1 and y0 <= y <= y1
+
+    def compose(self, camera, graph):
+        width, height = self.canvas_size
+        canvas = np.zeros((height, width, 3), np.uint8)
+        camera_width, camera_height = self.camera_size
+        resized = cv2.resize(camera, self.camera_size, interpolation=cv2.INTER_LINEAR)
+        canvas[:camera_height, :camera_width] = resized
+        canvas[:, camera_width:] = graph
+        return canvas
 
 
 @dataclass
@@ -207,6 +257,46 @@ class SampleSpots:
             for number in self.numbers
         ]
 
+    def saved_state(self, rotation=0, horizontal=False, vertical=False):
+        width, height = (
+            (SENSOR_WIDTH, SENSOR_HEIGHT) if rotation in (0, 180) else (SENSOR_HEIGHT, SENSOR_WIDTH)
+        )
+        pixels = [
+            (width - 1 - x if horizontal else x, height - 1 - y if vertical else y)
+            for x, y in self.pixels
+        ]
+        for _ in range((360 - rotation) % 360 // 90):
+            pixels = [(height - 1 - y, x) for x, y in pixels]
+            width, height = height, width
+        return {
+            "version": 1,
+            "placing": self.placing,
+            "next_number": self.next_number,
+            "items": [
+                {
+                    "number": number,
+                    "x": x,
+                    "y": y,
+                    "name": self.name(number),
+                    "enabled": number not in self.disabled,
+                }
+                for number, (x, y) in zip(self.numbers, pixels, strict=True)
+            ],
+        }
+
+    def restore_saved_state(self, saved, rotation=0, horizontal=False, vertical=False):
+        saved = validate_spots(saved)
+        self.pixels = [(item["x"], item["y"]) for item in saved["items"]]
+        self.numbers = [item["number"] for item in saved["items"]]
+        self.names = {item["number"]: item["name"] for item in saved["items"] if item["name"]}
+        self.disabled = {item["number"] for item in saved["items"] if not item["enabled"]}
+        self.next_number, self.placing = saved["next_number"], saved["placing"]
+        width, height = SENSOR_WIDTH, SENSOR_HEIGHT
+        for _ in range(rotation // 90):
+            self.rotate_clockwise(height)
+            width, height = height, width
+        self.mirror(width, height, horizontal, vertical)
+
     def rotate_clockwise(self, sensor_height: int) -> None:
         self.pixels = [(sensor_height - 1 - y, x) for x, y in self.pixels]
 
@@ -222,6 +312,7 @@ class MacSaveDialog:
 
     def __init__(self) -> None:
         self._process: subprocess.Popen[str] | None = None
+        self._directory_kind = "image"
 
     @property
     def is_open(self) -> bool:
@@ -234,9 +325,17 @@ class MacSaveDialog:
             return False
         prefix = f"TC002C-Duo-{kind}-" if kind else "TC002C-Duo-"
         default_name = prefix + datetime.now().astimezone().strftime("%Y%m%d-%H%M%S") + suffix
-        directory = ""
-        if default_directory is not None and default_directory.is_dir():
-            directory = str(default_directory.resolve())
+        self._directory_kind = (
+            kind
+            if kind in ("video", "timelapse", "temperatures")
+            else "video"
+            if suffix.lower() == ".mp4"
+            else "temperatures"
+            if suffix.lower() == ".csv"
+            else "image"
+        )
+        remembered = load_dialog_directory(self._directory_kind, default_directory)
+        directory = str(remembered) if remembered else ""
         command = self._command(default_name, directory)
         self._process = subprocess.Popen(
             command,
@@ -271,7 +370,9 @@ class MacSaveDialog:
         process, self._process = self._process, None
         stdout, stderr = process.communicate()
         if process.returncode == 0 and stdout.strip():
-            return True, Path(stdout.strip())
+            selected = Path(stdout.strip())
+            remember_dialog_directory(self._directory_kind, selected)
+            return True, selected
         if not self._cancelled(process.returncode, stderr):
             LOG.error("Save dialog failed: %s", stderr.strip() or process.returncode)
         return True, None
@@ -1005,8 +1106,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--timelapse-fpm",
         type=int,
-        default=TIMELAPSE_DEFAULT_FPM,
-        help="timelapse frames per minute (default: 60)",
+        default=None,
+        help="timelapse frames per minute (default: remembered rate, or 60)",
     )
     parser.add_argument(
         "--output",
@@ -1016,7 +1117,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
-    if not 1 <= args.timelapse_fpm <= TIMELAPSE_MAX_FPM:
+    if args.timelapse_fpm is not None and not 1 <= args.timelapse_fpm <= TIMELAPSE_MAX_FPM:
         parser.error(f"--timelapse-fpm must be between 1 and {TIMELAPSE_MAX_FPM}")
     return args
 
@@ -1032,6 +1133,7 @@ def main(argv: list[str] | None = None) -> int:
     show_graph = saved_settings.get("show_graph", False)
     graph_interval = saved_settings.get("graph_interval", GRAPH_INTERVAL)
     graph_interval_editor = GraphIntervalEditor(graph_interval)
+    graph_settings = saved_settings.get("graph_settings", GRAPH_DEFAULTS.copy())
     requested_window_size = None
     saved_window_size = load_main_window_size()
     last_window_size = None
@@ -1055,6 +1157,17 @@ def main(argv: list[str] | None = None) -> int:
     camera = TC002CDuoCamera()
     picker = MousePicker()
     spots = SampleSpots()
+    if "spots" in saved_settings:
+        spots.restore_saved_state(
+            saved_settings["spots"],
+            renderer.rotation,
+            renderer.mirror_horizontal,
+            renderer.mirror_vertical,
+        )
+    last_saved_spots = spots.saved_state(
+        renderer.rotation, renderer.mirror_horizontal, renderer.mirror_vertical
+    )
+    ambient_input_celsius = saved_settings.get("ambient_input_celsius")
     spot_drag = SpotDrag()
     distance_calibration = DistanceCalibrator(saved_settings.get("distance_calibration"))
     pointer_monitor = PointerMonitor(WINDOW_NAME)
@@ -1062,6 +1175,7 @@ def main(argv: list[str] | None = None) -> int:
     recorder = VideoRecorder()
     capture_panel = CapturePanel()
     view_panel = ViewPanel()
+    graph_panel = GraphPanel()
     spots_panel = SpotsPanel()
     hardware = HardwareControls(camera)
     emissivity_calibration = EmissivityCalibrator(
@@ -1072,12 +1186,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     graphs = GraphWorker()
     graphs.set_interval(graph_interval)
+    graphs.configure(graph_settings)
     actual_image_source = renderer.image_source
     pending_save_kind: str | None = None
-    capture_cursor = False
-    capture_graphs = False
+    capture_cursor = saved_settings.get("capture_cursor", False)
+    capture_graphs = saved_settings.get("capture_graphs", False)
     recording_graphs = False
-    timelapse_fpm = args.timelapse_fpm
+    timelapse_fpm = (
+        args.timelapse_fpm
+        if args.timelapse_fpm is not None
+        else saved_settings.get("timelapse_fpm", TIMELAPSE_DEFAULT_FPM)
+    )
     status_message = "Ready"
     status_until = 0.0
     status = "Ready"
@@ -1085,16 +1204,26 @@ def main(argv: list[str] | None = None) -> int:
     last_selected: tuple[int, int] | None = None
 
     def persist_settings() -> None:
+        nonlocal last_saved_spots
+        last_saved_spots = spots.saved_state(
+            renderer.rotation, renderer.mirror_horizontal, renderer.mirror_vertical
+        )
         try:
             save_settings(
                 {
                     "display": {name: getattr(renderer, name) for name in VIEW_DEFAULTS},
                     "hardware": remembered_hardware,
+                    "ambient_input_celsius": ambient_input_celsius,
+                    "spots": last_saved_spots,
                     "rotation": renderer.rotation,
                     "advanced_auto": advanced_auto,
                     "auto_calibrate": auto_calibrate,
                     "show_graph": show_graph,
                     "graph_interval": graph_interval,
+                    "graph_settings": graph_settings,
+                    "capture_cursor": capture_cursor,
+                    "capture_graphs": capture_graphs,
+                    "timelapse_fpm": timelapse_fpm,
                     "distance_calibration": (
                         distance_calibration.reference.as_dict()
                         if distance_calibration.reference
@@ -1324,9 +1453,15 @@ def main(argv: list[str] | None = None) -> int:
             message += " · Settings locked while measuring reflected temperature"
         elif emissivity_calibration.running:
             message += " · Settings locked while fitting emissivity"
+        ui_hardware = hardware.state()
+        if ambient_input_celsius is not None and "ambient" in ui_hardware:
+            ui_hardware = {
+                **ui_hardware,
+                "ambient": {**ui_hardware["ambient"], "value": ambient_input_celsius},
+            }
         return {
             **renderer.view_settings(),
-            "hardware": hardware.state(),
+            "hardware": ui_hardware,
             "color_source": (
                 "camera"
                 if actual_image_source == "preview"
@@ -1366,6 +1501,12 @@ def main(argv: list[str] | None = None) -> int:
             "frames_per_minute": timelapse_fpm,
             "max_fpm": TIMELAPSE_MAX_FPM,
             "status": status,
+        }
+
+    def graph_config_state():
+        return {
+            "settings": graph_settings,
+            "locked": graphs.logging or pending_save_kind == "graph_log",
         }
 
     def open_capture() -> None:
@@ -1436,6 +1577,19 @@ def main(argv: list[str] | None = None) -> int:
                         raise ValueError("Unknown spot menu operation")
                 except (CameraError, KeyError, ValueError, TypeError) as exc:
                     notify(f"Spot change rejected: {exc}")
+            for command in graph_panel.poll():
+                try:
+                    if command.get("action") == "error":
+                        notify(f"Graph configuration failed: {command.get('message', '')}")
+                    elif command.get("action") == "settings":
+                        if graph_config_state()["locked"]:
+                            raise ValueError("Stop logging before changing graph settings")
+                        settings = validate_graph_settings(command["settings"])
+                        graphs.configure(settings)
+                        graph_settings = settings
+                        persist_settings()
+                except (ValueError, TypeError, KeyError) as exc:
+                    notify(f"Graph settings rejected: {exc}")
             for command in view_panel.poll():
                 if (
                     graphs.logging
@@ -1481,7 +1635,25 @@ def main(argv: list[str] | None = None) -> int:
                     elif command.get("action") == "hardware":
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
-                        hardware.set(command["name"], command["value"], command["enabled"])
+                        value = command["value"]
+                        if command["name"] == "ambient":
+                            spec = HARDWARE_CONTROLS["ambient"]
+                            if (
+                                isinstance(value, bool)
+                                or not isinstance(value, (int, float))
+                                or not spec.minimum <= value <= spec.maximum
+                            ):
+                                raise ValueError(
+                                    "Ambient temperature is outside the supported range"
+                                )
+                            value = round(
+                                spec.minimum
+                                + round((value - spec.minimum) / spec.step) * spec.step,
+                                2,
+                            )
+                        hardware.set(command["name"], value, command["enabled"])
+                        if command["name"] == "ambient":
+                            ambient_input_celsius = command["value"] if command["enabled"] else None
                         if command["name"] == "palette" and command["enabled"]:
                             renderer.set_view_setting("palette_source", "camera")
                         if command["enabled"]:
@@ -1587,6 +1759,7 @@ def main(argv: list[str] | None = None) -> int:
                             emissivity_calibration.cancel()
                         hardware.restore()
                         remembered_hardware.clear()
+                        ambient_input_celsius = None
                         persist_settings()
                         hardware.error = ""
                         renderer._average_raw = None
@@ -1603,6 +1776,7 @@ def main(argv: list[str] | None = None) -> int:
                     hardware.error = f"Camera setting rejected: {exc}"
                     notify(hardware.error)
             for command in capture_panel.poll():
+                previous_capture_preferences = (capture_cursor, capture_graphs, timelapse_fpm)
                 action = command.get("action")
                 if action == "error":
                     notify(f"Capture window failed: {command.get('message', '')}")
@@ -1627,6 +1801,8 @@ def main(argv: list[str] | None = None) -> int:
                     ):
                         capture_graphs = bool(command.get("capture_graphs", capture_graphs))
                     request_save(action)
+                if (capture_cursor, capture_graphs, timelapse_fpm) != previous_capture_preferences:
+                    persist_settings()
             renderer.camera_preview = hardware.preview_active
             renderer.camera_color = "palette" in hardware.enabled
             renderer.hardware_settings = hardware.state() if hardware.original else {}
@@ -1692,9 +1868,18 @@ def main(argv: list[str] | None = None) -> int:
                 requested_window_size = (width, height)
                 cv2.resizeWindow(WINDOW_NAME, width, height)
                 initial_window_size_set = True
-            viewport_size = mouse_viewport_size()
-            if show_graph and viewport_size is not None:
-                viewport_size = (viewport_size[0] / 2, viewport_size[1])
+            event_viewport = mouse_viewport_size()
+            graph_layout = (
+                GraphWindowLayout.fit(
+                    (rendered.image.shape[1], rendered.image.shape[0] + layout.height),
+                    window_resize_size(WINDOW_NAME),
+                )
+                if show_graph
+                else None
+            )
+            viewport_size = (
+                graph_layout.camera_viewport(event_viewport) if graph_layout else event_viewport
+            )
             spot_drag.update(
                 picker,
                 spots,
@@ -1704,6 +1889,15 @@ def main(argv: list[str] | None = None) -> int:
                 layout.height,
                 locked=spots_state()["locked"],
             )
+            pointer_toolbar_height = layout.height
+            pointer_image_height = rendered.image.shape[0]
+            if graph_layout:
+                pointer_toolbar_height = round(
+                    layout.height
+                    * graph_layout.camera_size[1]
+                    / (rendered.image.shape[0] + layout.height)
+                )
+                pointer_image_height = graph_layout.canvas_size[1] - pointer_toolbar_height
             display, selected = (
                 (rendered.image, None)
                 if emissivity_calibration.active or reflected_calibration.active
@@ -1717,7 +1911,7 @@ def main(argv: list[str] | None = None) -> int:
                     spots=spots,
                     dragging_spot=spot_drag.number is not None,
                     pointer_over_image=pointer_monitor.over_image(
-                        rendered.image.shape[0], layout.height
+                        pointer_image_height, pointer_toolbar_height
                     ),
                 )
             )
@@ -1896,8 +2090,39 @@ def main(argv: list[str] | None = None) -> int:
                     except OSError as exc:
                         notify(f"Could not open spot menu: {exc}")
             for click_x, click_y in picker.consume_clicks():
-                if show_graph and graph_interval_at(
-                    click_x, click_y, rendered.image.shape[1], display.shape[0], viewport_size
+                if (
+                    show_graph
+                    and graph_layout
+                    and graph_layout.graph_control_at(
+                        click_x, click_y, graph_reset_rect, event_viewport
+                    )
+                ):
+                    graph_interval_editor.text = None
+                    if graph_config_state()["locked"]:
+                        notify("Stop graph logging before clearing chart data.")
+                    else:
+                        graphs.clear_history()
+                        notify("Chart data cleared")
+                    continue
+                if (
+                    show_graph
+                    and graph_layout
+                    and graph_layout.graph_control_at(
+                        click_x, click_y, graph_config_rect, event_viewport
+                    )
+                ):
+                    graph_interval_editor.text = None
+                    try:
+                        graph_panel.open(graph_config_state())
+                    except OSError as exc:
+                        notify(f"Could not open graph configuration: {exc}")
+                    continue
+                if (
+                    show_graph
+                    and graph_layout
+                    and graph_layout.graph_control_at(
+                        click_x, click_y, graph_interval_rect, event_viewport
+                    )
                 ):
                     if graphs.logging or pending_save_kind == "graph_log":
                         notify("Stop graph logging before changing the update interval.")
@@ -1906,8 +2131,12 @@ def main(argv: list[str] | None = None) -> int:
                         notify("Update interval in seconds: Enter to apply, Esc to cancel.")
                     continue
                 graph_interval_editor.text = None
-                if show_graph and graph_logging_button_at(
-                    click_x, click_y, rendered.image.shape[1], display.shape[0], viewport_size
+                if (
+                    show_graph
+                    and graph_layout
+                    and graph_layout.graph_control_at(
+                        click_x, click_y, graph_log_button_rect, event_viewport
+                    )
                 ):
                     toggle_graph_logging()
                     continue
@@ -1969,10 +2198,22 @@ def main(argv: list[str] | None = None) -> int:
                     )
             if quit_requested:
                 break
+            if (
+                spots.saved_state(
+                    renderer.rotation, renderer.mirror_horizontal, renderer.mirror_vertical
+                )
+                != last_saved_spots
+            ):
+                persist_settings()
             view_panel.update(view_state())
             spots_panel.update(spots_state())
-            graph_size = (display.shape[1], display.shape[0])
+            graph_panel.update(graph_config_state())
             if show_graph:
+                if graph_layout is None:
+                    graph_layout = GraphWindowLayout.fit(
+                        (display.shape[1], display.shape[0]), window_resize_size(WINDOW_NAME)
+                    )
+                graph_size = graph_layout.graph_size
                 graphs.submit(
                     GraphSnapshot(
                         stats=(
@@ -1991,14 +2232,15 @@ def main(argv: list[str] | None = None) -> int:
                         measurements_valid=rendered.measurements_valid,
                     )
                 )
-                display = np.concatenate((display, graphs.image(graph_size)), axis=1)
+                graph_image = graphs.image(graph_size, resize=True).copy()
                 draw_graph_logging_control(
-                    display[:, graph_size[0] :],
+                    graph_image,
                     graphs.logging,
                     pending_save_kind == "graph_log",
                     interval=graph_interval,
                     edit_text=graph_interval_editor.text,
                 )
+                display = graph_layout.compose(display, graph_image)
             else:
                 graphs.pause()
             cv2.imshow(WINDOW_NAME, display)
@@ -2072,6 +2314,7 @@ def main(argv: list[str] | None = None) -> int:
         stop_recording()
         capture_panel.close()
         view_panel.close()
+        graph_panel.close()
         spots_panel.close()
         pointer_monitor.close()
         save_dialog.close()

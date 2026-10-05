@@ -405,6 +405,16 @@ assert messages[-1]["value"] == 27.5
 window.update_state({**state, "temperature_unit": "C"})
 assert row.input.value() == 30
 
+# Ambient typing retains the requested Fahrenheit value; the owner rounds the USB write.
+window.update_state(state)
+row.input.setValue(72)
+assert row.input.value() == 72
+assert abs(row.value() - 22.2222222222) < 1e-9
+row._emit()
+assert abs(messages[-1]["value"] - 22.2222222222) < 1e-9
+window.update_state({**state, "hardware": {"ambient": {"value": messages[-1]["value"], "available": True}}})
+assert row.input.value() == 72
+
 # Distance uses inches in imperial mode while hardware commands retain meters.
 count = len(messages)
 distance = window.hardware_rows["distance"]

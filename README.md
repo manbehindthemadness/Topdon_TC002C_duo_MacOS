@@ -116,20 +116,49 @@ The controls are available from the toolbar as well as the keyboard:
 thermal history on the right. **Hide graph** halves the width again. The toggle
 is remembered across restarts. The master graph plots minimum, average, maximum
 and center temperatures; each placed spot gets its own graph in placement order.
-All graphs share the available height evenly and show a rolling 60-second history
-in the selected Celsius/Fahrenheit unit. Sampling and rendering run on a separate
+The graph pane grows with the window and uses the remaining width beside the
+camera image. The camera image scales without changing its aspect ratio; unused
+space below it stays black. Graph text stays readable as the pane grows.
+All graphs share the available height evenly and use the same time axis in the
+selected Celsius/Fahrenheit unit. The default range shows the most recent
+10 minutes. Entire-session mode expands the axis as measurements accumulate. Older samples compress
+automatically, retaining bucket minima/maxima and measurement gaps; the newest
+half of the point budget remains uncompressed. The default budget is 4,096 points
+per chart (2,048 recent samples).
+CSV logging retains every valid sample at the selected interval. Sampling and rendering run on a separate
 worker thread every 0.5 seconds by default, using the latest camera measurements without
 queuing video frames. Hiding the graph area pauses sampling and rendering;
 reopening resumes, with gaps rather than connecting lines across long pauses.
 Spot history survives rotation and mirroring, and clears when the spots are
 cleared. Histories are session-only; disabling a spot removes its graph history,
 and enabling it starts fresh sampling. Captures and recordings can include the
-graph pane with the Capture dialog’s **Include graphs when visible** checkbox.
+graph pane with the Capture dialog’s **Include graphs** checkbox beside **Capture cursor**.
+Both checkboxes and the timelapse frames-per-minute setting save immediately
+and restore on the next launch. An explicit `--timelapse-fpm` value overrides
+the remembered rate.
+
+Image, video, timelapse, CSV log and TIDY model file dialogs each remember their
+last accepted directory across launches. Canceling leaves the previous directory
+unchanged. Missing directories fall back to the normal starting location; an
+explicit `--output` directory overrides the remembered capture/log location.
 
 **Update (s)**, immediately left of **Log to CSV**, sets the graph and CSV sampling
 interval from 0.1 to 60 seconds. Click the number and type a value; press Enter to
 apply or Escape to cancel. The interval is remembered across restarts and is
 locked while logging or choosing a log file.
+
+**Config**, beside **Update (s)**, opens Graph configuration. Choose **Entire
+session** for an expanding time axis or **Recent time window** for a fixed range
+in minutes. **Compress older history** keeps extrema and gaps in older samples;
+turning it off keeps only the latest points when the budget is full. **Points per
+chart** sets the history budget from 256 to 65,536. Increasing the budget allows
+more future detail; it cannot recover discarded or already compressed samples.
+These settings persist across launches and are locked during logging or file selection.
+The **Close** button dismisses the configuration popup; changes apply as you make them.
+**Reset**, beside **Config** in the graph header, clears chart histories. Sampling
+continues at the selected interval; spot positions, graph settings and saved CSV
+files are retained. Reset is disabled while logging or choosing a log file.
+Changes redraw the graphs immediately without adding extra measurements to CSV.
 
 **Log to CSV** opens a Save dialog before logging begins. **Stop logging** closes
 and saves the file; **Cancel logging** cancels an unfinished Save dialog. Hiding
@@ -165,7 +194,10 @@ name such as “Left hand” or “Motor” and press Enter or leave the field t
 Names label graph titles and the CSV `series` column; on-image labels keep their
 spot numbers and temperatures. CSV `series_id` retains the stable spot identity.
 Names stay with spots when rotated, mirrored, disabled, or re-enabled. Clearing
-a name restores the default “Spot N”. Names are session-only, like spot positions.
+a name restores the default “Spot N”. Spot positions, names, enabled states, placement mode and numbering save
+automatically and restore on launch. Locations are stored in sensor coordinates,
+so they also restore correctly with rotation and mirroring. Chart histories are
+session-only; saved spots start a fresh history when the app reopens.
 Unchecking a spot hides its marker and stops its graph sampling without losing
 its position; checking restores it.
 Clearing one spot preserves the numbers and histories of the others. New spots
@@ -211,7 +243,7 @@ field before starting. It defaults to **60** (one frame each second) and support
 the initial rate with `--timelapse-fpm 120`. Both modes play back at 25 fps; the
 default timelapse therefore plays 25 times faster than real time.
 
-The Capture popup's **Include graphs when visible** checkbox optionally appends
+The Capture popup's **Include graphs** checkbox beside **Capture cursor** optionally appends
 visible graphs to PNG, video and timelapse captures. It defaults to off. Show the
 graphs before starting a recording; its graph layout stays fixed until recording
 ends. Hiding graphs during a recording leaves that pane blank and pauses graph
@@ -239,6 +271,11 @@ still restored on exit. Restore camera settings also clears saved hardware
 overrides; Reset display settings saves the display defaults. Explicit
 `--rotate` and `--image-source` options override remembered values. Invalid saved
 fields are ignored independently so valid preferences can still load.
+Ambient temperature inputs retain the value you enter (for example, 72°F), while
+the hardware write silently rounds to the control's Celsius step. The requested
+input is remembered across launches; measurements use the actual camera setting.
+Restoring camera settings clears this requested input along with hardware overrides.
+
 **Auto calibrate** is at the top of Camera settings and defaults to off. Its
 saved choice is applied on startup. After the first valid camera frame arrives,
 the viewer requests one calibration, including when Auto calibrate is off.

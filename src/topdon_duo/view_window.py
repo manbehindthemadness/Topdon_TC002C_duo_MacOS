@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from .capture_window import run_window
+from .dialog_preferences import load_dialog_directory, remember_dialog_directory
 from .hardware_controls import HARDWARE_CONTROLS
 from .view_settings import (
     COLOR_PALETTES,
@@ -57,8 +58,20 @@ class NoWheelSpinBox(QDoubleSpinBox):
 class ControlRow(QWidget):
     """An editable value with a slider for range controls."""
 
-    def __init__(self, title, changed, *, minimum=0, maximum=1, step=1, options=(), unit=""):
+    def __init__(
+        self,
+        title,
+        changed,
+        *,
+        minimum=0,
+        maximum=1,
+        step=1,
+        options=(),
+        unit="",
+        preserve_input=False,
+    ):
         super().__init__()
+        self.preserve_input = preserve_input
         self.changed = changed
         self.options = tuple(options)
         self.is_switch = tuple(text for _, text in self.options) == ("Off", "On")
@@ -117,6 +130,8 @@ class ControlRow(QWidget):
                 value *= DISTANCE_METERS_PER_UNIT[self.temperature_unit]
             elif self.temperature_unit == "F":
                 value = (value - 32) / 1.8
+            if self.preserve_input:
+                return round(value, 10)
             # Preserve hardware precision in Celsius and meters, regardless of display units.
             value = self.minimum + round((value - self.minimum) / self.step) * self.step
         return round(value, 2)
@@ -229,10 +244,15 @@ class TidyModelControls(QWidget):
             self.input.setModified(False)
 
     def _browse(self):
+        directory = load_dialog_directory("tidy_model")
         path, _ = QFileDialog.getOpenFileName(
-            self, "Choose TIDY ONNX model", self.input.text(), "ONNX models (*.onnx)"
+            self,
+            "Choose TIDY ONNX model",
+            str(directory) if directory else self.input.text(),
+            "ONNX models (*.onnx)",
         )
         if path and self.isEnabled():
+            remember_dialog_directory("tidy_model", path)
             self.input.setText(path)
             self.input.setModified(True)
             self._emit()
@@ -734,6 +754,7 @@ class ViewWindow(QWidget):
                     step=spec.step,
                     options=spec.options,
                     unit=spec.unit,
+                    preserve_input=name == "ambient",
                 )
                 if name == "palette":
                     row.setToolTip(

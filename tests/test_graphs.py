@@ -66,7 +66,8 @@ def test_spot_histories_survive_reorientation_but_not_clear_and_replacement():
         assert worker._spots == {}
         for index in range(300):
             worker._sample(snapshot(), index + 2)
-        assert len(worker._master) == graphs.HISTORY_SAMPLES
+        assert len(worker._master) == 304
+        assert worker._master[0][0] == 0
     finally:
         worker.close()
 
@@ -248,7 +249,7 @@ def test_interval_change_wakes_worker_and_controls_csv_cadence(tmp_path):
         with worker._condition:
             assert worker._condition.wait_for(lambda: len(worker._master) >= 4, timeout=2)
             times = [stamp for stamp, _ in worker._master]
-            assert worker._master.maxlen == 601
+            assert worker._master.maxlen is None
         worker.stop_logging()
         assert all(0.08 <= b - a < 1 for a, b in pairwise(times))
         with path.open() as stream:
@@ -286,4 +287,106 @@ def test_invalid_interval_does_not_change_worker(value):
             worker.set_interval(value)
         assert worker._interval == 0.5
     finally:
+        worker.close()
+
+
+def test_history_compression_retains_extrema_gaps_recent_samples_and_session_start():
+    history = deque()
+    recent = []
+    for index in range(20_000):
+        values = (float(index % 20), float(index % 31), float(index % 47), float(index % 59))
+        if index == 10:
+            values = (-1000, 2000, -3000, 4000)
+        if index == 20:
+            values = (float("nan"),) * 4
+        history.append((index, values))
+        graphs.compress_history(history)
+        assert len(history) <= graphs.MAX_HISTORY_SAMPLES
+        if index >= 20_000 - graphs.MAX_HISTORY_SAMPLES // 2:
+            recent.append((index, values))
+    assert history[0][0] == 0 and history[-1][0] == 19_999
+    assert list(history)[-len(recent) :] == recent
+    values = np.array([value for _, value in history])
+    assert np.nanmin(values[:, 0]) == -1000
+    assert np.nanmax(values[:, 1]) == 2000
+    assert np.nanmin(values[:, 2]) == -3000
+    assert np.nanmax(values[:, 3]) == 4000
+    assert any(stamp == 20 and not np.isfinite(value).any() for stamp, value in history)
+    assert all(a[0] <= b[0] for a, b in pairwise(history))
+
+
+def test_all_graphs_share_expanding_session_time_range(monkeypatch):
+    chart = Mock()
+    text = Mock(wraps=graphs.cv2.putText)
+    monkeypatch.setattr(graphs, "_draw_chart", chart)
+    monkeypatch.setattr(graphs.cv2, "putText", text)
+    graphs.render_graphs(
+        snapshot((((0, 0), 22),)),
+        deque([(0, (18, 20, 24, 21)), (300, (18, 20, 24, 21))]),
+        {(0, 0): deque([(275, (22,))])},
+        300,
+    )
+    assert [call.args[-1] for call in chart.call_args_list] == [300, 300]
+    assert "History | 5.0 min" in [call.args[1] for call in text.call_args_list]
+
+
+def test_compressed_nan_buckets_do_not_join_across_measurement_gaps():
+    history = deque((index, (float(index) if index % 2 else float("nan"),)) for index in range(500))
+    graphs.compress_history(history, limit=128)
+    assert len(history) <= 128
+    for left, right in pairwise(history):
+        if np.isfinite(left[1]).all() and np.isfinite(right[1]).all():
+            assert right[0] - left[0] <= 1
+
+
+def test_reset_clears_histories_without_changing_settings_or_sampling_cadence(tmp_path):
+    worker = graphs.GraphWorker()
+    try:
+        worker.set_interval(60)
+        settings = worker._settings.copy()
+        worker.submit(snapshot((((0, 0), 22),)))
+        with worker._condition:
+            assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
+            assert worker._master and worker._spots
+        worker.clear_history()
+        with worker._condition:
+            assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
+            assert not worker._master and not worker._spots
+            assert worker._latest.spots == (((0, 0), 22),)
+            assert worker._interval == 60 and worker._settings == settings
+        path = worker.start_logging(tmp_path / "reset.csv")
+        before = path.read_bytes()
+        with pytest.raises(ValueError, match="Stop logging"):
+            worker.clear_history()
+        assert worker.logging and path.read_bytes() == before
+    finally:
+        worker.close()
+
+
+def test_reset_does_not_publish_an_inflight_render_with_old_data(monkeypatch):
+    started, release = threading.Event(), threading.Event()
+    real_render = graphs.render_graphs
+    count = 0
+
+    def render(*args):
+        nonlocal count
+        count += 1
+        if count == 1:
+            started.set()
+            assert release.wait(timeout=2)
+        return real_render(*args)
+
+    monkeypatch.setattr(graphs, "render_graphs", render)
+    worker = graphs.GraphWorker()
+    try:
+        worker.set_interval(60)
+        worker.submit(snapshot())
+        assert started.wait(timeout=2)
+        worker.clear_history()
+        release.set()
+        with worker._condition:
+            assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
+            assert count == 2 and not worker._master
+    finally:
+        release.set()
         worker.close()

@@ -36,6 +36,9 @@ messages.clear()
 window.show()
 app.processEvents()
 assert window.windowTitle() == "Capture"
+assert window.graphs.text() == "Include graphs"
+assert window.cursor.geometry().center().y() == window.graphs.geometry().center().y()
+assert window.cursor.geometry().right() < window.graphs.geometry().left()
 assert window.save_image.text() == "Save image data"
 window.save_image.click()
 assert messages[-1] == {"action": "image"}

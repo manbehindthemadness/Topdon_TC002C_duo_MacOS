@@ -100,6 +100,7 @@ def test_save_capture_preserves_raw_and_temperature_data(tmp_path):
 
 
 def test_native_save_dialog_returns_selected_path(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     chosen_path = tmp_path / "thermal.png"
 
     class FinishedProcess:

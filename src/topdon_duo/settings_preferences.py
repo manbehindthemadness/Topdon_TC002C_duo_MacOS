@@ -1,12 +1,16 @@
 """Validated desktop preferences, independent of Qt and camera baseline snapshots."""
 
 import json
+import math
 
+from .camera import FRAME_RATE
 from .distance_calibration import DistanceReference
 from .emissivity_calibration import validate_reference
+from .graph_settings import validate_graph_settings
 from .graphs import validate_graph_interval
 from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS
 from .reflected_calibration import validate_reference as validate_reflected_reference
+from .spot_preferences import validate_spots
 from .view_settings import validate_view_setting
 from .window_preferences import _path
 
@@ -33,10 +37,35 @@ def load_settings() -> dict:
             except (KeyError, TypeError, ValueError):
                 continue
             result[section][name] = value
+    ambient = saved.get("ambient_input_celsius")
+    if (
+        not isinstance(ambient, bool)
+        and isinstance(ambient, (int, float))
+        and math.isfinite(ambient)
+        and -50 <= ambient <= 100
+    ):
+        result["ambient_input_celsius"] = ambient
+    try:
+        result["spots"] = validate_spots(saved.get("spots"))
+    except (TypeError, ValueError):
+        pass
+    try:
+        result["graph_settings"] = validate_graph_settings(saved.get("graph_settings"))
+    except (TypeError, ValueError):
+        pass
+    rate = saved.get("timelapse_fpm")
+    if type(rate) is int and 1 <= rate <= FRAME_RATE * 60:
+        result["timelapse_fpm"] = rate
     rotation = saved.get("rotation")
     if type(rotation) is int and rotation in (0, 90, 180, 270):
         result["rotation"] = rotation
-    for name in ("advanced_auto", "show_graph", "auto_calibrate"):
+    for name in (
+        "advanced_auto",
+        "show_graph",
+        "auto_calibrate",
+        "capture_cursor",
+        "capture_graphs",
+    ):
         if isinstance(saved.get(name), bool):
             result[name] = saved[name]
     try:
