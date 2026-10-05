@@ -18,6 +18,7 @@ import numpy as np
 
 from .camera import FRAME_RATE, SENSOR_HEIGHT, SENSOR_WIDTH, CameraError, TC002CDuoCamera
 from .capture_panel import CapturePanel
+from .distance_calibration import DistanceCalibrator
 from .graphs import GraphSnapshot, GraphWorker, draw_graph_logging_control, graph_log_button_rect
 from .hardware_controls import HardwareControls
 from .pointer import PointerMonitor
@@ -256,7 +257,7 @@ def draw_toolbar(
         )
     labels = {
         "rotate": "Rotate",
-        "unit": f"Units: {temperature_unit}/{'ft' if temperature_unit == 'F' else 'm'}",
+        "unit": f"Units: {temperature_unit}/{'in' if temperature_unit == 'F' else 'cm'}",
         "view": "Camera",
         "spots": "Clear spots" if placing_spots else "Add spots",
         "capture": "Capture",
@@ -618,6 +619,29 @@ def draw_sample_spots(
     return _draw_contrasting_overlay(image, mask, text_mask)
 
 
+def draw_distance_selection(image, calibration, scale):
+    if not calibration.corners:
+        return image
+    mask = np.zeros(image.shape[:2], np.uint8)
+    text_mask = np.zeros_like(mask)
+    points = np.rint(np.asarray(calibration.corners) * scale).astype(np.int32)
+    if len(points) > 1:
+        cv2.polylines(mask, [points], len(points) == 4, 255, 1, cv2.LINE_AA)
+    for index, (x, y) in enumerate(points):
+        cv2.drawMarker(mask, (int(x), int(y)), 255, cv2.MARKER_CROSS, 11, 1)
+        cv2.putText(
+            text_mask,
+            str(index + 1),
+            (int(x) + 6, max(12, int(y) - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            255,
+            1,
+            cv2.LINE_AA,
+        )
+    return _draw_contrasting_overlay(image, mask, text_mask)
+
+
 def draw_picker(
     rendered: RenderedThermalFrame,
     picker: MousePicker,
@@ -771,6 +795,7 @@ def main(argv: list[str] | None = None) -> int:
     camera = TC002CDuoCamera()
     picker = MousePicker()
     spots = SampleSpots()
+    distance_calibration = DistanceCalibrator(saved_settings.get("distance_calibration"))
     pointer_monitor = PointerMonitor(WINDOW_NAME)
     save_dialog = LinuxSaveDialog() if sys.platform.startswith("linux") else MacSaveDialog()
     recorder = VideoRecorder()
@@ -797,6 +822,11 @@ def main(argv: list[str] | None = None) -> int:
                     "rotation": renderer.rotation,
                     "advanced_auto": advanced_auto,
                     "show_graph": show_graph,
+                    "distance_calibration": (
+                        distance_calibration.reference.as_dict()
+                        if distance_calibration.reference
+                        else None
+                    ),
                 }
             )
         except OSError as exc:
@@ -907,6 +937,8 @@ def main(argv: list[str] | None = None) -> int:
             sensor_height, sensor_width, renderer.mirror_horizontal, renderer.mirror_vertical
         )
         renderer.rotate_clockwise()
+        if distance_calibration.corners or distance_calibration.selecting:
+            distance_calibration.cancel()
         persist_settings()
         picker.x = picker.y = None
         last_selected = None
@@ -926,6 +958,8 @@ def main(argv: list[str] | None = None) -> int:
                 else (SENSOR_HEIGHT, SENSOR_WIDTH)
             )
             spots.mirror(width, height, name == "mirror_horizontal", name == "mirror_vertical")
+            if distance_calibration.corners or distance_calibration.selecting:
+                distance_calibration.cancel()
             picker.x = picker.y = None
             last_selected = None
 
@@ -961,6 +995,7 @@ def main(argv: list[str] | None = None) -> int:
             "hardware": hardware.state(),
             "advanced_auto": advanced_auto,
             "settings_locked": graphs.logging,
+            "distance_calibration": distance_calibration.state(),
             "status": message,
         }
 
@@ -1022,6 +1057,7 @@ def main(argv: list[str] | None = None) -> int:
                     "advanced_auto",
                     "restore_hardware",
                     "reset",
+                    "distance_calibration",
                 ):
                     notify("Stop temperature logging before changing settings.")
                     continue
@@ -1039,6 +1075,40 @@ def main(argv: list[str] | None = None) -> int:
                         persist_settings()
                         hardware.error = ""
                         renderer._average_raw = None
+                    elif command.get("action") == "distance_calibration":
+                        operation = command["operation"]
+                        if operation in ("select", "measure"):
+                            distance_calibration.begin(
+                                "reference" if operation == "select" else "measure"
+                            )
+                            notify(distance_calibration.message)
+                        elif operation == "cancel":
+                            distance_calibration.cancel()
+                        elif operation == "save":
+                            distance_calibration.save_reference(
+                                command["side_m"], command["distance_m"]
+                            )
+                            persist_settings()
+                            notify(distance_calibration.message)
+                        elif operation == "apply":
+                            estimated = distance_calibration.estimated_m
+                            if estimated is None or not 0.3 <= estimated <= 99:
+                                raise ValueError(
+                                    "Measure a valid square within the camera's distance range first"
+                                )
+                            value = round(estimated, 2)
+                            hardware.set("distance", value, True)
+                            distance_calibration.corners = []
+                            remembered_hardware["distance"] = hardware.state()["distance"]["value"]
+                            renderer._average_raw = None
+                            hardware.error = ""
+                            persist_settings()
+                            notify("Estimated distance applied to the camera")
+                        elif operation == "clear":
+                            distance_calibration.clear()
+                            persist_settings()
+                        else:
+                            raise ValueError("Unknown distance calibration operation")
                     elif command.get("action") == "advanced_auto":
                         if not isinstance(command["value"], bool):
                             raise ValueError("Advanced / Auto must be a boolean")
@@ -1079,6 +1149,8 @@ def main(argv: list[str] | None = None) -> int:
             renderer.ambient_celsius = ambient.get("value") if ambient.get("available") else None
             rendered = renderer.render_detailed(frame)
             actual_image_source = rendered.image_source
+            if not graphs.logging and distance_calibration.update(rendered.temperatures_celsius):
+                notify(distance_calibration.message)
             layout = toolbar_layout(rendered.image.shape[1])
             if not initial_window_size_set:
                 width, height = saved_window_size or (
@@ -1116,6 +1188,8 @@ def main(argv: list[str] | None = None) -> int:
                     try:
                         if kind == "graph_log":
                             path = graphs.start_logging(save_path)
+                            if distance_calibration.selecting:
+                                distance_calibration.cancel()
                             _restore_user_ownership([path])
                             notify(f"Logging temperatures to {path.name}")
                         elif kind in ("video", "timelapse"):
@@ -1170,6 +1244,7 @@ def main(argv: list[str] | None = None) -> int:
             display = draw_sample_spots(
                 display, rendered, spots, renderer.scale, renderer.temperature_unit
             )
+            display = draw_distance_selection(display, distance_calibration, renderer.scale)
             if show_instructions:
                 display = draw_control_instructions(display)
             if recorder.is_recording:
@@ -1185,6 +1260,8 @@ def main(argv: list[str] | None = None) -> int:
                     if pending_save_kind == "graph_log"
                     else f"Choose a filename for {pending_save_kind}..."
                 )
+            elif distance_calibration.selecting:
+                status = distance_calibration.message
             elif time.monotonic() < status_until:
                 status = status_message
             else:
@@ -1246,6 +1323,8 @@ def main(argv: list[str] | None = None) -> int:
                     show_instructions = not show_instructions
                 elif action == "quit":
                     quit_requested = True
+                elif action is None and distance_calibration.selecting:
+                    continue
                 elif action is None and spots.placing:
                     if graphs.logging:
                         notify("Stop temperature logging before changing measuring spots.")

@@ -101,7 +101,7 @@ The controls are available from the toolbar as well as the keyboard:
 | Save image data | **Capture** → **Save image data**, or `S` |
 | Open image, video and timelapse controls | **Capture** or `C` |
 | Rotate clockwise | **Rotate** or `O` |
-| Toggle metric/imperial units (°C + meters / °F + feet) | **Units** or `F` |
+| Toggle metric/imperial units (°C + centimeters / °F + inches) | **Units** or `F` |
 | Open camera controls | **Camera** or `V` |
 | Show/hide graph area | **Show graph** / **Hide graph** or `G` |
 | Start/stop temperature logging | **Log to CSV** / **Stop logging** at the top of the graph area, or `L` |
@@ -199,7 +199,7 @@ overrides; Reset display settings saves the display defaults. Explicit
 fields are ignored independently so valid preferences can still load.
 Each control has a title and editable value; only numeric ranges have sliders.
 The **Units** toggle and Camera's **Measurement units** selection switch together:
-metric uses Celsius and meters; imperial uses Fahrenheit and feet. Ambient,
+metric uses Celsius and centimeters; imperial uses Fahrenheit and inches. Ambient,
 reflected-temperature and distance inputs convert their values, ranges and
 steps accordingly. Distance sliders retain the camera's 1 cm precision, and
 pending edits survive unit changes. Hardware writes and saved hardware overrides
@@ -305,14 +305,64 @@ obtained upstream code, verified ACNet weights, and a successful local test.
 Large captures, original configuration payloads and extracted research material
 remain local under the gitignored `diagnostics/telemetry-research/` directory.
 
+## Distance calibration with a square
+
+Camera → Distance calibration uses a **76 × 76 mm Post-it** by default. You can
+edit the square's side length. Keep it flat, steady and facing the camera near
+the image center. Hold the cooler note in front of your warm palm, with skin
+visible around its edges. The sticky edge alone may not hold the whole note flat.
+The note needs thermal contrast against the hand; if it warms to the same
+temperature, use a fresh note or let it cool before trying again.
+
+1. Measure the distance from the camera's front lens to the note. Enter that
+   reference distance and the side length in centimeters or inches, according to
+   the selected measurement units.
+2. Click **Detect reference square** and hold steady. The detected outline appears
+   on the main image and locks after eight consistent frames. Click **Save reference**.
+3. Move the same square to another distance, keeping it face-on. Click
+   **Measure square** and hold steady for another automatic detection.
+4. Check the estimated distance against a tape measurement at another distance.
+   **Apply distance to camera** writes the estimate to the hardware distance
+setting, rounded to its 1 cm precision. Detecting and saving do not write it.
+
+The reference persists across restarts; incomplete selections and estimates do
+not. Recalibrate after changing the camera or lens. Clearing the calibration
+leaves the hardware distance setting unchanged. Controls are locked while logging.
+
+This is an approximate, single-reference range estimate: distance equals the
+reference distance multiplied by reference pixel width divided by current pixel
+width. It averages the four edges in native thermal coordinates, so display
+scaling, AI upsampling, mirroring and rotation do not change the scale. A new
+rotation or mirror change cancels the current detection. Crossed corners,
+noticeably tilted or uneven squares, and edges below 12 native pixels are
+rejected. Estimates outside the hardware's 0.3–99 m range cannot be applied.
+A 76 mm target may become too small well before the camera's maximum range.
+
+The initial shape detector sweeps temperature thresholds for square contours,
+also joins straight edges when uneven warming breaks the contour, refines the
+corners, and checks that warmer surroundings support at least three
+edges. Its starting hand-background range is 24–40 °C, with at least 0.75 °C
+contrast. It uses the native Celsius plane, independent of display palette,
+units and AI enhancement. Missing or multiple qualifying squares keep detection
+waiting; moving or losing the target restarts the stability check. These are
+thermal heuristics, so other cool squares against warm backgrounds can qualify.
+Check the displayed outline before saving or applying a measurement.
+
+The method follows the [pinhole projection model documented by OpenCV](https://docs.opencv.org/5.0/main_modules/calib.html).
+It does not correct lens distortion or solve target tilt; a single reference is
+not a full camera calibration. The front-lens measurement also approximates the
+optical origin. Verify accuracy at additional measured distances before relying
+on it for temperature compensation.
+
 ## Automatic controls and future calibrations
 
 Planned Auto behavior: adapt brightness, contrast, general/spatial/temporal noise
 reduction and detail enhancement using image histograms, estimated noise, motion
 and edge strength. These mappings still need validation on this camera.
 Ambient temperature stays manual and is excluded from automatic calculation.
-Distance, emissivity, reflected temperature and optical transmission also stay
-manual until a suitable reference-based calibration is available. Palettes,
+Distance can use the manual square calibration above; automatic target detection
+remains future work. Emissivity, reflected temperature and optical transmission
+stay manual until suitable reference-based calibrations are available. Palettes,
 mirrors and overlays remain user preferences. Weather humidity is a possible
 optional outdoor estimate, with its source and age shown; it is not a measured
 indoor value. Advanced / Auto is currently a placeholder.

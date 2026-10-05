@@ -2,6 +2,7 @@
 
 import json
 
+from .distance_calibration import DistanceReference
 from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS
 from .view_settings import validate_view_setting
 from .window_preferences import _path
@@ -35,6 +36,12 @@ def load_settings() -> dict:
     for name in ("advanced_auto", "show_graph"):
         if isinstance(saved.get(name), bool):
             result[name] = saved[name]
+    try:
+        result["distance_calibration"] = DistanceReference.from_dict(
+            saved.get("distance_calibration")
+        ).as_dict()
+    except (TypeError, ValueError):
+        pass
     return result
 
 

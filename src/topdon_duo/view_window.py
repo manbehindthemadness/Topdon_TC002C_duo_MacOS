@@ -20,6 +20,7 @@ from .capture_window import run_window
 from .hardware_controls import HARDWARE_CONTROLS
 from .view_settings import (
     COLOR_PALETTES,
+    DISTANCE_METERS_PER_UNIT,
     ENHANCEMENT_INPUTS,
     IMAGE_FILTERS,
     IMAGE_SOURCES,
@@ -81,11 +82,13 @@ class ControlRow(QWidget):
             self.input.currentIndexChanged.connect(self._input_changed)
         else:
             self.input = NoWheelSpinBox()
-            self.input.setRange(minimum, maximum)
-            self.input.setDecimals(2 if step == 0.01 else (1 if step == 0.1 else 0))
-            self.input.setSingleStep(step)
+            self.input.setRange(self._display_value(minimum), self._display_value(maximum))
+            self.input.setDecimals(
+                0 if self.is_distance else (2 if step == 0.01 else (1 if step == 0.1 else 0))
+            )
+            self.input.setSingleStep(step * 100 if self.is_distance else step)
             self.input.setKeyboardTracking(False)
-            self.input.setSuffix(f" {unit}" if unit else "")
+            self.input.setSuffix(" cm" if self.is_distance else f" {unit}" if unit else "")
             self.input.valueChanged.connect(self._input_changed)
         self.input.setMinimumWidth(160)
         self.input.setAccessibleName(title)
@@ -107,18 +110,19 @@ class ControlRow(QWidget):
             return self.input.currentData()
         value = self.input.value()
         if self.is_temperature or self.is_distance:
-            if self.temperature_unit == "F":
-                value = (value - 32) / 1.8 if self.is_temperature else value * 0.3048
+            if self.is_distance:
+                value *= DISTANCE_METERS_PER_UNIT[self.temperature_unit]
+            elif self.temperature_unit == "F":
+                value = (value - 32) / 1.8
             # Preserve hardware precision in Celsius and meters, regardless of display units.
             value = self.minimum + round((value - self.minimum) / self.step) * self.step
         return round(value, 2)
 
     def _display_value(self, value):
-        if self.temperature_unit == "F":
-            if self.is_temperature:
-                return value * 1.8 + 32
-            if self.is_distance:
-                return value / 0.3048
+        if self.is_distance:
+            return value / DISTANCE_METERS_PER_UNIT[self.temperature_unit]
+        if self.temperature_unit == "F" and self.is_temperature:
+            return value * 1.8 + 32
         return value
 
     def set_display_unit(self, unit):
@@ -131,9 +135,9 @@ class ControlRow(QWidget):
             step = self.step * 1.8 if unit == "F" else self.step
             suffix = f" °{unit}"
         else:
-            decimals = 3 if unit == "F" else 2
-            step = self.step / 0.3048 if unit == "F" else self.step
-            suffix = " ft" if unit == "F" else " m"
+            decimals = 2 if unit == "F" else 0
+            step = self.step / DISTANCE_METERS_PER_UNIT[unit]
+            suffix = " in" if unit == "F" else " cm"
         with QSignalBlocker(self.input):
             self.input.setDecimals(decimals)
             self.input.setRange(
@@ -183,6 +187,151 @@ class ControlRow(QWidget):
             return
         if value != self.value():
             self._set_value(value)
+
+
+class DistanceCalibrationControls(QWidget):
+    def __init__(self, send):
+        super().__init__()
+        self._send = send
+        self._unit = "C"
+        self._reference = None
+        self._state = {}
+        self._locked = False
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        heading = QLabel("Distance calibration")
+        heading.setStyleSheet("font-size: 16px; font-weight: bold")
+        layout.addWidget(heading)
+        instructions = QLabel(
+            "Default target: a 76 x 76 mm Post-it (edit the size if needed). "
+            "Hold the cooler note flat in front of your warm palm, with skin "
+            "visible around its edges. Face it toward the camera and hold steady "
+            "for automatic detection. Measure from the front lens. "
+            "Estimates need independent validation."
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+        self.side = NoWheelSpinBox()
+        self.distance = NoWheelSpinBox()
+        self._physical_values = {self.side: (0.076, 7.6), self.distance: (0, 0)}
+        for title, control, maximum, step in (
+            ("Square side length", self.side, 10, 0.001),
+            ("Measured reference distance", self.distance, 99, 0.01),
+        ):
+            line = QHBoxLayout()
+            line.addWidget(QLabel(title), 1)
+            control.setAccessibleName(title)
+            control.setRange(0, maximum * 100)
+            control.setDecimals(4)
+            control.setSingleStep(step * 100)
+            control.setSuffix(" cm")
+            control.setKeyboardTracking(False)
+            control.valueChanged.connect(self._update_buttons)
+            line.addWidget(control)
+            layout.addLayout(line)
+        self.select = QPushButton("Detect reference square")
+        self.save = QPushButton("Save reference")
+        self.measure = QPushButton("Measure square")
+        self.apply = QPushButton("Apply distance to camera")
+        self.clear = QPushButton("Clear calibration")
+        self.select.clicked.connect(
+            lambda: self._send(
+                {
+                    "action": "distance_calibration",
+                    "operation": "cancel" if self._state.get("selecting") else "select",
+                }
+            )
+        )
+        self.save.clicked.connect(self._save)
+        for button, operation in (
+            (self.measure, "measure"),
+            (self.apply, "apply"),
+            (self.clear, "clear"),
+        ):
+            button.clicked.connect(
+                lambda _checked=False, operation=operation: self._send(
+                    {"action": "distance_calibration", "operation": operation}
+                )
+            )
+        for controls in ((self.select, self.save), (self.measure, self.apply, self.clear)):
+            line = QHBoxLayout()
+            for button in controls:
+                line.addWidget(button)
+            layout.addLayout(line)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.side.setValue(7.6)
+
+    def _meters(self, control):
+        meters, shown = self._physical_values[control]
+        if control.value() != shown:
+            meters = control.value() * DISTANCE_METERS_PER_UNIT[self._unit]
+            self._physical_values[control] = (meters, control.value())
+        return meters
+
+    def _save(self):
+        if not self._locked:
+            self.side.interpretText()
+            self.distance.interpretText()
+            self._send(
+                {
+                    "action": "distance_calibration",
+                    "operation": "save",
+                    "side_m": self._meters(self.side),
+                    "distance_m": self._meters(self.distance),
+                }
+            )
+
+    def _update_buttons(self, *_args):
+        selecting = bool(self._state.get("selecting"))
+        self.select.setText("Cancel detection" if selecting else "Detect reference square")
+        self.select.setEnabled(not self._locked)
+        self.save.setEnabled(
+            not self._locked
+            and self._state.get("ready", False)
+            and self.side.value() > 0
+            and self.distance.value() > 0
+        )
+        self.measure.setEnabled(not self._locked and bool(self._reference) and not selecting)
+        estimated = self._state.get("estimated_m")
+        self.apply.setEnabled(not self._locked and estimated is not None and 0.3 <= estimated <= 99)
+        self.clear.setEnabled(not self._locked and bool(self._reference))
+
+    def update_state(self, state, unit, locked):
+        if unit != self._unit:
+            self.side.interpretText()
+            self.distance.interpretText()
+        values = (self._meters(self.side), self._meters(self.distance))
+        reference = state.get("reference")
+        update_inputs = unit != self._unit or bool(reference and reference != self._reference)
+        if reference != self._reference and reference:
+            values = (reference["side_m"], reference["distance_m"])
+        self._reference, self._state, self._unit, self._locked = reference, state, unit, locked
+        factor = 1 / DISTANCE_METERS_PER_UNIT[unit]
+        for control, value, maximum, step in (
+            (self.side, values[0], 10, 0.001),
+            (self.distance, values[1], 99, 0.01),
+        ):
+            if update_inputs:
+                with QSignalBlocker(control):
+                    control.setRange(0, maximum * factor)
+                    control.setSingleStep(step * factor)
+                    control.setSuffix(" in" if unit == "F" else " cm")
+                    control.setValue(value * factor)
+                    self._physical_values[control] = (value, control.value())
+            control.setEnabled(not locked)
+        message = state.get("status", "Select a reference square to begin.")
+        estimated = state.get("estimated_m")
+        if estimated is not None:
+            message = (
+                f"Estimated distance: {estimated * factor:.2f} {'in' if unit == 'F' else 'cm'}. "
+                + message
+            )
+            if not 0.3 <= estimated <= 99:
+                message += " Outside the camera's distance range."
+        self.status.setText(message)
+        self._update_buttons()
 
 
 class ViewWindow(QWidget):
@@ -337,6 +486,8 @@ class ViewWindow(QWidget):
                 switches.setColumnStretch(1, 1)
                 rows.addLayout(switches)
                 self.display_switches = switches
+        self.distance_calibration = DistanceCalibrationControls(self._send)
+        rows.addWidget(self.distance_calibration)
         rows.addStretch()
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -399,6 +550,11 @@ class ViewWindow(QWidget):
                 setting.get("value", HARDWARE_CONTROLS[name].minimum),
                 setting.get("available", True) and not self._settings_locked,
             )
+        self.distance_calibration.update_state(
+            state.get("distance_calibration", {}),
+            state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]),
+            self._settings_locked,
+        )
         self.status.setText(state.get("status", ""))
         if state.get("raise_window"):
             self.showNormal()

@@ -1,0 +1,9 @@
+Live TC002C Duo capture, 2026-10-04. User held a 76 x 76 mm Post-it
+in front of a palm. Native oriented Celsius plane is 192 x 256 pixels.
+The top edge has uneven warmth and the lower hand margin is narrow.
+Capture PNG, metadata and original NPZ remain in gitignored
+diagnostics/post-it-calibration/hand-note-example.*.
+
+This fixture checks detection of the square outline near center (105, 79),
+with sides approximately 51 native pixels. It is not a distance or
+temperature accuracy reference; the physical distance was not measured.
