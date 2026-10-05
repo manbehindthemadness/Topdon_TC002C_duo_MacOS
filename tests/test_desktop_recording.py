@@ -16,6 +16,21 @@ def viewer(monkeypatch, tmp_path):
     hardware = Mock(original={"loaded": True}, enabled=set(), error="", preview_active=False)
     hardware.state.return_value = {"ambient": {"value": 30.0, "available": True}}
     monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
+    graphs = Mock(logging=False)
+    graphs.take_logging_error.return_value = None
+
+    def start_logging(path):
+        graphs.logging = True
+        return path.with_suffix(".csv")
+
+    def stop_logging():
+        graphs.logging = False
+        return dialog.selected.with_suffix(".csv")
+
+    graphs.start_logging.side_effect = start_logging
+    graphs.stop_logging.side_effect = stop_logging
+    graphs.image.side_effect = lambda size: np.zeros((size[1], size[0], 3), np.uint8)
+    monkeypatch.setattr(desktop, "GraphWorker", lambda: graphs)
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 30
     monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)
@@ -120,6 +135,7 @@ def viewer(monkeypatch, tmp_path):
         return wait_key
 
     return SimpleNamespace(
+        graphs=graphs,
         hardware=hardware,
         camera=camera,
         writer=writer,
@@ -496,7 +512,7 @@ def test_show_graph_doubles_window_width_and_hides_back_to_original(viewer, monk
         (930, 710),
     ]
     assert [image.shape[1] for image in viewer.displayed] == [768, 1536, 768]
-    assert np.count_nonzero(viewer.displayed[1][:, 768:]) == 0
+    assert np.count_nonzero(viewer.displayed[1][34:, 768:]) == 0
     assert load_settings()["show_graph"] is False
 
 
@@ -516,7 +532,7 @@ def test_show_graph_survives_restart_without_doubling_again(viewer, monkeypatch)
     assert desktop.main([]) == 0
     desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, *size)
     assert viewer.displayed[-1].shape[1] == 1536
-    assert np.count_nonzero(viewer.displayed[-1][:, 768:]) == 0
+    assert np.count_nonzero(viewer.displayed[-1][34:, 768:]) == 0
 
 
 def test_graph_area_does_not_sample_thermal_pixels(viewer, monkeypatch):
@@ -552,3 +568,172 @@ def test_graph_area_does_not_sample_thermal_pixels(viewer, monkeypatch):
     monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
     assert desktop.main([]) == 0
     assert samples == [None, None, (80, 60)]
+
+
+def test_graph_submission_uses_frame_orientation_and_pauses_when_hidden(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import save_settings
+
+    save_settings({"show_graph": True})
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            return ord("p")
+        if step == 2:
+            callback = viewer.set_mouse.call_args.args[1]
+            callback(cv2.EVENT_LBUTTONUP, 750, 570 + desktop.toolbar_layout(768).height, 0, None)
+            viewer.click_control("rotate")
+            return -1
+        if step == 3:
+            return -1
+        return ord("q")
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    data = viewer.graphs.submit.call_args.args[0]
+    assert data.spots == (((0, 0), 20000 / 64 - 50),)
+    assert data.stats == (20000 / 64 - 50,) * 4
+    viewer.graphs.close.assert_called_once()
+    viewer.graphs.submit.reset_mock()
+    viewer.graphs.pause.reset_mock()
+    save_settings({"show_graph": False})
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    viewer.graphs.submit.assert_not_called()
+    viewer.graphs.pause.assert_called_once()
+
+
+def test_graph_logging_button_locks_hiding_until_logging_stops(viewer, monkeypatch):
+    from topdon_duo.graphs import graph_log_button_rect
+    from topdon_duo.settings_preferences import save_settings
+
+    save_settings({"show_graph": True})
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def click_log():
+        x0, y0, x1, y1 = graph_log_button_rect(768)
+        callback = viewer.set_mouse.call_args.args[1]
+        callback(cv2.EVENT_LBUTTONUP, 768 + (x0 + x1) // 2, (y0 + y1) // 2, 0, None)
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            click_log()
+            viewer.click_control("graph")  # Locked while choosing the logfile.
+        elif step == 4:
+            assert viewer.graphs.logging
+            viewer.click_control("graph")  # Toolbar route must be locked as well as G.
+            return ord("g")
+        elif step == 5:
+            assert viewer.graphs.logging
+            click_log()
+        elif step == 6:
+            assert not viewer.graphs.logging
+            viewer.click_control("graph")
+        elif step == 7:
+            return ord("q")
+        return -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert viewer.dialog.open_calls == [(None, {"suffix": ".csv", "kind": "temperatures"})]
+    viewer.graphs.start_logging.assert_called_once_with(viewer.dialog.selected)
+    viewer.graphs.stop_logging.assert_called_once()
+    assert [image.shape[1] for image in viewer.displayed] == [1536] * 6 + [768]
+    assert len(desktop.cv2.resizeWindow.call_args_list) == 2
+    assert any(call.kwargs["graph_locked"] for call in viewer.draw_toolbar.call_args_list)
+
+
+def test_cancel_graph_log_dialog_unlocks_graphs(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import save_settings
+
+    save_settings({"show_graph": True})
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    # L starts choosing a file; pressing L again cancels before a path is selected.
+    monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events(["l", "l", "g", "q"]))
+    assert desktop.main([]) == 0
+    viewer.graphs.start_logging.assert_not_called()
+    assert viewer.displayed[-1].shape[1] == 768
+
+
+def test_graph_logging_button_maps_resized_viewport():
+    from topdon_duo.graphs import graph_log_button_rect
+
+    x0, y0, x1, y1 = graph_log_button_rect(768)
+    for scale in (0.5, 1, 1.5):
+        viewport = (768 * scale, 650 * scale)  # Thermal half of combined viewport.
+        assert desktop.graph_logging_button_at(
+            round((768 + (x0 + x1) / 2) * scale), round((y0 + y1) / 2 * scale), 768, 650, viewport
+        )
+        assert not desktop.graph_logging_button_at(20, 20, 768, 650, viewport)
+
+
+def test_logging_blocks_camera_settings_toolbar_and_shortcuts_then_unlocks(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    save_settings({"show_graph": True})
+    viewer.graphs.logging = True
+    panel = Mock()
+    panel.poll.side_effect = [
+        [
+            {"action": "setting", "name": "mirror_horizontal", "value": True},
+            {"action": "hardware", "name": "ambient", "value": 35, "enabled": True},
+            {"action": "restore_hardware"},
+            {"action": "reset"},
+            {"action": "advanced_auto", "value": False},
+        ],
+        [],
+        [],
+        [],
+        [],
+    ]
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        if step == 1:
+            for action in ("unit", "rotate", "spots"):
+                viewer.click_control(action)
+            return ord("f")
+        if step == 2:
+            return ord("o")
+        if step == 3:
+            return ord("p")
+        if step == 4:
+            viewer.graphs.logging = False
+            return ord("f")  # Works again after logging stops.
+        return ord("q")
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    viewer.hardware.set.assert_not_called()
+    viewer.hardware.restore.assert_called_once()  # Normal exit restoration only.
+    saved = load_settings()
+    assert saved["rotation"] == 0
+    assert saved["display"]["mirror_horizontal"] is False
+    assert saved["display"]["temperature_unit"] == "F"
+    assert saved["advanced_auto"] is True
+    assert saved["hardware"] == {}
+    assert [call.args[0]["settings_locked"] for call in panel.update.call_args_list] == [
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
+    assert [call.kwargs["settings_locked"] for call in viewer.draw_toolbar.call_args_list] == [
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
+    assert all(not call.args[0].spots for call in viewer.graphs.submit.call_args_list)

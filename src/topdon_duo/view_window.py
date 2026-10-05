@@ -160,7 +160,8 @@ class ControlRow(QWidget):
 
     def _emit(self):
         self.timer.stop()
-        self.changed(self.value())
+        if self.input.isEnabled():
+            self.changed(self.value())
 
     def update_state(self, value, available=True):
         self._set_enabled(available)
@@ -174,6 +175,7 @@ class ViewWindow(QWidget):
     def __init__(self, send) -> None:
         super().__init__()
         self._send = send
+        self._settings_locked = False
         self.controls = {}
         self.rows = {}
         self.hardware_rows = {}
@@ -328,9 +330,9 @@ class ViewWindow(QWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         buttons = QHBoxLayout()
-        reset = QPushButton("Reset display settings")
+        reset = self.reset_button = QPushButton("Reset display settings")
         reset.clicked.connect(self._reset_display)
-        restore = QPushButton("Restore camera settings")
+        restore = self.restore_button = QPushButton("Restore camera settings")
         restore.clicked.connect(self._restore_hardware)
         close = QPushButton("Close")
         close.clicked.connect(self.close)
@@ -351,20 +353,31 @@ class ViewWindow(QWidget):
         super().closeEvent(event)
 
     def _reset_display(self):
+        if self._settings_locked:
+            return
         for row in self.rows.values():
             row.timer.stop()
         self._send({"action": "reset"})
 
     def _restore_hardware(self):
+        if self._settings_locked:
+            return
         for row in self.hardware_rows.values():
             row.timer.stop()
         self._send({"action": "restore_hardware"})
 
     def update_state(self, state: dict) -> None:
+        self._settings_locked = bool(state.get("settings_locked", False))
+        if self._settings_locked:
+            for row in (*self.rows.values(), *self.hardware_rows.values()):
+                row.timer.stop()
+        self.advanced_auto.setEnabled(not self._settings_locked)
+        self.reset_button.setEnabled(not self._settings_locked)
+        self.restore_button.setEnabled(not self._settings_locked)
         with QSignalBlocker(self.advanced_auto):
             self.advanced_auto.setChecked(state.get("advanced_auto", True))
         for name, row in self.rows.items():
-            row.update_state(state.get(name, VIEW_DEFAULTS[name]))
+            row.update_state(state.get(name, VIEW_DEFAULTS[name]), not self._settings_locked)
         for name, row in self.hardware_rows.items():
             row.set_temperature_unit(
                 state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"])
@@ -372,7 +385,7 @@ class ViewWindow(QWidget):
             setting = state.get("hardware", {}).get(name, {})
             row.update_state(
                 setting.get("value", HARDWARE_CONTROLS[name].minimum),
-                setting.get("available", True),
+                setting.get("available", True) and not self._settings_locked,
             )
         self.status.setText(state.get("status", ""))
         if state.get("raise_window"):

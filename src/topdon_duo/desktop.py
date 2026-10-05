@@ -18,6 +18,7 @@ import numpy as np
 
 from .camera import FRAME_RATE, SENSOR_HEIGHT, SENSOR_WIDTH, CameraError, TC002CDuoCamera
 from .capture_panel import CapturePanel
+from .graphs import GraphSnapshot, GraphWorker, draw_graph_logging_control, graph_log_button_rect
 from .hardware_controls import HardwareControls
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
@@ -86,11 +87,13 @@ class ToolbarLayout:
 class SampleSpots:
     placing: bool = False
     pixels: list[tuple[int, int]] = field(default_factory=list)
+    generation: int = 0
 
     def toggle(self) -> None:
         self.placing = not self.placing
         if not self.placing:
             self.pixels.clear()
+            self.generation += 1
 
     def add(self, pixel: tuple[int, int] | None) -> None:
         if self.placing and pixel is not None and pixel not in self.pixels:
@@ -139,6 +142,8 @@ class MacSaveDialog:
         script = SAVE_DIALOG_SCRIPT
         if Path(default_name).suffix.lower() == ".mp4":
             script = script.replace("Save thermal capture", "Save thermal recording")
+        elif Path(default_name).suffix.lower() == ".csv":
+            script = script.replace("Save thermal capture", "Save temperature log")
         return [
             "/usr/bin/osascript",
             "-e",
@@ -182,14 +187,23 @@ class LinuxSaveDialog(MacSaveDialog):
 
     def _command(self, default_name: str, directory: str) -> list[str]:
         video = Path(default_name).suffix.lower() == ".mp4"
+        csv_log = Path(default_name).suffix.lower() == ".csv"
         return [
             "zenity",
             "--file-selection",
             "--save",
             "--confirm-overwrite",
-            "--title=Save thermal recording" if video else "--title=Save thermal capture",
+            "--title=Save temperature log"
+            if csv_log
+            else "--title=Save thermal recording"
+            if video
+            else "--title=Save thermal capture",
             f"--filename={Path(directory) / default_name}",
-            "--file-filter=MP4 videos | *.mp4" if video else "--file-filter=PNG images | *.png",
+            "--file-filter=CSV logs | *.csv"
+            if csv_log
+            else "--file-filter=MP4 videos | *.mp4"
+            if video
+            else "--file-filter=PNG images | *.png",
         ]
 
 
@@ -230,6 +244,8 @@ def draw_toolbar(
     status: str = "Ready",
     stats: TemperatureStats | None = None,
     show_graph: bool = False,
+    graph_locked: bool = False,
+    settings_locked: bool = False,
 ) -> np.ndarray:
     layout = toolbar_layout(image.shape[1])
     canvas = np.zeros((image.shape[0] + layout.height, image.shape[1], 3), np.uint8)
@@ -255,7 +271,10 @@ def draw_toolbar(
             or (action == "spots" and placing_spots)
         )
         active = active or (action == "capture" and bool(recording_mode or pending_recording))
-        fill = (74, 92, 70) if active else (47, 51, 61)
+        disabled = (action == "graph" and graph_locked) or (
+            settings_locked and action in ("rotate", "unit", "spots")
+        )
+        fill = (30, 32, 38) if disabled else (74, 92, 70) if active else (47, 51, 61)
         cv2.rectangle(canvas, (x0, y0), (x1, y1), fill, -1)
         cv2.rectangle(canvas, (x0, y0), (x1, y1), (105, 112, 128), 1)
         label = labels[action]
@@ -277,7 +296,7 @@ def draw_toolbar(
             ),
             cv2.FONT_HERSHEY_SIMPLEX,
             font_scale,
-            (235, 238, 244),
+            (120, 125, 135) if disabled else (235, 238, 244),
             1,
             cv2.LINE_AA,
         )
@@ -316,6 +335,16 @@ def toolbar_action_at(
         if x0 <= x <= x1 and y0 <= y <= y1:
             return action
     return None
+
+
+def graph_logging_button_at(x, y, image_width, canvas_height, viewport_size=None):
+    if viewport_size:
+        if viewport_size[0] <= 0 or viewport_size[1] <= 0:
+            return False
+        x = round(x * image_width / viewport_size[0])
+        y = round(y * canvas_height / viewport_size[1])
+    x0, y0, x1, y1 = graph_log_button_rect(image_width)
+    return x0 <= x - image_width <= x1 and y0 <= y <= y1
 
 
 def _restore_user_ownership(paths: list[Path]) -> None:
@@ -645,7 +674,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     """Draw a translucent keyboard/mouse help panel over the image."""
     result = image.copy()
     panel_width = min(390, result.shape[1] - 20)
-    panel_height = min(324, result.shape[0] - 20)
+    panel_height = min(349, result.shape[0] - 20)
     x0, y0 = 10, result.shape[0] - panel_height - 10
     x1, y1 = x0 + panel_width, y0 + panel_height
 
@@ -665,6 +694,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
         ("F            Toggle Celsius / Fahrenheit", (210, 215, 225)),
         ("V            Open Camera controls", (210, 215, 225)),
         ("G            Show / hide graph area", (210, 215, 225)),
+        ("L            Start / stop CSV logging", (210, 215, 225)),
         ("Space        Hide controls", (210, 215, 225)),
         ("Q / Esc      Quit", (210, 215, 225)),
     )
@@ -747,6 +777,7 @@ def main(argv: list[str] | None = None) -> int:
     capture_panel = CapturePanel()
     view_panel = ViewPanel()
     hardware = HardwareControls(camera)
+    graphs = GraphWorker()
     actual_image_source = renderer.image_source
     pending_save_kind: str | None = None
     capture_cursor = False
@@ -773,11 +804,16 @@ def main(argv: list[str] | None = None) -> int:
 
     def toggle_graph() -> None:
         nonlocal show_graph, requested_window_size, last_window_size
+        if graphs.logging or pending_save_kind == "graph_log":
+            notify("Stop graph logging before hiding graphs.")
+            return
         size = window_resize_size(WINDOW_NAME) or last_window_size or requested_window_size
         if size is None:
             return
         width, height = size
         show_graph = not show_graph
+        if not show_graph:
+            graphs.pause()
         requested_window_size = (width * 2 if show_graph else max(1, round(width / 2)), height)
         cv2.resizeWindow(WINDOW_NAME, *requested_window_size)
         last_window_size = requested_window_size
@@ -789,6 +825,29 @@ def main(argv: list[str] | None = None) -> int:
         status_message = message
         status_until = time.monotonic() + 8.0
         LOG.info("%s", message)
+
+    def toggle_graph_logging() -> None:
+        nonlocal pending_save_kind
+        if graphs.logging:
+            try:
+                path = graphs.stop_logging()
+                if path is not None:
+                    _restore_user_ownership([path])
+                    notify(f"Saved temperature log: {path.name}")
+            except OSError as exc:
+                notify(f"Could not finish temperature log: {exc}")
+        elif pending_save_kind == "graph_log":
+            save_dialog.close()
+            pending_save_kind = None
+            notify("Temperature logging cancelled")
+        elif save_dialog.is_open:
+            notify("Finish the current Save dialog before starting temperature logging.")
+        elif show_graph:
+            try:
+                if save_dialog.open(args.output, suffix=".csv", kind="temperatures"):
+                    pending_save_kind = "graph_log"
+            except OSError as exc:
+                notify(f"Could not choose a temperature log file: {exc}")
 
     def set_timelapse_fpm(value: int) -> None:
         nonlocal timelapse_fpm
@@ -834,6 +893,9 @@ def main(argv: list[str] | None = None) -> int:
 
     def rotate_view() -> None:
         nonlocal last_selected
+        if graphs.logging:
+            notify("Stop temperature logging before changing settings.")
+            return
         # Rotate the stored sensor coordinates with the image, preserving samples.
         sensor_height = SENSOR_HEIGHT if renderer.rotation in (0, 180) else SENSOR_WIDTH
         sensor_width = SENSOR_WIDTH if renderer.rotation in (0, 180) else SENSOR_HEIGHT
@@ -851,6 +913,9 @@ def main(argv: list[str] | None = None) -> int:
 
     def set_view_setting(name: str, value: object) -> None:
         nonlocal last_selected
+        if graphs.logging:
+            notify("Stop temperature logging before changing settings.")
+            return
         previous = renderer.view_settings()
         renderer.set_view_setting(name, value)
         persist_settings()
@@ -863,6 +928,15 @@ def main(argv: list[str] | None = None) -> int:
             spots.mirror(width, height, name == "mirror_horizontal", name == "mirror_vertical")
             picker.x = picker.y = None
             last_selected = None
+
+    def toggle_spots() -> None:
+        if graphs.logging:
+            notify("Stop temperature logging before changing measuring spots.")
+            return
+        spots.toggle()
+
+    def toggle_temperature_unit() -> None:
+        set_view_setting("temperature_unit", "F" if renderer.temperature_unit == "C" else "C")
 
     def view_state() -> dict:
         message = "Camera preview" if actual_image_source == "preview" else "Raw thermal image"
@@ -880,10 +954,13 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 algorithm = "Anime4K09" if renderer.upsampling == "anime4k09" else "ACNet"
                 message += f" · {algorithm} 2× · {renderer.upsampler.elapsed_ms:.0f} ms"
+        if graphs.logging:
+            message += " · Settings locked while logging"
         return {
             **renderer.view_settings(),
             "hardware": hardware.state(),
             "advanced_auto": advanced_auto,
+            "settings_locked": graphs.logging,
             "status": message,
         }
 
@@ -900,7 +977,9 @@ def main(argv: list[str] | None = None) -> int:
     def capture_state() -> dict:
         return {
             "recording_mode": recorder.mode,
-            "pending_recording": pending_save_kind if pending_save_kind != "image" else None,
+            "pending_recording": pending_save_kind
+            if pending_save_kind in ("video", "timelapse")
+            else None,
             "capture_cursor": capture_cursor,
             "frames_per_minute": timelapse_fpm,
             "max_fpm": TIMELAPSE_MAX_FPM,
@@ -916,7 +995,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "Mouse: inspect a pixel | "
         "p: add/clear spots | s: save image data | c: Capture controls | "
-        "o: rotate | f: C/F | v: Camera controls | g: show/hide graph | Space: controls | q/Esc: quit"
+        "o: rotate | f: C/F | v: Camera controls | g: show/hide graph | l: log temperatures | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
@@ -937,6 +1016,15 @@ def main(argv: list[str] | None = None) -> int:
         initial_window_size_set = False
         for frame in camera.frames():
             for command in view_panel.poll():
+                if graphs.logging and command.get("action") in (
+                    "setting",
+                    "hardware",
+                    "advanced_auto",
+                    "restore_hardware",
+                    "reset",
+                ):
+                    notify("Stop temperature logging before changing settings.")
+                    continue
                 try:
                     if command.get("action") == "setting":
                         set_view_setting(command["name"], command["value"])
@@ -991,7 +1079,6 @@ def main(argv: list[str] | None = None) -> int:
             renderer.ambient_celsius = ambient.get("value") if ambient.get("available") else None
             rendered = renderer.render_detailed(frame)
             actual_image_source = rendered.image_source
-            view_panel.update(view_state())
             layout = toolbar_layout(rendered.image.shape[1])
             if not initial_window_size_set:
                 width, height = saved_window_size or (
@@ -1019,12 +1106,19 @@ def main(argv: list[str] | None = None) -> int:
             if selected is not None:
                 last_selected = selected
 
+            logging_error = graphs.take_logging_error()
+            if logging_error:
+                notify(logging_error)
             save_finished, save_path = save_dialog.poll()
             if save_finished:
                 kind, pending_save_kind = pending_save_kind, None
                 if save_path is not None:
                     try:
-                        if kind in ("video", "timelapse"):
+                        if kind == "graph_log":
+                            path = graphs.start_logging(save_path)
+                            _restore_user_ownership([path])
+                            notify(f"Logging temperatures to {path.name}")
+                        elif kind in ("video", "timelapse"):
                             recorder.start(
                                 save_path,
                                 (
@@ -1086,7 +1180,11 @@ def main(argv: list[str] | None = None) -> int:
                 if recorder.mode == "timelapse":
                     status += f" | {timelapse_fpm}/min"
             elif pending_save_kind:
-                status = f"Choose a filename for {pending_save_kind}..."
+                status = (
+                    "Choose a filename for temperature logging..."
+                    if pending_save_kind == "graph_log"
+                    else f"Choose a filename for {pending_save_kind}..."
+                )
             elif time.monotonic() < status_until:
                 status = status_message
             else:
@@ -1098,14 +1196,33 @@ def main(argv: list[str] | None = None) -> int:
                 renderer.temperature_unit,
                 placing_spots=spots.placing,
                 recording_mode=recorder.mode,
-                pending_recording=pending_save_kind if pending_save_kind != "image" else None,
+                pending_recording=pending_save_kind
+                if pending_save_kind in ("video", "timelapse")
+                else None,
                 status=status,
                 stats=rendered.stats,
                 show_graph=show_graph,
+                graph_locked=graphs.logging or pending_save_kind == "graph_log",
+                settings_locked=graphs.logging,
             )
 
+            # Capture spot values in this frame's orientation, before click actions can rotate
+            # coordinates or add/clear spots. The next frame supplies any changed selection.
+            graph_spots = (
+                tuple(
+                    ((spots.generation, index), float(rendered.temperatures_celsius[y, x]))
+                    for index, (x, y) in enumerate(spots.pixels)
+                )
+                if show_graph
+                else ()
+            )
             quit_requested = False
             for click_x, click_y in picker.consume_clicks():
+                if show_graph and graph_logging_button_at(
+                    click_x, click_y, rendered.image.shape[1], display.shape[0], viewport_size
+                ):
+                    toggle_graph_logging()
+                    continue
                 action = toolbar_action_at(
                     click_x,
                     click_y,
@@ -1118,12 +1235,11 @@ def main(argv: list[str] | None = None) -> int:
                 elif action == "rotate":
                     rotate_view()
                 elif action == "spots":
-                    spots.toggle()
+                    toggle_spots()
                 elif action == "view":
                     open_view()
                 elif action == "unit":
-                    renderer.toggle_temperature_unit()
-                    persist_settings()
+                    toggle_temperature_unit()
                 elif action == "graph":
                     toggle_graph()
                 elif action == "help":
@@ -1131,6 +1247,9 @@ def main(argv: list[str] | None = None) -> int:
                 elif action == "quit":
                     quit_requested = True
                 elif action is None and spots.placing:
+                    if graphs.logging:
+                        notify("Stop temperature logging before changing measuring spots.")
+                        continue
                     position = image_position_at(
                         click_x, click_y, rendered.image.shape, viewport_size, layout.height
                     )
@@ -1141,8 +1260,28 @@ def main(argv: list[str] | None = None) -> int:
                     )
             if quit_requested:
                 break
+            view_panel.update(view_state())
+            graph_size = (display.shape[1], display.shape[0])
             if show_graph:
-                display = np.pad(display, ((0, 0), (0, display.shape[1]), (0, 0)))
+                graphs.submit(
+                    GraphSnapshot(
+                        stats=(
+                            rendered.stats.minimum,
+                            rendered.stats.average,
+                            rendered.stats.maximum,
+                            rendered.stats.center,
+                        ),
+                        spots=graph_spots,
+                        size=graph_size,
+                        unit=renderer.temperature_unit,
+                    )
+                )
+                display = np.concatenate((display, graphs.image(graph_size)), axis=1)
+                draw_graph_logging_control(
+                    display[:, graph_size[0] :], graphs.logging, pending_save_kind == "graph_log"
+                )
+            else:
+                graphs.pause()
             cv2.imshow(WINDOW_NAME, display)
             key = cv2.waitKey(1) & 0xFF
             current_size = window_resize_size(WINDOW_NAME)
@@ -1159,14 +1298,15 @@ def main(argv: list[str] | None = None) -> int:
             if key == ord("o"):
                 rotate_view()
             elif key == ord("p"):
-                spots.toggle()
+                toggle_spots()
             elif key == ord(" "):
                 show_instructions = not show_instructions
             elif key == ord("g"):
                 toggle_graph()
+            elif key == ord("l"):
+                toggle_graph_logging()
             elif key == ord("f"):
-                renderer.toggle_temperature_unit()
-                persist_settings()
+                toggle_temperature_unit()
             elif key == ord("v"):
                 open_view()
             elif key == ord("s"):
@@ -1183,6 +1323,10 @@ def main(argv: list[str] | None = None) -> int:
                 save_main_window_size(last_window_size)
             except OSError as exc:
                 LOG.warning("Could not save main window size: %s", exc)
+        try:
+            graphs.close()
+        except OSError as exc:
+            LOG.error("Could not finalize temperature log: %s", exc)
         stop_recording()
         capture_panel.close()
         view_panel.close()

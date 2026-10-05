@@ -104,13 +104,39 @@ The controls are available from the toolbar as well as the keyboard:
 | Toggle Celsius/Fahrenheit | **Unit** or `F` |
 | Open camera controls | **Camera** or `V` |
 | Show/hide graph area | **Show graph** / **Hide graph** or `G` |
+| Start/stop temperature logging | **Log to CSV** / **Stop logging** at the top of the graph area, or `L` |
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
 
-**Show graph** doubles the main window width, keeping its height and reserving
-a blank area to the right of the thermal image. **Hide graph** halves the width
-again. The toggle is remembered across restarts. Graph rendering is not yet
-implemented; captures and recordings continue to contain the thermal view only.
+**Show graph** doubles the main window width, keeping its height and displaying
+thermal history on the right. **Hide graph** halves the width again. The toggle
+is remembered across restarts. The master graph plots minimum, average, maximum
+and center temperatures; each placed spot gets its own graph in placement order.
+All graphs share the available height evenly and show a rolling 60-second history
+in the selected Celsius/Fahrenheit unit. Sampling and rendering run on a separate
+worker thread every 0.5 seconds, using the latest camera measurements without
+queuing video frames. Hiding the graph area pauses sampling and rendering;
+reopening resumes, with gaps rather than connecting lines across long pauses.
+Spot history survives rotation and mirroring, and clears when the spots are
+cleared. Histories are session-only. Captures and recordings continue to contain
+the thermal view only.
+
+**Log to CSV** opens a Save dialog before logging begins. **Stop logging** closes
+and saves the file; **Cancel logging** cancels an unfinished Save dialog. Hiding
+the graph area is disabled while logging or choosing its file. During logging,
+Camera inputs, reset/restore buttons and Advanced / Auto are disabled. Main-window
+unit, rotation and spot changes are also blocked, including shortcuts and queued
+settings requests. Stopping logging unlocks the available controls again.
+Quitting the app
+finalizes active logs, and logging does not resume automatically on restart.
+CSV files open in spreadsheet applications such as Excel or LibreOffice. Each
+half-second sample has one row for each master statistic and each active spot,
+with columns `timestamp_utc`, `elapsed_seconds`, `series_id`, `series`,
+`temperature_celsius`, `temperature_display`, and `display_unit`. Spot IDs remain
+stable through rotation and mirroring, and change when spots are cleared and
+replaced. Both canonical Celsius and selected-unit values are recorded.
+Rows are flushed after each sample; write failures stop logging and report an
+error without stopping the live graphs.
 
 Sample spots use crosshairs with a one-pixel stroke and live temperature
 readings in the selected unit. They remain on the same thermal pixels when the

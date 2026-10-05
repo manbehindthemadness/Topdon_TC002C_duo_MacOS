@@ -158,6 +158,32 @@ assert messages[-1]["value"] == 27.5
 window.update_state({**state, "temperature_unit": "C"})
 assert row.input.value() == 30
 
+# Logging locks every settings input and cancels pending debounce timers.
+count = len(messages)
+for control_row in (*window.rows.values(), *window.hardware_rows.values()):
+    control_row.timer.start()
+window.update_state({**state, "temperature_unit": "C", "settings_locked": True})
+assert len(messages) == count
+for control_row in (*window.rows.values(), *window.hardware_rows.values()):
+    assert not control_row.input.isEnabled()
+    assert control_row.slider is None or not control_row.slider.isEnabled()
+    assert not control_row.timer.isActive()
+    control_row._emit()
+assert not window.advanced_auto.isEnabled()
+assert not window.reset_button.isEnabled() and not window.restore_button.isEnabled()
+window._reset_display()
+window._restore_hardware()
+assert len(messages) == count
+window.update_state({**state, "temperature_unit": "C", "settings_locked": False})
+assert window.advanced_auto.isEnabled()
+assert window.reset_button.isEnabled() and window.restore_button.isEnabled()
+assert all(control_row.input.isEnabled()
+           for control_row in (*window.rows.values(), *window.hardware_rows.values()))
+# Unlocking must still respect controls that are unavailable on this camera.
+window.update_state({**state, "hardware": {"ambient": {"value": 30, "available": False}}})
+assert not row.input.isEnabled()
+window.update_state({**state, "temperature_unit": "C"})
+
 body_layout = row.parentWidget().layout()
 headings = {body_layout.itemAt(i).widget().text(): i
             for i in range(body_layout.count())

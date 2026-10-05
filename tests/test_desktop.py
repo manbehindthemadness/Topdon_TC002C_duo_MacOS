@@ -133,6 +133,10 @@ def test_save_dialog_commands_preserve_mac_and_support_linux(tmp_path):
     assert linux_command[0] == "zenity"
     assert "--confirm-overwrite" in linux_command
     assert f"--filename={directory}/capture.png" in linux_command
+    csv_command = LinuxSaveDialog()._command("temperatures.csv", directory)
+    assert "--title=Save temperature log" in csv_command
+    assert "--file-filter=CSV logs | *.csv" in csv_command
+    assert "Save temperature log" in MacSaveDialog()._command("temperatures.csv", directory)[2]
 
 
 def test_linux_save_cancellation_and_nonblocking_poll(monkeypatch, caplog):
@@ -369,6 +373,9 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_clears(monkeypat
     from topdon_duo import desktop
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    graphs = Mock(logging=False)
+    graphs.take_logging_error.return_value = None
+    monkeypatch.setattr(desktop, "GraphWorker", lambda: graphs)
     hardware = Mock(original={}, enabled=set(), error="", preview_active=False)
     hardware.state.return_value = {}
     monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
