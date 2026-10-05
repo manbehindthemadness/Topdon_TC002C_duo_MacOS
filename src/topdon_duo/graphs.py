@@ -23,6 +23,13 @@ class GraphSnapshot:
     spots: tuple[tuple[tuple[int, int], float], ...]
     size: tuple[int, int]  # width, height of the reserved graph area
     unit: str = "C"
+    spot_names: tuple[tuple[tuple[int, int], str], ...] = ()
+
+
+def spot_title(snapshot, key):
+    default = f"Spot {key[1] + 1}"
+    name = dict(snapshot.spot_names).get(key, default)
+    return default if name == default else f"{name} ({default})"
 
 
 class GraphWorker:
@@ -104,7 +111,7 @@ class GraphWorker:
             for name, value in zip(("Minimum", "Average", "Maximum", "Center"), snapshot.stats)
         ]
         series.extend(
-            (f"spot.{key[0]}.{key[1] + 1}", f"Spot {key[1] + 1}", value)
+            (f"spot.{key[0]}.{key[1] + 1}", spot_title(snapshot, key), value)
             for key, value in snapshot.spots
         )
         try:
@@ -211,7 +218,7 @@ def render_graphs(snapshot, master, spots, now):
     )
     charts = [("Master stats", master, ("Min", "Avg", "Max", "Center"))]
     charts.extend(
-        (f"Spot {key[1] + 1}", spots.get(key, ()), ("Temp",)) for key, _value in snapshot.spots
+        (spot_title(snapshot, key), spots.get(key, ()), ("Temp",)) for key, _value in snapshot.spots
     )
     top = min(34, height)
     for index, (title, history, labels) in enumerate(charts):

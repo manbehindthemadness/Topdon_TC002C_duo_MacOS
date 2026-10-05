@@ -200,3 +200,32 @@ def test_capture_resizes_real_worker_cache_without_changing_live_graphs():
         assert len(worker._master) == 1
     finally:
         worker.close()
+
+
+def test_named_regions_reach_graph_titles_and_csv_without_changing_series_ids(
+    tmp_path, monkeypatch
+):
+    labels = Mock(wraps=graphs.cv2.putText)
+    monkeypatch.setattr(graphs.cv2, "putText", labels)
+    data = replace(
+        snapshot((((0, 0), 23.5), ((0, 1), 24.0))),
+        spot_names=(((0, 0), "Left hand, thumb"), ((0, 1), "Motor")),
+    )
+    worker = graphs.GraphWorker()
+    try:
+        path = worker.start_logging(tmp_path / "regions.csv")
+        worker.submit(data)
+        with worker._condition:
+            assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
+        worker.stop_logging()
+        with path.open(newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        named = {row["series_id"]: row for row in rows if row["series_id"].startswith("spot.")}
+        assert named["spot.0.1"]["series"] == "Left hand, thumb (Spot 1)"
+        assert named["spot.0.2"]["series"] == "Motor (Spot 2)"
+        assert float(named["spot.0.1"]["temperature_celsius"]) == 23.5
+        text = [call.args[1] for call in labels.call_args_list]
+        assert "Left hand, thumb (Spot 1) (C)" in text
+        assert "Motor (Spot 2) (C)" in text
+    finally:
+        worker.close()

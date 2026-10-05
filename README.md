@@ -96,7 +96,10 @@ The controls are available from the toolbar as well as the keyboard:
 | --- | --- |
 | Inspect a pixel | Move the mouse over the image |
 | Place fixed sample spots | **Add spots** or `P`, then click image locations |
-| Clear all sample spots | **Clear spots** or `P` again |
+| Stop/start spot placement | **Add spots** or `P` again; existing spots remain |
+| Reposition an existing spot | Left-click its crosshair and drag; Add spots may be on or off |
+| Manage sample spots | Right-click the thermal image for per-spot checkboxes and Clear buttons |
+| Clear all sample spots | Right-click → **Clear all spots** (top of the menu) |
 | Adjust ambient temperature | Camera popup hardware ambient row |
 | Save image data | **Capture** → **Save image data**, or `S` |
 | Open image, video and timelapse controls | **Capture** or `C` |
@@ -118,8 +121,9 @@ worker thread every 0.5 seconds, using the latest camera measurements without
 queuing video frames. Hiding the graph area pauses sampling and rendering;
 reopening resumes, with gaps rather than connecting lines across long pauses.
 Spot history survives rotation and mirroring, and clears when the spots are
-cleared. Histories are session-only. Captures and recordings continue to contain
-the thermal view only.
+cleared. Histories are session-only; disabling a spot removes its graph history,
+and enabling it starts fresh sampling. Captures and recordings can include the
+graph pane with the Capture dialog’s **Include graphs when visible** checkbox.
 
 **Log to CSV** opens a Save dialog before logging begins. **Stop logging** closes
 and saves the file; **Cancel logging** cancels an unfinished Save dialog. Hiding
@@ -140,8 +144,28 @@ error without stopping the live graphs.
 
 Sample spots use crosshairs with a one-pixel stroke and live temperature
 readings in the selected unit. They remain on the same thermal pixels when the
-window is resized or the view is rotated. Placement stays enabled until you
-press **Clear spots** or `P` again.
+window is resized or the view is rotated. **Add spots** (or `P`) toggles placement;
+turning it off preserves every existing spot. Numbered labels match the graph
+numbers and the right-click menu. Left-click a visible spot's crosshair and drag
+to fine-tune its location, with Add spots either on or off. Its number, region
+name, and graph identity remain unchanged, and its temperature updates from the
+new pixel. Dragging stays within the thermal image and is locked during logging
+or calibration. A drag release never places a second spot.
+
+Right-click the thermal image to open the spot menu. The **Clear all spots**
+button at the top removes all spots; **Add spots** toggles placement. Each spot
+has an enable checkbox, an editable region name, and a **Clear** button. Enter a
+name such as “Left hand” or “Motor” and press Enter or leave the field to save.
+Names label graph titles and the CSV `series` column; on-image labels keep their
+spot numbers and temperatures. CSV `series_id` retains the stable spot identity.
+Names stay with spots when rotated, mirrored, disabled, or re-enabled. Clearing
+a name restores the default “Spot N”. Names are session-only, like spot positions.
+Unchecking a spot hides its marker and stops its graph sampling without losing
+its position; checking restores it.
+Clearing one spot preserves the numbers and histories of the others. New spots
+receive new numbers until Clear all resets numbering. Spot changes are locked
+while temperature logging, a pending logging dialog, or calibration is active.
+Disabled spots are omitted from graph captures and CSV logging.
 The center temperature appears in the statistics without a fixed center crosshair.
 Crosshairs invert the thermal pixels beneath them, with a one-pixel black or white
 outline. Temperature labels use white text with a two-pixel black outline to stay
@@ -150,7 +174,10 @@ automatically to avoid each other and the crosshairs, with a connecting line
 for every reading. The mouse readout also avoids fixed spot labels.
 
 The mouse sampler uses the same thin crosshair and hides its marker and
-temperature reading when the pointer leaves the image.
+temperature reading when the pointer leaves the image. Its temperature label
+also hides while hovering over or dragging an enabled spot, leaving that spot's
+own reading visible. Starting logging cancels any active spot drag; spot controls
+unlock when logging stops.
 
 Saving opens the native macOS Save dialog or Ubuntu's Zenity Save dialog without pausing camera capture. A
 single chosen filename produces three matching files:

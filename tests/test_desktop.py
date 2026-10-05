@@ -346,7 +346,7 @@ def test_spots_stay_on_same_sensor_pixels_through_four_rotations():
     assert spots.pixels == [(41, 67)]
     spots.toggle()
     assert not spots.placing
-    assert spots.pixels == []
+    assert spots.pixels == [(41, 67)]
 
 
 def test_spots_draw_inverted_markers_and_live_readings(monkeypatch):
@@ -358,7 +358,10 @@ def test_spots_draw_inverted_markers_and_live_readings(monkeypatch):
     for temperature, unit, expected in ((20, "C", "20.00 C"), (25, "F", "77.00 F")):
         frame = replace(rendered, temperatures_celsius=np.full((192, 256), temperature))
         result = draw_sample_spots(rendered.image, frame, spots, 3, unit)
-        assert [call.args[1] for call in put_text.call_args_list] == [f"1: {expected}", f"2: {expected}"]
+        assert [call.args[1] for call in put_text.call_args_list] == [
+            f"1: {expected}",
+            f"2: {expected}",
+        ]
         put_text.reset_mock()
         for x, y in spots.pixels:
             ix, iy = x * 3 + 1, y * 3 + 1
@@ -369,7 +372,9 @@ def test_spots_draw_inverted_markers_and_live_readings(monkeypatch):
     assert np.array_equal(rendered.image, original)
 
 
-def test_desktop_spot_control_places_multiple_spots_rotates_and_clears(monkeypatch, tmp_path):
+def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
+    monkeypatch, tmp_path
+):
     from topdon_duo import desktop
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -439,7 +444,7 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_clears(monkeypat
         (True, [(41, 67), (80, 90)]),
         (True, [(124, 41), (101, 80)]),
         (True, [(124, 41), (101, 80)]),
-        (False, []),
+        (False, [(124, 41), (101, 80)]),
     ]
     camera.close.assert_called_once()
     pointer_monitor.close.assert_called_once()
@@ -516,8 +521,8 @@ def test_mouse_reading_avoids_fixed_spot_labels(monkeypatch):
     draw_sample_spots(rendered.image, rendered, spots, 3)
     fixed_boxes = [label_bounds(call) for call in put_text.call_args_list]
     put_text.reset_mock()
-    _, selected = draw_picker(rendered, MousePicker(x=112, y=124), 3, spots=spots)
-    assert selected == (37, 41)
+    _, selected = draw_picker(rendered, MousePicker(x=112, y=140), 3, spots=spots)
+    assert selected == (37, 46)
     mouse_box = label_bounds(put_text.call_args)
     assert all(not rectangles_overlap(mouse_box, box) for box in fixed_boxes)
 
@@ -542,7 +547,54 @@ def test_displaced_mouse_label_has_connecting_line(monkeypatch):
     spots = SampleSpots(pixels=[(41, 67)])
     line = Mock(wraps=cv2.line)
     monkeypatch.setattr("topdon_duo.desktop.cv2.line", line)
-    _, selected = draw_picker(rendered, MousePicker(x=124, y=202), 3, spots=spots)
-    assert selected == (41, 67)
+    _, selected = draw_picker(rendered, MousePicker(x=124, y=214), 3, spots=spots)
+    assert selected == (41, 71)
     line.assert_called_once()
-    assert line.call_args.args[1] == (124, 202)
+    assert line.call_args.args[1] == (124, 214)
+
+
+@pytest.mark.parametrize("viewport_size", [None, (384, 303)])
+@pytest.mark.parametrize(
+    "offset, enabled, dragging, hidden",
+    [
+        (0, True, False, True),
+        (9, True, False, True),
+        (11, True, False, False),
+        (0, False, False, False),
+        (40, True, True, True),
+    ],
+)
+def test_cursor_label_hidden_over_enabled_spot_or_during_drag(
+    monkeypatch, viewport_size, offset, enabled, dragging, hidden
+):
+    rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
+    spots = SampleSpots(pixels=[(41, 67)])
+    spots.set_enabled(1, enabled)
+    toolbar_height = 30
+    image_x, image_y = 124, 202
+    if viewport_size is None:
+        x, y = image_x + offset, image_y + toolbar_height
+    else:
+        x, y = image_x // 2 + offset, (image_y + toolbar_height) // 2
+    put_text = Mock(wraps=cv2.putText)
+    line = Mock(wraps=cv2.line)
+    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    monkeypatch.setattr("topdon_duo.desktop.cv2.line", line)
+    image, selected = draw_picker(
+        rendered,
+        MousePicker(x=x, y=y),
+        3,
+        viewport_size=viewport_size,
+        toolbar_height=toolbar_height,
+        spots=spots,
+        dragging_spot=dragging,
+    )
+    assert selected is not None
+    assert put_text.call_count == (0 if hidden else 1)
+    assert line.call_count == (0 if hidden else 1)
+    # Inspection remains active and the cursor crosshair still draws.
+    cursor_x = image_x + offset * (2 if viewport_size else 1)
+    assert np.array_equal(image[image_y, cursor_x], 255 - rendered.image[image_y, cursor_x])
+    put_text.reset_mock()
+    draw_sample_spots(image, rendered, spots, 3)
+    assert put_text.call_count == (1 if enabled else 0)

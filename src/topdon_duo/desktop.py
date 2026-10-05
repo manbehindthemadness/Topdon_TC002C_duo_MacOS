@@ -40,6 +40,7 @@ from .render import (
     draw_temperature_readout,
 )
 from .settings_preferences import load_settings, save_settings
+from .spots_panel import SpotsPanel
 from .view_panel import ViewPanel
 from .view_settings import VIEW_DEFAULTS
 from .window_preferences import load_main_window_size, save_main_window_size
@@ -74,13 +75,32 @@ class MousePicker:
     x: int | None = None
     y: int | None = None
     clicks: list[tuple[int, int]] = field(default_factory=list)
+    context_clicks: list[tuple[int, int]] = field(default_factory=list)
+    drag_events: list[tuple[int, int, int, int]] = field(default_factory=list)
 
     def callback(self, event: int, x: int, y: int, flags: int, _parameter) -> None:
+        if event in (cv2.EVENT_MOUSEMOVE, cv2.EVENT_LBUTTONDOWN, cv2.EVENT_LBUTTONUP):
+            self.drag_events.append((event, x, y, flags))
         if event in (cv2.EVENT_MOUSEMOVE, cv2.EVENT_LBUTTONDOWN):
             self.x, self.y = x, y
         if event == cv2.EVENT_LBUTTONUP:
             self.x, self.y = x, y
             self.clicks.append((x, y))
+
+        if event == cv2.EVENT_RBUTTONUP:
+            self.context_clicks.append((x, y))
+
+    def consume_drag_events(self):
+        events, self.drag_events = self.drag_events, []
+        return events
+
+    def discard_click(self, x, y):
+        if (x, y) in self.clicks:
+            self.clicks.remove((x, y))
+
+    def consume_context_clicks(self):
+        clicks, self.context_clicks = self.context_clicks, []
+        return clicks
 
     def consume_clicks(self) -> list[tuple[int, int]]:
         clicks, self.clicks = self.clicks, []
@@ -99,15 +119,85 @@ class SampleSpots:
     pixels: list[tuple[int, int]] = field(default_factory=list)
     generation: int = 0
 
+    numbers: list[int] = field(default_factory=list, init=False)
+    disabled: set[int] = field(default_factory=set, init=False)
+    next_number: int = field(default=1, init=False)
+    names: dict[int, str] = field(default_factory=dict, init=False)
+
+    def __post_init__(self):
+        self.numbers = list(range(1, len(self.pixels) + 1))
+        self.next_number = len(self.pixels) + 1
+
+    @property
+    def active(self):
+        return [
+            (number, pixel)
+            for number, pixel in zip(self.numbers, self.pixels, strict=True)
+            if number not in self.disabled
+        ]
+
     def toggle(self) -> None:
         self.placing = not self.placing
-        if not self.placing:
-            self.pixels.clear()
-            self.generation += 1
 
     def add(self, pixel: tuple[int, int] | None) -> None:
         if self.placing and pixel is not None and pixel not in self.pixels:
             self.pixels.append(pixel)
+            self.numbers.append(self.next_number)
+            self.next_number += 1
+
+    def set_enabled(self, number, enabled):
+        if type(number) is not int or number not in self.numbers or type(enabled) is not bool:
+            raise ValueError("Choose an existing spot and an enabled state")
+        if enabled:
+            self.disabled.discard(number)
+        else:
+            self.disabled.add(number)
+
+    def move(self, number, pixel):
+        if type(number) is not int or number not in self.numbers:
+            raise ValueError("Choose an existing spot to move")
+        self.pixels[self.numbers.index(number)] = pixel
+
+    def name(self, number):
+        return self.names.get(number, f"Spot {number}")
+
+    def rename(self, number, name):
+        if type(number) is not int or number not in self.numbers:
+            raise ValueError("Choose an existing spot to name")
+        if (
+            not isinstance(name, str)
+            or len(name) > 64
+            or any(not char.isprintable() for char in name)
+        ):
+            raise ValueError("Region names must be a single line of up to 64 characters")
+        name = name.strip()
+        if name and name != f"Spot {number}":
+            self.names[number] = name
+        else:
+            self.names.pop(number, None)
+
+    def clear(self, number=None):
+        if number is None:
+            self.pixels.clear()
+            self.numbers.clear()
+            self.disabled.clear()
+            self.names.clear()
+            self.next_number = 1
+            self.generation += 1
+            return
+        if type(number) is not int or number not in self.numbers:
+            raise ValueError("Choose an existing spot to clear")
+        index = self.numbers.index(number)
+        self.pixels.pop(index)
+        self.numbers.pop(index)
+        self.disabled.discard(number)
+        self.names.pop(number, None)
+
+    def state(self):
+        return [
+            {"number": number, "enabled": number not in self.disabled, "name": self.name(number)}
+            for number in self.numbers
+        ]
 
     def rotate_clockwise(self, sensor_height: int) -> None:
         self.pixels = [(sensor_height - 1 - y, x) for x, y in self.pixels]
@@ -256,6 +346,7 @@ def draw_toolbar(
     show_graph: bool = False,
     graph_locked: bool = False,
     settings_locked: bool = False,
+    spots_locked: bool = False,
 ) -> np.ndarray:
     layout = toolbar_layout(image.shape[1])
     canvas = np.zeros((image.shape[0] + layout.height, image.shape[1], 3), np.uint8)
@@ -268,7 +359,7 @@ def draw_toolbar(
         "rotate": "Rotate",
         "unit": f"Units: {temperature_unit}/{'in' if temperature_unit == 'F' else 'cm'}",
         "view": "Camera",
-        "spots": "Clear spots" if placing_spots else "Add spots",
+        "spots": "Add spots",
         "capture": "Capture",
         "graph": "Hide graph" if show_graph else "Show graph",
         "help": "Help",
@@ -281,8 +372,10 @@ def draw_toolbar(
             or (action == "spots" and placing_spots)
         )
         active = active or (action == "capture" and bool(recording_mode or pending_recording))
-        disabled = (action == "graph" and graph_locked) or (
-            settings_locked and action in ("rotate", "unit", "spots")
+        disabled = (
+            (action == "graph" and graph_locked)
+            or (settings_locked and action in ("rotate", "unit", "spots"))
+            or (action == "spots" and spots_locked)
         )
         fill = (30, 32, 38) if disabled else (74, 92, 70) if active else (47, 51, 61)
         cv2.rectangle(canvas, (x0, y0), (x1, y1), fill, -1)
@@ -477,6 +570,72 @@ def image_position_at(
     return x, y
 
 
+def _spot_hit(position, spots, image_shape, scale, viewport_size=None):
+    """Find the closest enabled marker within ten displayed pixels."""
+    radius = 10 * image_shape[1] / viewport_size[0] if viewport_size else 10
+    hits = []
+    for number, (sx, sy) in spots.active:
+        anchor = (sx * scale + scale // 2, sy * scale + scale // 2)
+        distance = (anchor[0] - position[0]) ** 2 + (anchor[1] - position[1]) ** 2
+        if distance <= radius**2:
+            hits.append((distance, number, anchor))
+    return min(hits) if hits else None
+
+
+class SpotDrag:
+    """Move a marker while retaining its identity and suppressing release clicks."""
+
+    def __init__(self):
+        self.number = None
+        self.captured = False
+        self.offset = (0, 0)
+
+    def cancel(self):
+        self.number = None
+        # A cancelled drag's release must still not place a new spot or click a button.
+
+    def update(
+        self, picker, spots, image_shape, scale, viewport_size=None, toolbar_height=0, locked=False
+    ):
+        if locked:
+            self.cancel()
+        for event, x, y, flags in picker.consume_drag_events():
+            position = image_position_at(x, y, image_shape, viewport_size, toolbar_height)
+            if event == cv2.EVENT_LBUTTONDOWN:
+                self.number = None
+                self.captured = False
+                if locked or position is None:
+                    continue
+                hit = _spot_hit(position, spots, image_shape, scale, viewport_size)
+                if hit is not None:
+                    _distance, self.number, anchor = hit
+                    self.offset = (anchor[0] - position[0], anchor[1] - position[1])
+                    self.captured = True
+            elif event == cv2.EVENT_MOUSEMOVE and self.captured:
+                if not flags & cv2.EVENT_FLAG_LBUTTON:
+                    self.number = None
+                    self.captured = False
+                elif not locked:
+                    self._move(spots, position, image_shape, scale)
+            elif event == cv2.EVENT_LBUTTONUP:
+                if self.captured:
+                    picker.discard_click(x, y)
+                    if not locked:
+                        self._move(spots, position, image_shape, scale)
+                self.number = None
+                self.captured = False
+
+    def _move(self, spots, position, image_shape, scale):
+        if position is None or self.number not in spots.numbers or self.number in spots.disabled:
+            return
+        width, height = image_shape[1] // scale, image_shape[0] // scale
+        pixel = (
+            max(0, min(width - 1, (position[0] + self.offset[0]) // scale)),
+            max(0, min(height - 1, (position[1] + self.offset[1]) // scale)),
+        )
+        spots.move(self.number, pixel)
+
+
 def _draw_contrasting_overlay(
     image: np.ndarray, mask: np.ndarray, text_mask: np.ndarray
 ) -> np.ndarray:
@@ -570,10 +729,11 @@ def _spot_label_layout(
 ) -> tuple[
     list[tuple[str, tuple[int, int], tuple[int, int, int, int]]], list[tuple[int, int, int, int]]
 ]:
-    anchors = [(x * scale + scale // 2, y * scale + scale // 2) for x, y in spots.pixels]
+    active = spots.active
+    anchors = [(x * scale + scale // 2, y * scale + scale // 2) for _number, (x, y) in active]
     occupied = [(x - 6, y - 6, x + 7, y + 7) for x, y in anchors]
     labels = []
-    for number, ((sensor_x, sensor_y), anchor) in enumerate(zip(spots.pixels, anchors), start=1):
+    for (number, (sensor_x, sensor_y)), anchor in zip(active, anchors, strict=True):
         temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
         if temperature_unit == "F":
             temperature = temperature * 9.0 / 5.0 + 32.0
@@ -605,7 +765,8 @@ def draw_sample_spots(
     mask = np.zeros(image.shape[:2], dtype=np.uint8)
     text_mask = np.zeros_like(mask)
     labels, _occupied = _spot_label_layout(rendered, spots, scale, temperature_unit)
-    for (sensor_x, sensor_y), (text, origin, rect) in zip(spots.pixels, labels):
+    active = spots.active
+    for (_number, (sensor_x, sensor_y)), (text, origin, rect) in zip(active, labels, strict=True):
         anchor = (sensor_x * scale + scale // 2, sensor_y * scale + scale // 2)
         _draw_label_leader(mask, anchor, rect)
         cv2.putText(
@@ -619,7 +780,7 @@ def draw_sample_spots(
             cv2.LINE_AA,
         )
     # Union the markers so overlapping spots are inverted only once.
-    for sensor_x, sensor_y in spots.pixels:
+    for _number, (sensor_x, sensor_y) in active:
         cv2.drawMarker(
             mask,
             (sensor_x * scale + scale // 2, sensor_y * scale + scale // 2),
@@ -714,6 +875,7 @@ def draw_picker(
     temperature_unit: str = "C",
     pointer_over_image: bool | None = None,
     spots: SampleSpots | None = None,
+    dragging_spot: bool = False,
 ) -> tuple[np.ndarray, tuple[int, int] | None]:
     image = rendered.image.copy()
     if pointer_over_image is False or picker.x is None or picker.y is None:
@@ -739,6 +901,11 @@ def draw_picker(
         thickness=1,
         line_type=cv2.LINE_8,
     )
+    if dragging_spot or (
+        spots is not None
+        and _spot_hit(position, spots, image.shape, scale, viewport_size) is not None
+    ):
+        return _draw_contrasting_overlay(image, mask, text_mask), (sensor_x, sensor_y)
     text = f"({sensor_x}, {sensor_y}) {temperature:.2f} {temperature_unit}"
     _, occupied = _spot_label_layout(rendered, spots or SampleSpots(), scale, temperature_unit)
     occupied.append((image_x - 6, image_y - 6, image_x + 7, image_y + 7))
@@ -773,7 +940,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     lines = (
         ("Controls", (255, 255, 255)),
         ("Mouse move   Inspect pixel temperature", (210, 215, 225)),
-        ("P / Add spots  Place spots; again clears", (210, 215, 225)),
+        ("P / Add spots  Toggle spot placement", (210, 215, 225)),
         ("Camera Hardware ambient and image controls", (210, 215, 225)),
         ("S            Save image data", (210, 215, 225)),
         ("C            Open Capture controls", (210, 215, 225)),
@@ -858,12 +1025,14 @@ def main(argv: list[str] | None = None) -> int:
     camera = TC002CDuoCamera()
     picker = MousePicker()
     spots = SampleSpots()
+    spot_drag = SpotDrag()
     distance_calibration = DistanceCalibrator(saved_settings.get("distance_calibration"))
     pointer_monitor = PointerMonitor(WINDOW_NAME)
     save_dialog = LinuxSaveDialog() if sys.platform.startswith("linux") else MacSaveDialog()
     recorder = VideoRecorder()
     capture_panel = CapturePanel()
     view_panel = ViewPanel()
+    spots_panel = SpotsPanel()
     hardware = HardwareControls(camera)
     emissivity_calibration = EmissivityCalibrator(
         hardware, saved_settings.get("emissivity_calibration")
@@ -914,6 +1083,7 @@ def main(argv: list[str] | None = None) -> int:
         if size is None:
             return
         width, height = size
+        spot_drag.cancel()
         show_graph = not show_graph
         if not show_graph:
             graphs.pause()
@@ -955,6 +1125,7 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 if save_dialog.open(args.output, suffix=".csv", kind="temperatures"):
                     pending_save_kind = "graph_log"
+                    spot_drag.cancel()
             except OSError as exc:
                 notify(f"Could not choose a temperature log file: {exc}")
 
@@ -1009,6 +1180,7 @@ def main(argv: list[str] | None = None) -> int:
             emissivity_calibration.cancel()
         if reflected_calibration.active:
             reflected_calibration.cancel()
+        spot_drag.cancel()
         # Rotate the stored sensor coordinates with the image, preserving samples.
         sensor_height = SENSOR_HEIGHT if renderer.rotation in (0, 180) else SENSOR_WIDTH
         sensor_width = SENSOR_WIDTH if renderer.rotation in (0, 180) else SENSOR_HEIGHT
@@ -1043,6 +1215,7 @@ def main(argv: list[str] | None = None) -> int:
             renderer.set_view_setting("palette_source", "app")
         persist_settings()
         if name in ("mirror_horizontal", "mirror_vertical") and previous[name] != value:
+            spot_drag.cancel()
             if emissivity_calibration.active:
                 emissivity_calibration.cancel()
             if reflected_calibration.active:
@@ -1058,9 +1231,22 @@ def main(argv: list[str] | None = None) -> int:
             picker.x = picker.y = None
             last_selected = None
 
+    def spots_state():
+        return {
+            "spots": spots.state(),
+            "placing": spots.placing,
+            "locked": bool(
+                graphs.logging
+                or pending_save_kind == "graph_log"
+                or emissivity_calibration.active
+                or reflected_calibration.active
+                or distance_calibration.selecting
+            ),
+        }
+
     def toggle_spots() -> None:
-        if graphs.logging or emissivity_calibration.active or reflected_calibration.active:
-            notify("Stop temperature logging before changing measuring spots.")
+        if spots_state()["locked"]:
+            notify("Stop logging or close calibration before changing measuring spots.")
             return
         spots.toggle()
 
@@ -1144,7 +1330,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         "Mouse: inspect a pixel | "
-        "p: add/clear spots | s: save image data | c: Capture controls | "
+        "p: toggle spot placement | s: save image data | c: Capture controls | "
         "o: rotate | f: metric/imperial | v: Camera controls | g: show/hide graph | l: log temperatures | Space: controls | q/Esc: quit"
     )
     try:
@@ -1165,6 +1351,31 @@ def main(argv: list[str] | None = None) -> int:
         set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
         for frame in camera.frames():
+            for command in spots_panel.poll():
+                if command.get("action") == "error":
+                    notify(f"Spot menu failed: {command.get('message', '')}")
+                    continue
+                if spots_state()["locked"]:
+                    notify("Stop logging or close calibration before changing measuring spots.")
+                    continue
+                try:
+                    action = command["action"]
+                    if action == "placing":
+                        if type(command["enabled"]) is not bool:
+                            raise ValueError("Placement state must be a boolean")
+                        spots.placing = command["enabled"]
+                    elif action == "enable":
+                        spots.set_enabled(command["spot"], command["enabled"])
+                    elif action == "rename":
+                        spots.rename(command["spot"], command["name"])
+                    elif action == "clear":
+                        spots.clear(command["spot"])
+                    elif action == "clear_all":
+                        spots.clear()
+                    else:
+                        raise ValueError("Unknown spot menu operation")
+                except (KeyError, ValueError, TypeError) as exc:
+                    notify(f"Spot change rejected: {exc}")
             for command in view_panel.poll():
                 if (
                     graphs.logging
@@ -1398,6 +1609,15 @@ def main(argv: list[str] | None = None) -> int:
             viewport_size = mouse_viewport_size()
             if show_graph and viewport_size is not None:
                 viewport_size = (viewport_size[0] / 2, viewport_size[1])
+            spot_drag.update(
+                picker,
+                spots,
+                rendered.image.shape,
+                renderer.scale,
+                viewport_size,
+                layout.height,
+                locked=spots_state()["locked"],
+            )
             display, selected = (
                 (rendered.image, None)
                 if emissivity_calibration.active or reflected_calibration.active
@@ -1409,6 +1629,7 @@ def main(argv: list[str] | None = None) -> int:
                     toolbar_height=layout.height,
                     temperature_unit=renderer.temperature_unit,
                     spots=spots,
+                    dragging_spot=spot_drag.number is not None,
                     pointer_over_image=pointer_monitor.over_image(
                         rendered.image.shape[0], layout.height
                     ),
@@ -1428,6 +1649,7 @@ def main(argv: list[str] | None = None) -> int:
                         if kind == "graph_log":
                             emissivity_calibration.cancel()
                             path = graphs.start_logging(save_path)
+                            spot_drag.cancel()
                             if distance_calibration.selecting:
                                 distance_calibration.cancel()
                             _restore_user_ownership([path])
@@ -1560,19 +1782,31 @@ def main(argv: list[str] | None = None) -> int:
                 settings_locked=graphs.logging
                 or emissivity_calibration.running
                 or reflected_calibration.running,
+                spots_locked=spots_state()["locked"],
             )
 
             # Capture spot values in this frame's orientation, before click actions can rotate
             # coordinates or add/clear spots. The next frame supplies any changed selection.
             graph_spots = (
                 tuple(
-                    ((spots.generation, index), float(rendered.temperatures_celsius[y, x]))
-                    for index, (x, y) in enumerate(spots.pixels)
+                    ((spots.generation, number - 1), float(rendered.temperatures_celsius[y, x]))
+                    for number, (x, y) in spots.active
                 )
                 if show_graph
                 else ()
             )
             quit_requested = False
+            for click_x, click_y in picker.consume_context_clicks():
+                if (
+                    image_position_at(
+                        click_x, click_y, rendered.image.shape, viewport_size, layout.height
+                    )
+                    is not None
+                ):
+                    try:
+                        spots_panel.open(spots_state())
+                    except OSError as exc:
+                        notify(f"Could not open spot menu: {exc}")
             for click_x, click_y in picker.consume_clicks():
                 if show_graph and graph_logging_button_at(
                     click_x, click_y, rendered.image.shape[1], display.shape[0], viewport_size
@@ -1624,8 +1858,8 @@ def main(argv: list[str] | None = None) -> int:
                 elif action is None and distance_calibration.selecting:
                     continue
                 elif action is None and spots.placing:
-                    if graphs.logging:
-                        notify("Stop temperature logging before changing measuring spots.")
+                    if spots_state()["locked"]:
+                        notify("Stop logging or close calibration before changing measuring spots.")
                         continue
                     position = image_position_at(
                         click_x, click_y, rendered.image.shape, viewport_size, layout.height
@@ -1638,6 +1872,7 @@ def main(argv: list[str] | None = None) -> int:
             if quit_requested:
                 break
             view_panel.update(view_state())
+            spots_panel.update(spots_state())
             graph_size = (display.shape[1], display.shape[0])
             if show_graph:
                 graphs.submit(
@@ -1649,6 +1884,10 @@ def main(argv: list[str] | None = None) -> int:
                             rendered.stats.center,
                         ),
                         spots=graph_spots,
+                        spot_names=tuple(
+                            ((spots.generation, number - 1), spots.name(number))
+                            for number, _point in spots.active
+                        ),
                         size=graph_size,
                         unit=renderer.temperature_unit,
                     )
@@ -1715,6 +1954,7 @@ def main(argv: list[str] | None = None) -> int:
         stop_recording()
         capture_panel.close()
         view_panel.close()
+        spots_panel.close()
         pointer_monitor.close()
         save_dialog.close()
         try:
