@@ -326,3 +326,18 @@ Related HCUSBSDK header/source repository (not TOPDON-specific documentation):
 https://github.com/No-9527149/hikmicro/tree/4ed05d6acd68d2be7e14d75941321fee93799031
 Related open-source enhancement implementation:
 https://github.com/TianZerL/Anime4KCPP
+
+Automatic controls follow-up (2026-10-04)
+----------------------------------------
+Decision: ambient temperature remains manual, excluded from Auto calculations.
+Proposed Auto scope is brightness, contrast, noise reduction and detail only.
+Scene histogram, noise, motion and edge statistics can guide display tuning,
+but their mapping to hardware levels has not yet been calibrated.
+Measurement corrections remain manual; reference-based distance, emissivity,
+reflected-temperature and transmission procedures are future investigations.
+Weather humidity is a possible outdoor estimate, not measured indoor humidity.
+Computer component temperatures are not verified ambient-air measurements.
+
+The future-calibration table, required references and validation criteria are
+maintained in README.md under Automatic controls and future calibrations.
+No new calibration or automatic hardware writes were performed for this note.

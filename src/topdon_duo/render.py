@@ -43,7 +43,7 @@ class RenderedThermalFrame:
 def draw_temperature_readout(
     image: np.ndarray,
     stats: TemperatureStats,
-    ambient_celsius: float,
+    ambient_celsius: float | None,
     temperature_unit: str = "C",
 ) -> np.ndarray:
     """Prepend the temperature readout without covering any thermal pixels."""
@@ -51,12 +51,17 @@ def draw_temperature_readout(
     def display(celsius: float) -> float:
         return celsius * 9.0 / 5.0 + 32.0 if temperature_unit == "F" else celsius
 
+    ambient_label = (
+        f"Ambient {display(ambient_celsius):.1f} {temperature_unit}"
+        if ambient_celsius is not None
+        else "Ambient unavailable"
+    )
     label = (
         f"Min {display(stats.minimum):.1f} {temperature_unit}   "
         f"Avg {display(stats.average):.1f} {temperature_unit}   "
         f"Max {display(stats.maximum):.1f} {temperature_unit}   "
         f"Center {display(stats.center):.1f} {temperature_unit}   "
-        f"Ambient {display(ambient_celsius):.1f} {temperature_unit}"
+        f"{ambient_label}"
     )
     canvas = np.zeros((image.shape[0] + READOUT_HEIGHT, image.shape[1], 3), np.uint8)
     canvas[READOUT_HEIGHT:] = image
@@ -80,7 +85,7 @@ class ThermalRenderer:
         self,
         scale: int = 3,
         smoothing: float = 0.25,
-        ambient_celsius: float = 22.0,
+        ambient_celsius: float | None = 22.0,
         rotation: int = 0,
         temperature_unit: str = "C",
         image_source: str = "preview",

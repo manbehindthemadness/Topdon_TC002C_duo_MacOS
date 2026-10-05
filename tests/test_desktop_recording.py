@@ -13,6 +13,9 @@ from topdon_duo import desktop
 def viewer(monkeypatch, tmp_path):
     monkeypatch.setattr(desktop.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    hardware = Mock(original={"loaded": True}, enabled=set(), error="", preview_active=False)
+    hardware.state.return_value = {"ambient": {"value": 30.0, "available": True}}
+    monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 30
     monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)
@@ -117,6 +120,7 @@ def viewer(monkeypatch, tmp_path):
         return wait_key
 
     return SimpleNamespace(
+        hardware=hardware,
         camera=camera,
         writer=writer,
         dialog=dialog,
@@ -215,8 +219,9 @@ def test_recording_controls_save_spots_and_optional_cursor(
     header = desktop.READOUT_HEIGHT
     assert all(frame.shape == (576 + header, 768, 3) for frame in frames)  # Toolbar excluded.
     thermal = desktop.ThermalRenderer(scale=3).render_detailed(make_frame()).image
-    assert all(np.array_equal(frame[202 + header, 124], 255 - thermal[202, 124])
-               for frame in frames)
+    assert all(
+        np.array_equal(frame[202 + header, 124], 255 - thermal[202, 124]) for frame in frames
+    )
     cursor_color = 255 - thermal[301, 333]
     assert np.array_equal(frames[0][301 + header, 333], cursor_color) == capture_cursor
     assert np.array_equal(frames[-1][301 + header, 333], cursor_color) == (not capture_cursor)
@@ -227,7 +232,7 @@ def test_recording_controls_save_spots_and_optional_cursor(
     viewer.camera.close.assert_called_once()
     viewer.panel.open.assert_called_once()
     viewer.panel.close.assert_called_once()
-    assert set(viewer.callbacks) == {desktop.AMBIENT_TRACKBAR}
+    assert set(viewer.callbacks) == set()
     desktop.cv2.namedWindow.assert_called_once_with(
         desktop.WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL
     )
@@ -328,7 +333,7 @@ def test_timelapse_number_field_sets_rate_before_recording_and_keeps_it_fixed(vi
     assert desktop.main([]) == 0
     assert len(viewer.writer.frames) == 2  # 120/min means one frame every 0.5 s.
     assert viewer.panel.state["frames_per_minute"] == 120
-    assert set(viewer.callbacks) == {desktop.AMBIENT_TRACKBAR}
+    assert set(viewer.callbacks) == set()
 
 
 def test_recording_encoder_failure_is_shown_without_closing_viewer(viewer, monkeypatch):
@@ -381,3 +386,169 @@ def test_timelapse_cli_default_and_validation():
     for value in ("0", "-1", "1501"):
         with pytest.raises(SystemExit):
             desktop.parse_args(["--timelapse-fpm", value])
+
+
+def test_hardware_ambient_changes_and_restore_drive_measurements(viewer, monkeypatch, tmp_path):
+    from test_hardware_controls import Device
+
+    from topdon_duo.hardware_controls import HardwareControls
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    viewer.camera.device = Device()
+    hardware = HardwareControls(viewer.camera)
+    monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
+    panel = Mock()
+    panel.poll.side_effect = [
+        [],
+        [{"action": "hardware", "name": "ambient", "value": 35.0, "enabled": True}],
+        [{"action": "restore_hardware"}],
+    ]
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    # Simulate corrected counts delivered by the camera following an ambient write.
+    viewer.camera.frames.return_value = [make_frame(4500), make_frame(4600), make_frame(4500)]
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events([-1, -1, "q"]))
+    assert desktop.main(["--ambient", "99"]) == 0
+    calls = viewer.draw_toolbar.call_args_list
+    assert [call.args[1] for call in calls] == [30.0, 35.0, 30.0]
+    assert [call.kwargs["stats"].average for call in calls] == [
+        4500 / 64 - 50,
+        4600 / 64 - 50,
+        4500 / 64 - 50,
+    ]
+    assert hardware.state()["ambient"]["value"] == 30.0
+    assert viewer.callbacks == {}
+    assert "ambient_up" not in desktop.toolbar_layout(768).buttons
+    assert "ambient_down" not in desktop.toolbar_layout(768).buttons
+    assert panel.update.call_args.args[0]["temperature_conversion"] == "camera"
+
+
+def test_camera_preferences_survive_restart_and_restore_clears_overrides(
+    viewer, monkeypatch, tmp_path
+):
+    from test_hardware_controls import Device
+
+    from topdon_duo.hardware_controls import HardwareControls
+    from topdon_duo.settings_preferences import load_settings
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    device = Device()
+    viewer.camera.device = device
+    monkeypatch.setattr(desktop, "HardwareControls", HardwareControls)
+    panel = Mock()
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    panel.poll.return_value = [
+        {"action": "setting", "name": "temperature_unit", "value": "F"},
+        {"action": "setting", "name": "mirror_horizontal", "value": True},
+        {"action": "setting", "name": "image_filter", "value": "median"},
+        {"action": "advanced_auto", "value": False},
+        {"action": "hardware", "name": "ambient", "value": 35, "enabled": True},
+    ]
+    assert desktop.main(["--rotate", "90"]) == 0
+    saved = load_settings()
+    assert saved["hardware"] == {"ambient": 35}
+    assert saved["rotation"] == 90
+    # Exit restores the physical camera baseline, without forgetting the override.
+    assert HardwareControls(viewer.camera).read(3, 1)[76:80] == (13000).to_bytes(4, "little")
+    panel.poll.return_value = []
+    assert desktop.main([]) == 0
+    state = panel.update.call_args.args[0]
+    assert state["temperature_unit"] == "F"
+    assert state["mirror_horizontal"] is True
+    assert state["image_filter"] == "median"
+    assert state["advanced_auto"] is False
+    assert state["hardware"]["ambient"]["value"] == 35
+    assert viewer.draw_toolbar.call_args.args[1:3] == (35, "F")
+    # Explicit CLI options take precedence over remembered display/rotation settings.
+    panel.poll.return_value = [{"action": "restore_hardware"}, {"action": "reset"}]
+    assert desktop.main(["--rotate", "0", "--image-source", "raw"]) == 0
+    saved = load_settings()
+    assert saved["hardware"] == {} and saved["display"] == desktop.VIEW_DEFAULTS
+    assert saved["rotation"] == 0
+    panel.poll.return_value = []
+    assert desktop.main([]) == 0
+    assert panel.update.call_args.args[0]["hardware"]["ambient"]["value"] == 30
+
+
+def test_show_graph_doubles_window_width_and_hides_back_to_original(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings
+    from topdon_duo.window_preferences import save_main_window_size
+
+    save_main_window_size((930, 710))
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        if step <= 2:
+            viewer.click_control("graph")
+            return -1
+        return ord("q")
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert [call.args[1:] for call in desktop.cv2.resizeWindow.call_args_list] == [
+        (930, 710),
+        (1860, 710),
+        (930, 710),
+    ]
+    assert [image.shape[1] for image in viewer.displayed] == [768, 1536, 768]
+    assert np.count_nonzero(viewer.displayed[1][:, 768:]) == 0
+    assert load_settings()["show_graph"] is False
+
+
+def test_show_graph_survives_restart_without_doubling_again(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings
+    from topdon_duo.window_preferences import load_main_window_size
+
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("g"))
+    viewer.camera.frames.return_value = [make_frame()]
+    assert desktop.main([]) == 0
+    assert load_settings()["show_graph"] is True
+    size = load_main_window_size()
+    assert size[0] == 1536
+    desktop.cv2.resizeWindow.reset_mock()
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main([]) == 0
+    desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, *size)
+    assert viewer.displayed[-1].shape[1] == 1536
+    assert np.count_nonzero(viewer.displayed[-1][:, 768:]) == 0
+
+
+def test_graph_area_does_not_sample_thermal_pixels(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import save_settings
+
+    save_settings({"show_graph": True})
+    height = 576 + desktop.toolbar_layout(768).height
+    monkeypatch.setattr(desktop, "mouse_viewport_size", lambda: (1536, height))
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    samples = []
+    draw_picker = desktop.draw_picker
+
+    def sample(*args, **kwargs):
+        image, pixel = draw_picker(*args, **kwargs)
+        samples.append(pixel)
+        return image, pixel
+
+    monkeypatch.setattr(desktop, "draw_picker", sample)
+    step = 0
+
+    def wait_key(_delay):
+        nonlocal step
+        step += 1
+        callback = viewer.set_mouse.call_args.args[1]
+        if step == 1:
+            callback(cv2.EVENT_MOUSEMOVE, 1000, 180 + height - 576, 0, None)
+        elif step == 2:
+            callback(cv2.EVENT_MOUSEMOVE, 240, 180 + height - 576, 0, None)
+        else:
+            return ord("q")
+        return -1
+
+    monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
+    assert desktop.main([]) == 0
+    assert samples == [None, None, (80, 60)]

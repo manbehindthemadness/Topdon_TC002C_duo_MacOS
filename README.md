@@ -10,7 +10,7 @@ a browser-based MJPEG viewer.
 - Live false-colour thermal video at the camera's 25 fps rate
 - Per-pixel temperature inspection
 - Resizable and rotatable desktop view
-- Adjustable ambient-temperature calibration
+- Hardware ambient-temperature correction
 - Celsius and Fahrenheit display modes
 - Native macOS Save dialog and GTK Save dialog on Ubuntu
 - PNG preview plus lossless NPZ radiometric data and JSON metadata
@@ -50,7 +50,7 @@ Unplug and reconnect the camera, then run:
 
 ```bash
 .venv/bin/topdon-duo --diagnose
-.venv/bin/topdon-duo-desktop --ambient 21.9 --rotate 90
+.venv/bin/topdon-duo-desktop --rotate 90
 # Alternatively, start the browser viewer:
 .venv/bin/topdon-duo --ambient 21.9 --rotate 90
 ```
@@ -71,11 +71,11 @@ cd Topdon_TC002C_duo_MacOS
 uv sync
 
 # Direct USB capture needs elevated access on macOS.
-sudo .venv/bin/topdon-duo-desktop --ambient 21.9 --rotate 90
+sudo .venv/bin/topdon-duo-desktop --rotate 90
 ```
 
-Set `--ambient` to the measured room temperature for more useful absolute
-readings. Use `--rotate` with `0`, `90`, `180`, or `270` to choose the starting
+Set ambient temperature in **Camera → Ambient temperature**; this writes to the
+camera and its corrected counts drive desktop measurements. Use `--rotate` with `0`, `90`, `180`, or `270` to choose the starting
 orientation.
 
 The viewer uses the camera's processed preview when it is populated, including
@@ -97,14 +97,20 @@ The controls are available from the toolbar as well as the keyboard:
 | Inspect a pixel | Move the mouse over the image |
 | Place fixed sample spots | **Add spots** or `P`, then click image locations |
 | Clear all sample spots | **Clear spots** or `P` again |
-| Adjust ambient temperature | Toolbar, `[` / `]`, slider, or mouse wheel when supported |
+| Adjust ambient temperature | Camera popup hardware ambient row |
 | Save image data | **Capture** → **Save image data**, or `S` |
 | Open image, video and timelapse controls | **Capture** or `C` |
 | Rotate clockwise | **Rotate** or `O` |
 | Toggle Celsius/Fahrenheit | **Unit** or `F` |
 | Open camera controls | **Camera** or `V` |
+| Show/hide graph area | **Show graph** / **Hide graph** or `G` |
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
+
+**Show graph** doubles the main window width, keeping its height and reserving
+a blank area to the right of the thermal image. **Hide graph** halves the width
+again. The toggle is remembered across restarts. Graph rendering is not yet
+implemented; captures and recordings continue to contain the thermal view only.
 
 Sample spots use crosshairs with a one-pixel stroke and live temperature
 readings in the selected unit. They remain on the same thermal pixels when the
@@ -156,9 +162,20 @@ dimensions with black borders, preserving its aspect ratio.
 The main thermal image window remembers its resized dimensions across viewer
 restarts. The **Camera** popup also remembers its window size across closes and viewer restarts,
 and groups display, AI enhancement, and camera adjustments.
+Display preferences, selected temperature unit, rotation, Advanced / Auto state
+and successfully applied hardware overrides are saved as `settings.json` beside
+`main-window.json` in the application configuration directory. Changes save as
+they are applied and on exit. Saved overrides are reapplied after reading and
+preserving the camera baseline on the next launch; the physical baseline is
+still restored on exit. Restore camera settings also clears saved hardware
+overrides; Reset display settings saves the display defaults. Explicit
+`--rotate` and `--image-source` options override remembered values. Invalid saved
+fields are ignored independently so valid preferences can still load.
 Each control has a title and editable value; only numeric ranges have sliders.
-Choice and on/off controls use dropdowns. On/off settings are grouped below the display
-and camera adjustments. All available inputs stay enabled. The single
+Ambient and reflected-temperature inputs follow the selected Celsius/Fahrenheit
+unit, including ranges and slider values; hardware writes remain in Celsius.
+Choice and on/off controls use dropdowns. On/off settings use two columns within Display controls, above
+AI enhancement and camera adjustments. All available inputs stay enabled. The single
 **Advanced / Auto** checkbox is reserved for future automatic control behavior. Hardware rows include ambient and reflected temperature,
 distance, emissivity, humidity, optical transmission, center overlay, brightness,
 contrast, noise reduction mode and levels, detail enhancement, and camera palettes.
@@ -188,8 +205,8 @@ Processing may reduce the live frame rate, especially for the full 512×384 prev
 The portable Anime4K09 port has been checked against the public kernel rules;
 identical results to a phone GPU have not been established.
 
-When a hardware temperature-correction row is edited, measurements use the
-camera count conversion (`raw / 64 - 50`) instead of the software ambient anchor;
+Desktop measurements always use the camera count conversion (`raw / 64 - 50`),
+including before edits and after restoring hardware settings;
 readings remain approximate. Camera image controls preserve its preview intensity,
 and camera palettes use its YUYV color output. The display gradient still applies
 to raw images and grayscale previews. Unsupported or unvalidated hardware switches
@@ -229,16 +246,19 @@ indicate missing permissions.
 
 ## Temperature accuracy
 
-By default the viewer scales raw counts by 1/64 and anchors the cold-background
-percentile to `--ambient` in software. The toolbar ambient adjustment does not
-send that setting to the camera; use the **Camera** popup's hardware ambient row
-for that. These readings are approximate and are not measurement-grade.
+The desktop uses camera-corrected counts converted with `raw / 64 - 50` for
+statistics, cursor readings, sample spots and saved measurements. The **Camera**
+popup's ambient row is the sole desktop ambient control. Its effective hardware
+value also appears in the readout and capture metadata; if configuration cannot
+be read, ambient is shown as unavailable. The old desktop `--ambient` argument
+is accepted for compatibility but ignored with a warning.
 
 Live hardware experiments found that ambient temperature, distance and emissivity
-can be set on the camera, and that mode-8 counts converted with `raw / 64 - 50`
-usually agree closely with the camera's telemetry. Editing a hardware correction
-row selects this conversion; restoring camera settings returns to the software
-ambient anchor.
+can be set on the camera, and mode-8 counts usually agree closely with its
+telemetry. Restoring settings keeps the camera conversion and original hardware
+ambient value. Readings remain approximate and are not measurement-grade.
+
+The web viewer retains its software cold-background anchor and `--ambient` option.
 
 ## Hardware research
 
@@ -254,6 +274,37 @@ obtained upstream code, verified ACNet weights, and a successful local test.
 
 Large captures, original configuration payloads and extracted research material
 remain local under the gitignored `diagnostics/telemetry-research/` directory.
+
+## Automatic controls and future calibrations
+
+Planned Auto behavior: adapt brightness, contrast, general/spatial/temporal noise
+reduction and detail enhancement using image histograms, estimated noise, motion
+and edge strength. These mappings still need validation on this camera.
+Ambient temperature stays manual and is excluded from automatic calculation.
+Distance, emissivity, reflected temperature and optical transmission also stay
+manual until a suitable reference-based calibration is available. Palettes,
+mirrors and overlays remain user preferences. Weather humidity is a possible
+optional outdoor estimate, with its source and age shown; it is not a measured
+indoor value. Advanced / Auto is currently a placeholder.
+
+| Future calibration | Required reference or data | Proposed method | Validation / limits |
+| --- | --- | --- | --- |
+| Brightness and contrast | Fixed scenes with narrow and wide temperature spans | Map histogram percentiles and clipping to hardware settings; smooth changes over time | Check clipping and stability; distinguish existing camera gain adjustment from host adjustment |
+| General and spatial denoising | Repeated frames of flat regions and fine-detail targets | Estimate noise and measure the effect of each strength | Compare noise reduction against lost detail; scene texture must not count as noise |
+| Temporal denoising | Static scenes and controlled target motion | Map temporal noise and motion estimates to filtering strength | Check trails and response delay; allow hardware settling before comparing frames |
+| Detail enhancement | Edge targets captured at several noise levels | Select strength using edge clarity and noise estimates | Check halos and amplified noise; enhanced pixels do not establish new measurement resolution |
+| Distance / camera geometry | Known-size target, measured distances and target orientation | Calibrate projection and estimate distance from target size in native pixels | Validate at held-out distances; arbitrary objects and unknown orientation do not give reliable absolute distance |
+| Emissivity | Known-emissivity reference on the same surface or an independent surface-temperature measurement; supplied environmental corrections | Fit emissivity to the reference temperature, then restore original settings | Verify thermal equilibrium and useful temperature contrast; result applies to that material, surface and measurement conditions |
+| Reflected apparent temperature | Suitable reflector placed near the target | Guided reflector measurement with a documented temporary camera configuration | Validate the procedure against this camera's supported distance and correction settings; restore originals afterward |
+| Optical transmission | Known IR-transmitting optics and a stable reference target | Compare reference measurements with and without the optics under controlled conditions | Confirm the hardware field's meaning and compensation model before fitting; a single temperature ratio is insufficient |
+
+For later trials, retain original hardware payloads, reference conditions, camera
+and firmware identification, raw frames, applied settings, settling time and
+validation results. Record estimates separately from measured references and
+preserve the camera's corrected temperature conversion throughout display tuning.
+The measurement reference procedures are informed by
+[FLIR's thermographic measurement guidance](https://support.flir.com/docdownload/assets/web/4jau/en-us/T505000.xml.html);
+they still require validation for this camera.
 
 ## Development
 

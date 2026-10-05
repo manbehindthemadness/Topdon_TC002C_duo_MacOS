@@ -12,8 +12,6 @@ from topdon_duo.desktop import (
     MacSaveDialog,
     MousePicker,
     SampleSpots,
-    ambient_to_trackbar,
-    clamp_ambient,
     draw_control_instructions,
     draw_picker,
     draw_sample_spots,
@@ -23,7 +21,6 @@ from topdon_duo.desktop import (
     save_capture,
     toolbar_action_at,
     toolbar_layout,
-    trackbar_to_ambient,
 )
 from topdon_duo.render import READOUT_HEIGHT, ThermalRenderer, draw_temperature_readout
 
@@ -158,22 +155,6 @@ def test_control_instructions_preserve_shape_and_draw_overlay():
     result = draw_control_instructions(image)
     assert result.shape == image.shape
     assert np.count_nonzero(result) > 0
-
-
-def test_mouse_wheel_accumulates_signed_ambient_steps():
-    picker = MousePicker()
-    picker.callback(10, 0, 0, 120 << 16, None)
-    picker.callback(10, 0, 0, 0xFF88 << 16, None)
-    picker.callback(11, 0, 0, 120 << 16, None)
-    assert picker.consume_ambient_steps() == 1
-    assert picker.consume_ambient_steps() == 0
-
-
-def test_ambient_trackbar_conversion_and_clamping():
-    assert ambient_to_trackbar(21.9) == 719
-    assert trackbar_to_ambient(719) == 21.9
-    assert clamp_ambient(-100.0) == -50.0
-    assert clamp_ambient(200.0) == 100.0
 
 
 def test_picker_maps_resized_viewport_to_sensor_pixel():
@@ -384,9 +365,13 @@ def test_spots_draw_inverted_markers_and_live_readings(monkeypatch):
     assert np.array_equal(rendered.image, original)
 
 
-def test_desktop_spot_control_places_multiple_spots_rotates_and_clears(monkeypatch):
+def test_desktop_spot_control_places_multiple_spots_rotates_and_clears(monkeypatch, tmp_path):
     from topdon_duo import desktop
 
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    hardware = Mock(original={}, enabled=set(), error="", preview_active=False)
+    hardware.state.return_value = {}
+    monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 8
     monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)

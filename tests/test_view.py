@@ -22,8 +22,10 @@ def test_view_popup_emits_settings_and_syncs_without_feedback(tmp_path):
     script = """
 import sys
 from pathlib import Path
-from PySide6.QtCore import QSettings, QSize
-from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton
+from PySide6.QtCore import QPoint, QPointF, QSettings, QSize, Qt
+from PySide6.QtGui import QWheelEvent
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton, QScrollArea
 from topdon_duo.view_window import ViewWindow
 from topdon_duo.view_settings import VIEW_DEFAULTS
 from topdon_duo.hardware_controls import HARDWARE_CONTROLS
@@ -37,6 +39,35 @@ window.show()
 app.processEvents()
 assert messages == []
 assert window.windowTitle() == "Camera"
+# Wheel events cannot edit dropdowns, numeric inputs or sliders, even with focus.
+for control_row in (*window.rows.values(), *window.hardware_rows.values()):
+    for control in (control_row.input, control_row.slider):
+        if control is None:
+            continue
+        control.setFocus()
+        before = control_row.value()
+        for delta in (120, -120):
+            event = QWheelEvent(QPointF(5, 5), QPointF(control.mapToGlobal(QPoint(5, 5))),
+                                QPoint(), QPoint(0, delta), Qt.NoButton, Qt.NoModifier,
+                                Qt.NoScrollPhase, False)
+            QApplication.sendEvent(control, event)
+            assert not event.isAccepted()
+            assert control_row.value() == before
+        assert not control_row.timer.isActive()
+assert messages == []
+# Delivered through the window, ignored input events scroll the containing menu.
+scroll = window.findChild(QScrollArea)
+scroll.verticalScrollBar().setValue(0)
+control = window.controls["image_source"]
+control.setFocus()
+app.processEvents()
+position = control.mapTo(window, control.rect().center())
+QTest.wheelEvent(window.windowHandle(), position, QPoint(0, -120))
+app.processEvents()
+assert scroll.verticalScrollBar().value() > 0
+assert messages == []
+scroll.verticalScrollBar().setValue(0)
+
 assert window.findChildren(QCheckBox) == [window.advanced_auto]
 assert window.advanced_auto.text() == "Advanced / Auto"
 for row in (*window.rows.values(), *window.hardware_rows.values()):
@@ -45,7 +76,7 @@ for row in (*window.rows.values(), *window.hardware_rows.values()):
     if row.slider is not None:
         assert row.slider.isEnabled()
 window.advanced_auto.click()
-assert not messages
+assert messages.pop() == {"action": "advanced_auto", "value": False}
 assert all(row.input.isEnabled() for row in window.rows.values())
 assert all(row.input.isEnabled() for row in window.hardware_rows.values())
 
@@ -96,6 +127,37 @@ assert window.hardware_rows["palette"].input.currentData() == 11
 assert window.hardware_rows["palette"].slider is None
 assert row.input.isEnabled()
 
+# Display conversion must not change hardware values or emit writes on synchronization.
+count = len(messages)
+state = {**VIEW_DEFAULTS, "temperature_unit": "F", "hardware": {
+    "ambient": {"value": 30, "available": True},
+    "reflected": {"value": 20, "available": True}}}
+window.update_state(state)
+assert len(messages) == count
+assert row.input.value() == 86
+assert row.input.suffix() == " °F"
+assert row.input.minimum() == -58 and row.input.maximum() == 212
+assert abs(row.input.singleStep() - 0.18) < 1e-8
+assert row.slider.value() == 800
+assert window.hardware_rows["reflected"].input.value() == 68
+assert window.hardware_rows["distance"].input.suffix() == " m"
+row.input.setValue(95)
+assert row.value() == 35 and row.slider.value() == 850
+row._emit()
+assert messages[-1] == {"action": "hardware", "name": "ambient",
+                        "value": 35.0, "enabled": True}
+row.slider.setValue(775)
+assert row.input.value() == 81.5 and row.value() == 27.5
+# Preserve a pending edit across a unit change without sending a second write.
+count = len(messages)
+window.update_state({**state, "temperature_unit": "C"})
+assert len(messages) == count
+assert row.input.value() == 27.5 and row.input.suffix() == " °C"
+row._emit()
+assert messages[-1]["value"] == 27.5
+window.update_state({**state, "temperature_unit": "C"})
+assert row.input.value() == 30
+
 body_layout = row.parentWidget().layout()
 headings = {body_layout.itemAt(i).widget().text(): i
             for i in range(body_layout.count())
@@ -103,15 +165,17 @@ headings = {body_layout.itemAt(i).widget().text(): i
 for name in ("upsampling", "enhancement_input", "enhancement_amount", "anime4k_passes"):
     assert headings["AI enhancement"] < body_layout.indexOf(window.rows[name])
     assert body_layout.indexOf(window.rows[name]) < headings["Camera adjustments"]
-switch_heading = next(body_layout.itemAt(i).widget() for i in range(body_layout.count())
-                      if isinstance(body_layout.itemAt(i).widget(), QLabel)
-                      and body_layout.itemAt(i).widget().text() == "On / off settings")
-for control in (*window.rows.values(), *window.hardware_rows.values()):
-    if control.is_switch:
-        assert body_layout.indexOf(control) > body_layout.indexOf(switch_heading)
-        assert control.slider is None
-    else:
-        assert body_layout.indexOf(control) < body_layout.indexOf(switch_heading)
+assert "On / off settings" not in headings
+switches = window.display_switches
+assert switches.columnCount() == 2
+assert headings["Display controls"] < body_layout.indexOf(switches) < headings["AI enhancement"]
+expected = [row for row in (*window.rows.values(), *window.hardware_rows.values())
+            if row.is_switch]
+assert switches.count() == len(expected)
+for index, control in enumerate(expected):
+    assert switches.itemAtPosition(index // 2, index % 2).widget() is control
+    assert control.slider is None
+    assert control.input.isVisible()
 
 window.rows["color_palette"].timer.start()
 next(b for b in window.findChildren(QPushButton) if b.text().startswith("Reset")).click()

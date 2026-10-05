@@ -28,6 +28,7 @@ from .render import (
     ThermalRenderer,
     draw_temperature_readout,
 )
+from .settings_preferences import load_settings, save_settings
 from .view_panel import ViewPanel
 from .view_settings import VIEW_DEFAULTS
 from .window_preferences import load_main_window_size, save_main_window_size
@@ -35,10 +36,6 @@ from .window_style import set_black_window_backgrounds, window_resize_size
 
 LOG = logging.getLogger(__name__)
 WINDOW_NAME = "TOPDON TC002C Duo"
-AMBIENT_TRACKBAR = "Ambient x0.1 C"
-AMBIENT_MIN_C = -50.0
-AMBIENT_MAX_C = 100.0
-AMBIENT_STEP_C = 0.1
 TOOLBAR_ROW_HEIGHT = 30
 TOOLBAR_BUTTON_HEIGHT = 24
 TOOLBAR_PADDING = 4
@@ -61,23 +58,10 @@ end run
 """
 
 
-def clamp_ambient(value: float) -> float:
-    return round(min(max(value, AMBIENT_MIN_C), AMBIENT_MAX_C), 1)
-
-
-def ambient_to_trackbar(value: float) -> int:
-    return round((clamp_ambient(value) - AMBIENT_MIN_C) / AMBIENT_STEP_C)
-
-
-def trackbar_to_ambient(position: int) -> float:
-    return clamp_ambient(AMBIENT_MIN_C + position * AMBIENT_STEP_C)
-
-
 @dataclass
 class MousePicker:
     x: int | None = None
     y: int | None = None
-    ambient_steps: int = 0
     clicks: list[tuple[int, int]] = field(default_factory=list)
 
     def callback(self, event: int, x: int, y: int, flags: int, _parameter) -> None:
@@ -86,16 +70,6 @@ class MousePicker:
         if event == cv2.EVENT_LBUTTONUP:
             self.x, self.y = x, y
             self.clicks.append((x, y))
-        elif event in (cv2.EVENT_MOUSEWHEEL, cv2.EVENT_MOUSEHWHEEL):
-            delta = (flags >> 16) & 0xFFFF
-            if delta >= 0x8000:
-                delta -= 0x10000
-            if delta:
-                self.ambient_steps += 1 if delta > 0 else -1
-
-    def consume_ambient_steps(self) -> int:
-        steps, self.ambient_steps = self.ambient_steps, 0
-        return steps
 
     def consume_clicks(self) -> list[tuple[int, int]]:
         clicks, self.clicks = self.clicks, []
@@ -222,13 +196,12 @@ class LinuxSaveDialog(MacSaveDialog):
 def toolbar_layout(width: int) -> ToolbarLayout:
     """Fit compact controls across a single row at the current image width."""
     controls = (
-        ("ambient_down", "Ambient -", 70),
-        ("ambient_up", "Ambient +", 70),
         ("rotate", "Rotate", 54),
         ("unit", "C / F", 50),
         ("view", "Camera", 65),
         ("spots", "Add spots", 84),
         ("capture", "Capture", 64),
+        ("graph", "Show graph", 90),
         ("help", "Help", 42),
         ("quit", "Quit", 38),
     )
@@ -249,13 +222,14 @@ def toolbar_layout(width: int) -> ToolbarLayout:
 
 def draw_toolbar(
     image: np.ndarray,
-    ambient_celsius: float,
+    ambient_celsius: float | None,
     temperature_unit: str,
     placing_spots: bool = False,
     recording_mode: str | None = None,
     pending_recording: str | None = None,
     status: str = "Ready",
     stats: TemperatureStats | None = None,
+    show_graph: bool = False,
 ) -> np.ndarray:
     layout = toolbar_layout(image.shape[1])
     canvas = np.zeros((image.shape[0] + layout.height, image.shape[1], 3), np.uint8)
@@ -264,22 +238,22 @@ def draw_toolbar(
         canvas[layout.height - READOUT_HEIGHT :] = draw_temperature_readout(
             image, stats, ambient_celsius, temperature_unit
         )
-    ambient_display = ambient_celsius
-    if temperature_unit == "F":
-        ambient_display = ambient_celsius * 9.0 / 5.0 + 32.0
     labels = {
-        "ambient_down": f"- {ambient_display:.1f}{temperature_unit}",
-        "ambient_up": f"{ambient_display:.1f}{temperature_unit} +",
         "rotate": "Rotate",
         "unit": f"Unit: {temperature_unit}",
         "view": "Camera",
         "spots": "Clear spots" if placing_spots else "Add spots",
         "capture": "Capture",
+        "graph": "Hide graph" if show_graph else "Show graph",
         "help": "Help",
         "quit": "Quit",
     }
     for action, (x0, y0, x1, y1) in layout.buttons.items():
-        active = action == "unit" or (action == "spots" and placing_spots)
+        active = (
+            (action == "graph" and show_graph)
+            or action == "unit"
+            or (action == "spots" and placing_spots)
+        )
         active = active or (action == "capture" and bool(recording_mode or pending_recording))
         fill = (74, 92, 70) if active else (47, 51, 61)
         cv2.rectangle(canvas, (x0, y0), (x1, y1), fill, -1)
@@ -359,7 +333,7 @@ def _restore_user_ownership(paths: list[Path]) -> None:
 def save_capture(
     rendered: RenderedThermalFrame,
     output_directory: Path,
-    ambient_celsius: float,
+    ambient_celsius: float | None,
     rotation: int,
     selected_pixel: tuple[int, int] | None = None,
     display_unit: str = "C",
@@ -389,7 +363,7 @@ def save_capture(
         data_path,
         raw_counts=rendered.raw_counts.astype(np.uint16),
         temperatures_celsius=rendered.temperatures_celsius.astype(np.float32),
-        ambient_celsius=np.float32(ambient_celsius),
+        ambient_celsius=np.float32(ambient_celsius if ambient_celsius is not None else np.nan),
         raw_gain_divisor=np.float32(64.0),
         rotation_degrees=np.int16(rotation),
         mirror_horizontal=np.bool_(rendered.display_settings.get("mirror_horizontal", False)),
@@ -684,13 +658,13 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
         ("Controls", (255, 255, 255)),
         ("Mouse move   Inspect pixel temperature", (210, 215, 225)),
         ("P / Add spots  Place spots; again clears", (210, 215, 225)),
-        ("Wheel/slider Adjust ambient by 0.1 C", (210, 215, 225)),
-        ("[ / ]        Ambient down / up", (210, 215, 225)),
+        ("Camera Hardware ambient and image controls", (210, 215, 225)),
         ("S            Save image data", (210, 215, 225)),
         ("C            Open Capture controls", (210, 215, 225)),
         ("O            Rotate 90 degrees clockwise", (210, 215, 225)),
         ("F            Toggle Celsius / Fahrenheit", (210, 215, 225)),
         ("V            Open Camera controls", (210, 215, 225)),
+        ("G            Show / hide graph area", (210, 215, 225)),
         ("Space        Hide controls", (210, 215, 225)),
         ("Q / Esc      Quit", (210, 215, 225)),
     )
@@ -710,13 +684,13 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Native TOPDON TC002C Duo viewer")
-    parser.add_argument("--ambient", type=float, default=22.0)
-    parser.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=0)
+    parser.add_argument("--ambient", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=None)
     parser.add_argument("--scale", type=int, choices=range(1, 7), default=3)
     parser.add_argument(
         "--image-source",
         choices=("preview", "raw"),
-        default="preview",
+        default=None,
         help="camera preview (default, when available) or raw thermal visualization",
     )
     parser.add_argument(
@@ -740,6 +714,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    saved_settings = load_settings()
+    remembered_hardware = saved_settings.get("hardware", {}).copy()
+    advanced_auto = saved_settings.get("advanced_auto", True)
+    show_graph = saved_settings.get("show_graph", False)
+    requested_window_size = None
     saved_window_size = load_main_window_size()
     last_window_size = None
     logging.basicConfig(
@@ -748,10 +727,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     renderer = ThermalRenderer(
         scale=args.scale,
-        ambient_celsius=args.ambient,
-        rotation=args.rotate,
-        image_source=args.image_source,
+        ambient_celsius=None,
+        rotation=args.rotate if args.rotate is not None else saved_settings.get("rotation", 0),
+        image_source=args.image_source or "preview",
     )
+    for name, value in saved_settings.get("display", {}).items():
+        renderer.set_view_setting(name, value)
+    if args.image_source is not None:
+        renderer.set_view_setting("image_source", args.image_source)
+    renderer.native_temperatures = True
+    if args.ambient is not None:
+        LOG.warning("--ambient is ignored; set hardware ambient temperature in Camera.")
     camera = TC002CDuoCamera()
     picker = MousePicker()
     spots = SampleSpots()
@@ -771,17 +757,32 @@ def main(argv: list[str] | None = None) -> int:
     show_instructions = False
     last_selected: tuple[int, int] | None = None
 
-    def set_ambient(value: float, *, update_trackbar: bool = True) -> None:
-        renderer.ambient_celsius = clamp_ambient(value)
-        if update_trackbar:
-            cv2.setTrackbarPos(
-                AMBIENT_TRACKBAR,
-                WINDOW_NAME,
-                ambient_to_trackbar(renderer.ambient_celsius),
+    def persist_settings() -> None:
+        try:
+            save_settings(
+                {
+                    "display": {name: getattr(renderer, name) for name in VIEW_DEFAULTS},
+                    "hardware": remembered_hardware,
+                    "rotation": renderer.rotation,
+                    "advanced_auto": advanced_auto,
+                    "show_graph": show_graph,
+                }
             )
+        except OSError as exc:
+            LOG.warning("Could not save Camera settings: %s", exc)
 
-    def on_ambient_trackbar(position: int) -> None:
-        set_ambient(trackbar_to_ambient(position), update_trackbar=False)
+    def toggle_graph() -> None:
+        nonlocal show_graph, requested_window_size, last_window_size
+        size = window_resize_size(WINDOW_NAME) or last_window_size or requested_window_size
+        if size is None:
+            return
+        width, height = size
+        show_graph = not show_graph
+        requested_window_size = (width * 2 if show_graph else max(1, round(width / 2)), height)
+        cv2.resizeWindow(WINDOW_NAME, *requested_window_size)
+        last_window_size = requested_window_size
+        picker.x = picker.y = None
+        persist_settings()
 
     def notify(message: str) -> None:
         nonlocal status_message, status_until
@@ -844,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
             sensor_height, sensor_width, renderer.mirror_horizontal, renderer.mirror_vertical
         )
         renderer.rotate_clockwise()
+        persist_settings()
         picker.x = picker.y = None
         last_selected = None
 
@@ -851,6 +853,7 @@ def main(argv: list[str] | None = None) -> int:
         nonlocal last_selected
         previous = renderer.view_settings()
         renderer.set_view_setting(name, value)
+        persist_settings()
         if name in ("mirror_horizontal", "mirror_vertical") and previous[name] != value:
             width, height = (
                 (SENSOR_WIDTH, SENSOR_HEIGHT)
@@ -867,7 +870,7 @@ def main(argv: list[str] | None = None) -> int:
             message = "Camera preview unavailable; showing the raw thermal image."
         if hardware.error:
             message = hardware.error
-        elif hardware.measurement_active:
+        else:
             message += " · Camera temperatures (approximate)"
         if renderer.upsampling != "off":
             if not renderer.enhancement_amount:
@@ -880,6 +883,7 @@ def main(argv: list[str] | None = None) -> int:
         return {
             **renderer.view_settings(),
             "hardware": hardware.state(),
+            "advanced_auto": advanced_auto,
             "status": message,
         }
 
@@ -910,21 +914,25 @@ def main(argv: list[str] | None = None) -> int:
             notify(f"Could not open Capture: {exc}")
 
     print(
-        "Mouse: inspect a pixel | wheel/slider or [/]: ambient +/- 0.1 C | "
+        "Mouse: inspect a pixel | "
         "p: add/clear spots | s: save image data | c: Capture controls | "
-        "o: rotate | f: C/F | v: Camera controls | Space: controls | q/Esc: quit"
+        "o: rotate | f: C/F | v: Camera controls | g: show/hide graph | Space: controls | q/Esc: quit"
     )
     try:
         camera.open()
+        try:
+            hardware.load()
+            for name, value in remembered_hardware.items():
+                try:
+                    hardware.set(name, value, True)
+                except (CameraError, ValueError, TypeError) as exc:
+                    hardware.error = f"Could not restore saved {name}: {exc}"
+                    LOG.warning("%s", hardware.error)
+        except CameraError as exc:
+            hardware.error = str(exc)
+            LOG.warning("Could not read hardware settings: %s", exc)
         cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL)
         cv2.setMouseCallback(WINDOW_NAME, picker.callback)
-        cv2.createTrackbar(
-            AMBIENT_TRACKBAR,
-            WINDOW_NAME,
-            ambient_to_trackbar(renderer.ambient_celsius),
-            ambient_to_trackbar(AMBIENT_MAX_C),
-            on_ambient_trackbar,
-        )
         set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
         for frame in camera.frames():
@@ -934,10 +942,24 @@ def main(argv: list[str] | None = None) -> int:
                         set_view_setting(command["name"], command["value"])
                     elif command.get("action") == "hardware":
                         hardware.set(command["name"], command["value"], command["enabled"])
+                        if command["enabled"]:
+                            remembered_hardware[command["name"]] = hardware.state()[
+                                command["name"]
+                            ]["value"]
+                        else:
+                            remembered_hardware.pop(command["name"], None)
+                        persist_settings()
                         hardware.error = ""
                         renderer._average_raw = None
+                    elif command.get("action") == "advanced_auto":
+                        if not isinstance(command["value"], bool):
+                            raise ValueError("Advanced / Auto must be a boolean")
+                        advanced_auto = command["value"]
+                        persist_settings()
                     elif command.get("action") == "restore_hardware":
                         hardware.restore()
+                        remembered_hardware.clear()
+                        persist_settings()
                         hardware.error = ""
                         renderer._average_raw = None
                     elif command.get("action") == "reset":
@@ -962,25 +984,26 @@ def main(argv: list[str] | None = None) -> int:
                     set_timelapse_fpm(int(command["frames_per_minute"]))
                     capture_cursor = bool(command["capture_cursor"])
                     request_save(action)
-            ambient_steps = picker.consume_ambient_steps()
-            if ambient_steps:
-                set_ambient(renderer.ambient_celsius + ambient_steps * AMBIENT_STEP_C)
-            renderer.native_temperatures = hardware.measurement_active
             renderer.camera_preview = hardware.preview_active
             renderer.camera_color = "palette" in hardware.enabled
             renderer.hardware_settings = hardware.state() if hardware.original else {}
+            ambient = renderer.hardware_settings.get("ambient", {})
+            renderer.ambient_celsius = ambient.get("value") if ambient.get("available") else None
             rendered = renderer.render_detailed(frame)
             actual_image_source = rendered.image_source
             view_panel.update(view_state())
             layout = toolbar_layout(rendered.image.shape[1])
             if not initial_window_size_set:
                 width, height = saved_window_size or (
-                    rendered.image.shape[1],
+                    rendered.image.shape[1] * (2 if show_graph else 1),
                     rendered.image.shape[0] + layout.height,
                 )
+                requested_window_size = (width, height)
                 cv2.resizeWindow(WINDOW_NAME, width, height)
                 initial_window_size_set = True
             viewport_size = mouse_viewport_size()
+            if show_graph and viewport_size is not None:
+                viewport_size = (viewport_size[0] / 2, viewport_size[1])
             display, selected = draw_picker(
                 rendered,
                 picker,
@@ -1078,6 +1101,7 @@ def main(argv: list[str] | None = None) -> int:
                 pending_recording=pending_save_kind if pending_save_kind != "image" else None,
                 status=status,
                 stats=rendered.stats,
+                show_graph=show_graph,
             )
 
             quit_requested = False
@@ -1089,11 +1113,7 @@ def main(argv: list[str] | None = None) -> int:
                     viewport_size=viewport_size,
                     canvas_height=display.shape[0],
                 )
-                if action == "ambient_down":
-                    set_ambient(renderer.ambient_celsius - AMBIENT_STEP_C)
-                elif action == "ambient_up":
-                    set_ambient(renderer.ambient_celsius + AMBIENT_STEP_C)
-                elif action == "capture":
+                if action == "capture":
                     open_capture()
                 elif action == "rotate":
                     rotate_view()
@@ -1103,6 +1123,9 @@ def main(argv: list[str] | None = None) -> int:
                     open_view()
                 elif action == "unit":
                     renderer.toggle_temperature_unit()
+                    persist_settings()
+                elif action == "graph":
+                    toggle_graph()
                 elif action == "help":
                     show_instructions = not show_instructions
                 elif action == "quit":
@@ -1118,6 +1141,8 @@ def main(argv: list[str] | None = None) -> int:
                     )
             if quit_requested:
                 break
+            if show_graph:
+                display = np.pad(display, ((0, 0), (0, display.shape[1]), (0, 0)))
             cv2.imshow(WINDOW_NAME, display)
             key = cv2.waitKey(1) & 0xFF
             current_size = window_resize_size(WINDOW_NAME)
@@ -1137,12 +1162,11 @@ def main(argv: list[str] | None = None) -> int:
                 spots.toggle()
             elif key == ord(" "):
                 show_instructions = not show_instructions
-            elif key == ord("["):
-                set_ambient(renderer.ambient_celsius - AMBIENT_STEP_C)
-            elif key == ord("]"):
-                set_ambient(renderer.ambient_celsius + AMBIENT_STEP_C)
+            elif key == ord("g"):
+                toggle_graph()
             elif key == ord("f"):
                 renderer.toggle_temperature_unit()
+                persist_settings()
             elif key == ord("v"):
                 open_view()
             elif key == ord("s"):
@@ -1153,6 +1177,7 @@ def main(argv: list[str] | None = None) -> int:
         LOG.error("Unable to run desktop viewer: %s", exc)
         return 2
     finally:
+        persist_settings()
         if last_window_size is not None:
             try:
                 save_main_window_size(last_window_size)

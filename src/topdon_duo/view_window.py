@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -35,6 +36,20 @@ class NoWheelSlider(QSlider):
         event.ignore()
 
 
+class NoWheelComboBox(QComboBox):
+    """Keep choices unchanged while scrolling the surrounding menu."""
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
+class NoWheelSpinBox(QDoubleSpinBox):
+    """Keep numeric values unchanged while scrolling the surrounding menu."""
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
 class ControlRow(QWidget):
     """An editable value with a slider for range controls."""
 
@@ -45,6 +60,9 @@ class ControlRow(QWidget):
         self.is_switch = tuple(text for _, text in self.options) == ("Off", "On")
         self.step = step
         self.minimum = minimum
+        self.maximum = maximum
+        self.is_temperature = unit == "°C"
+        self.temperature_unit = "C"
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.setInterval(250)
@@ -56,12 +74,12 @@ class ControlRow(QWidget):
         layout.addWidget(label)
         line = QHBoxLayout()
         if self.options:
-            self.input = QComboBox()
+            self.input = NoWheelComboBox()
             for value, text in self.options:
                 self.input.addItem(text, value)
             self.input.currentIndexChanged.connect(self._input_changed)
         else:
-            self.input = QDoubleSpinBox()
+            self.input = NoWheelSpinBox()
             self.input.setRange(minimum, maximum)
             self.input.setDecimals(2 if step == 0.01 else (1 if step == 0.1 else 0))
             self.input.setSingleStep(step)
@@ -84,7 +102,32 @@ class ControlRow(QWidget):
         layout.addLayout(line)
 
     def value(self):
-        return self.input.currentData() if self.options else round(self.input.value(), 2)
+        if self.options:
+            return self.input.currentData()
+        value = self.input.value()
+        if self.is_temperature:
+            if self.temperature_unit == "F":
+                value = (value - 32) / 1.8
+            # Hardware temperatures retain their Celsius precision in both units.
+            value = self.minimum + round((value - self.minimum) / self.step) * self.step
+        return round(value, 2)
+
+    def _display_value(self, value):
+        return value * 1.8 + 32 if self.is_temperature and self.temperature_unit == "F" else value
+
+    def set_temperature_unit(self, unit):
+        if not self.is_temperature or unit == self.temperature_unit:
+            return
+        value = self.value()
+        self.temperature_unit = unit
+        with QSignalBlocker(self.input):
+            self.input.setDecimals(2 if unit == "F" else 1)
+            self.input.setRange(
+                self._display_value(self.minimum), self._display_value(self.maximum)
+            )
+            self.input.setSingleStep(self.step * 1.8 if unit == "F" else self.step)
+            self.input.setSuffix(f" °{unit}")
+        self._set_value(value)
 
     def _set_value(self, value):
         with QSignalBlocker(self.input):
@@ -93,7 +136,7 @@ class ControlRow(QWidget):
                 self.input.setCurrentIndex(index)
                 position = max(0, index)
             else:
-                self.input.setValue(value)
+                self.input.setValue(self._display_value(value))
                 position = round((value - self.minimum) / self.step)
         if self.slider is not None:
             with QSignalBlocker(self.slider):
@@ -154,6 +197,9 @@ class ViewWindow(QWidget):
         self.advanced_auto.setToolTip(
             "Reserved for future automatic controls. All inputs stay enabled."
         )
+        self.advanced_auto.toggled.connect(
+            lambda value: self._send({"action": "advanced_auto", "value": value})
+        )
         layout.addWidget(self.advanced_auto)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -188,8 +234,11 @@ class ViewWindow(QWidget):
                     "temperature_unit",
                     "image_filter",
                     "color_palette",
+                    "mirror_horizontal",
+                    "mirror_vertical",
+                    "antialiasing",
                 ),
-                (),
+                ("palette", *hardware_switches),
             ),
             (
                 "AI enhancement",
@@ -204,17 +253,18 @@ class ViewWindow(QWidget):
             (
                 "Camera adjustments",
                 (),
-                tuple(name for name in HARDWARE_CONTROLS if name not in hardware_switches),
-            ),
-            (
-                "On / off settings",
-                ("mirror_horizontal", "mirror_vertical", "antialiasing"),
-                hardware_switches,
+                tuple(
+                    name
+                    for name in HARDWARE_CONTROLS
+                    if name not in hardware_switches and name != "palette"
+                ),
             ),
         ):
             heading = QLabel(title)
             heading.setStyleSheet("font-size: 16px; font-weight: bold")
             rows.addWidget(heading)
+            switches = QGridLayout() if title == "Display controls" else None
+            switch_count = 0
             for name in display_names:
                 if name in numeric_options:
                     row_title, minimum, maximum, step = numeric_options[name]
@@ -231,7 +281,11 @@ class ViewWindow(QWidget):
                 )
                 self.rows[name] = row
                 self.controls[name] = row.input
-                rows.addWidget(row)
+                if row.is_switch and switches is not None:
+                    switches.addWidget(row, switch_count // 2, switch_count % 2)
+                    switch_count += 1
+                else:
+                    rows.addWidget(row)
                 if name == "enhancement_amount":
                     row.setToolTip("0 gives the original image; 1 gives full enhancement.")
                 elif name == "anime4k_passes":
@@ -255,7 +309,18 @@ class ViewWindow(QWidget):
                     unit=spec.unit,
                 )
                 self.hardware_rows[name] = row
-                rows.addWidget(row)
+                if row.is_switch and switches is not None:
+                    switches.addWidget(row, switch_count // 2, switch_count % 2)
+                    switch_count += 1
+                else:
+                    rows.addWidget(row)
+            if switches is not None:
+                switches.setHorizontalSpacing(24)
+                switches.setVerticalSpacing(16)
+                switches.setColumnStretch(0, 1)
+                switches.setColumnStretch(1, 1)
+                rows.addLayout(switches)
+                self.display_switches = switches
         rows.addStretch()
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -296,9 +361,14 @@ class ViewWindow(QWidget):
         self._send({"action": "restore_hardware"})
 
     def update_state(self, state: dict) -> None:
+        with QSignalBlocker(self.advanced_auto):
+            self.advanced_auto.setChecked(state.get("advanced_auto", True))
         for name, row in self.rows.items():
             row.update_state(state.get(name, VIEW_DEFAULTS[name]))
         for name, row in self.hardware_rows.items():
+            row.set_temperature_unit(
+                state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"])
+            )
             setting = state.get("hardware", {}).get(name, {})
             row.update_state(
                 setting.get("value", HARDWARE_CONTROLS[name].minimum),
