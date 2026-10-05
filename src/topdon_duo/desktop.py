@@ -573,11 +573,11 @@ def _spot_label_layout(
     anchors = [(x * scale + scale // 2, y * scale + scale // 2) for x, y in spots.pixels]
     occupied = [(x - 6, y - 6, x + 7, y + 7) for x, y in anchors]
     labels = []
-    for (sensor_x, sensor_y), anchor in zip(spots.pixels, anchors):
+    for number, ((sensor_x, sensor_y), anchor) in enumerate(zip(spots.pixels, anchors), start=1):
         temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
         if temperature_unit == "F":
             temperature = temperature * 9.0 / 5.0 + 32.0
-        text = f"{temperature:.2f} {temperature_unit}"
+        text = f"{number}: {temperature:.2f} {temperature_unit}"
         origin, rect = _place_temperature_label(text, anchor, rendered.image.shape, occupied)
         occupied.append(rect)
         labels.append((text, origin, rect))
@@ -1032,7 +1032,15 @@ def main(argv: list[str] | None = None) -> int:
             notify("Stop logging or calibration measurement before changing settings.")
             return
         previous = renderer.view_settings()
+        if name == "palette_source" and value == "camera":
+            palette = hardware.state().get("palette", {})
+            if not palette.get("available", False):
+                raise ValueError("Camera palette control is unavailable")
+            hardware.set("palette", palette["value"], True)
+            remembered_hardware["palette"] = hardware.state()["palette"]["value"]
         renderer.set_view_setting(name, value)
+        if name == "color_palette":
+            renderer.set_view_setting("palette_source", "app")
         persist_settings()
         if name in ("mirror_horizontal", "mirror_vertical") and previous[name] != value:
             if emissivity_calibration.active:
@@ -1062,7 +1070,11 @@ def main(argv: list[str] | None = None) -> int:
     def view_state() -> dict:
         message = "Camera preview" if actual_image_source == "preview" else "Raw thermal image"
         if renderer.image_source == "preview" and actual_image_source == "raw":
-            message = "Camera preview unavailable; showing the raw thermal image."
+            message = (
+                "App colors from raw thermal data"
+                if renderer.palette_source == "app" and renderer.camera_color
+                else "Camera preview unavailable; showing the raw thermal image."
+            )
         if hardware.error:
             message = hardware.error
         else:
@@ -1084,6 +1096,13 @@ def main(argv: list[str] | None = None) -> int:
         return {
             **renderer.view_settings(),
             "hardware": hardware.state(),
+            "color_source": (
+                "camera"
+                if actual_image_source == "preview"
+                and renderer.camera_preview
+                and renderer.camera_color
+                else "app"
+            ),
             "advanced_auto": advanced_auto,
             "settings_locked": graphs.logging
             or emissivity_calibration.running
@@ -1181,6 +1200,8 @@ def main(argv: list[str] | None = None) -> int:
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
                         hardware.set(command["name"], command["value"], command["enabled"])
+                        if command["name"] == "palette" and command["enabled"]:
+                            renderer.set_view_setting("palette_source", "camera")
                         if command["enabled"]:
                             remembered_hardware[command["name"]] = hardware.state()[
                                 command["name"]
@@ -1289,7 +1310,11 @@ def main(argv: list[str] | None = None) -> int:
                         renderer._average_raw = None
                     elif command.get("action") == "reset":
                         for name, value in VIEW_DEFAULTS.items():
-                            set_view_setting(name, value)
+                            if name == "palette_source":
+                                renderer.set_view_setting(name, value)
+                            else:
+                                set_view_setting(name, value)
+                        persist_settings()
                     elif command.get("action") == "error":
                         notify(f"Camera window failed: {command.get('message', '')}")
                 except (KeyError, ValueError, TypeError, CameraError) as exc:

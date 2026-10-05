@@ -5,6 +5,7 @@ import math
 TEMPERATURE_UNITS = {"C": "Metric (°C, cm)", "F": "Imperial (°F, in)"}
 DISTANCE_METERS_PER_UNIT = {"C": 0.01, "F": 0.0254}
 IMAGE_SOURCES = {"preview": "Camera preview", "raw": "Raw thermal image"}
+PALETTE_SOURCES = {"app": "App colors", "camera": "Camera colors (preview)"}
 IMAGE_FILTERS = {
     "none": "None",
     "bilateral": "Edge-preserving denoise",
@@ -46,6 +47,7 @@ VIEW_DEFAULTS = {
     "anime4k_passes": 3,
     "antialiasing": True,
     "color_palette": "inferno",
+    "palette_source": "camera",
 }
 
 
@@ -57,6 +59,7 @@ def validate_view_setting(name: str, value: object) -> None:
         "upsampling": UPSCALING_MODES,
         "enhancement_input": ENHANCEMENT_INPUTS,
         "color_palette": COLOR_PALETTES,
+        "palette_source": PALETTE_SOURCES,
     }
     if name in options:
         if not isinstance(value, str) or value not in options[name]:

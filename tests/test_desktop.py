@@ -358,7 +358,7 @@ def test_spots_draw_inverted_markers_and_live_readings(monkeypatch):
     for temperature, unit, expected in ((20, "C", "20.00 C"), (25, "F", "77.00 F")):
         frame = replace(rendered, temperatures_celsius=np.full((192, 256), temperature))
         result = draw_sample_spots(rendered.image, frame, spots, 3, unit)
-        assert [call.args[1] for call in put_text.call_args_list] == [expected] * 2
+        assert [call.args[1] for call in put_text.call_args_list] == [f"1: {expected}", f"2: {expected}"]
         put_text.reset_mock()
         for x, y in spots.pixels:
             ix, iy = x * 3 + 1, y * 3 + 1

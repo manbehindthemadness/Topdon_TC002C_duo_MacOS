@@ -24,6 +24,7 @@ from .view_settings import (
     ENHANCEMENT_INPUTS,
     IMAGE_FILTERS,
     IMAGE_SOURCES,
+    PALETTE_SOURCES,
     TEMPERATURE_UNITS,
     UPSCALING_MODES,
     VIEW_DEFAULTS,
@@ -558,11 +559,12 @@ class ViewWindow(QWidget):
         rows.setSpacing(16)
         display_options = {
             "image_source": ("Image source", tuple(IMAGE_SOURCES.items())),
+            "palette_source": ("Color source", tuple(PALETTE_SOURCES.items())),
             "temperature_unit": ("Measurement units", tuple(TEMPERATURE_UNITS.items())),
             "image_filter": ("Image filter", tuple(IMAGE_FILTERS.items())),
             "upsampling": ("Upsampling algorithm", tuple(UPSCALING_MODES.items())),
             "enhancement_input": ("Enhancement input size", tuple(ENHANCEMENT_INPUTS.items())),
-            "color_palette": ("Display color gradient", tuple(COLOR_PALETTES.items())),
+            "color_palette": ("App palette (raw / grayscale)", tuple(COLOR_PALETTES.items())),
             "mirror_horizontal": ("Mirror left / right", ((False, "Off"), (True, "On"))),
             "mirror_vertical": ("Mirror top / bottom", ((False, "Off"), (True, "On"))),
             "antialiasing": ("Antialiasing", ((False, "Off"), (True, "On"))),
@@ -583,6 +585,7 @@ class ViewWindow(QWidget):
                     "image_source",
                     "temperature_unit",
                     "image_filter",
+                    "palette_source",
                     "color_palette",
                     "mirror_horizontal",
                     "mirror_vertical",
@@ -636,6 +639,13 @@ class ViewWindow(QWidget):
                     switch_count += 1
                 else:
                     rows.addWidget(row)
+                if name == "color_palette":
+                    row.setToolTip(
+                        "Colors raw thermal images and grayscale previews. Camera color previews use the camera palette instead."
+                    )
+                    self.color_status = QLabel()
+                    self.color_status.setWordWrap(True)
+                    rows.addWidget(self.color_status)
                 if name == "enhancement_amount":
                     row.setToolTip("0 gives the original image; 1 gives full enhancement.")
                 elif name == "anime4k_passes":
@@ -648,7 +658,7 @@ class ViewWindow(QWidget):
             for name in hardware_names:
                 spec = HARDWARE_CONTROLS[name]
                 row = ControlRow(
-                    spec.title,
+                    "Camera palette (color preview)" if name == "palette" else spec.title,
                     lambda value, name=name: self._send(
                         {"action": "hardware", "name": name, "value": value, "enabled": True}
                     ),
@@ -658,6 +668,10 @@ class ViewWindow(QWidget):
                     options=spec.options,
                     unit=spec.unit,
                 )
+                if name == "palette":
+                    row.setToolTip(
+                        "Sets colors inside the camera. Used only with Camera preview; choosing a palette enables camera colors for that preview."
+                    )
                 self.hardware_rows[name] = row
                 if row.is_switch and switches is not None:
                     switches.addWidget(row, switch_count // 2, switch_count % 2)
@@ -730,14 +744,39 @@ class ViewWindow(QWidget):
         self.restore_button.setEnabled(not self._settings_locked)
         with QSignalBlocker(self.advanced_auto):
             self.advanced_auto.setChecked(state.get("advanced_auto", True))
+        camera_palette_selected = (
+            state.get("palette_source", VIEW_DEFAULTS["palette_source"]) == "camera"
+        )
+        inactive_palette = (
+            self.rows["color_palette"] if camera_palette_selected else self.hardware_rows["palette"]
+        )
+        inactive_palette.timer.stop()
+        camera_colors = state.get("color_source") == "camera"
+        raw_view = state.get("image_source", VIEW_DEFAULTS["image_source"]) == "raw"
         for name, row in self.rows.items():
-            row.update_state(state.get(name, VIEW_DEFAULTS[name]), not self._settings_locked)
+            row.update_state(
+                state.get(name, VIEW_DEFAULTS[name]),
+                not self._settings_locked
+                and not (name == "color_palette" and camera_palette_selected),
+            )
         for name, row in self.hardware_rows.items():
             row.set_display_unit(state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]))
             setting = state.get("hardware", {}).get(name, {})
             row.update_state(
                 setting.get("value", HARDWARE_CONTROLS[name].minimum),
-                setting.get("available", True) and not self._settings_locked,
+                setting.get("available", True)
+                and not self._settings_locked
+                and not (name == "palette" and not camera_palette_selected),
+            )
+        if camera_colors:
+            self.color_status.setText(
+                "Colors: Camera palette. Choose App colors under Color source to use the app palette."
+            )
+        elif raw_view:
+            self.color_status.setText("Colors: App palette. Camera colors require Camera preview.")
+        else:
+            self.color_status.setText(
+                "Colors: App palette. Choose Camera colors with Camera preview to use the camera palette."
             )
         self.distance_calibration.update_state(
             state.get("distance_calibration", {}),

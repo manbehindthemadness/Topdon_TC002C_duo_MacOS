@@ -273,7 +273,7 @@ for control_row in (*window.rows.values(), *window.hardware_rows.values()):
                                 QPoint(), QPoint(0, delta), Qt.NoButton, Qt.NoModifier,
                                 Qt.NoScrollPhase, False)
             QApplication.sendEvent(control, event)
-            assert not event.isAccepted()
+            assert not event.isAccepted() or not control.isEnabled()
             assert control_row.value() == before
         assert not control_row.timer.isActive()
 assert messages == []
@@ -293,13 +293,13 @@ scroll.verticalScrollBar().setValue(0)
 assert window.findChildren(QCheckBox) == [window.advanced_auto]
 assert window.advanced_auto.text() == "Advanced / Auto"
 for row in (*window.rows.values(), *window.hardware_rows.values()):
-    assert row.input.isEnabled()
+    assert row.input.isEnabled() == (row is not window.rows["color_palette"])
     assert (row.slider is None) == bool(row.options)
     if row.slider is not None:
         assert row.slider.isEnabled()
 window.advanced_auto.click()
 assert messages.pop() == {"action": "advanced_auto", "value": False}
-assert all(row.input.isEnabled() for row in window.rows.values())
+assert all(row.input.isEnabled() for name, row in window.rows.items() if name != "color_palette")
 assert all(row.input.isEnabled() for row in window.hardware_rows.values())
 
 for name, value in [("image_source", "raw"), ("temperature_unit", "F"),
@@ -308,6 +308,8 @@ for name, value in [("image_source", "raw"), ("temperature_unit", "F"),
                     ("color_palette", "white_hot"),
                     ("mirror_horizontal", True), ("mirror_vertical", True),
                     ("antialiasing", False)]:
+    if name == "color_palette":
+        window.update_state({**VIEW_DEFAULTS, "palette_source": "app"})
     control = window.controls[name]
     control.setCurrentIndex(control.findData(value))
     window.rows[name]._emit()
@@ -324,6 +326,26 @@ assert window.controls["mirror_horizontal"].currentData() is False
 assert window.controls["mirror_horizontal"].isEnabled()
 assert window.status.text() == "Camera preview"
 assert set(window.hardware_rows) == set(HARDWARE_CONTROLS)
+window.update_state({**VIEW_DEFAULTS, "color_source": "camera"})
+assert not window.controls["color_palette"].isEnabled()
+assert "Camera palette" in window.color_status.text()
+window.update_state({**VIEW_DEFAULTS, "palette_source": "app", "color_source": "app"})
+assert window.controls["color_palette"].isEnabled()
+assert not window.hardware_rows["palette"].input.isEnabled()
+window.controls["palette_source"].setCurrentIndex(window.controls["palette_source"].findData("camera"))
+window.rows["palette_source"]._emit()
+assert messages[-1] == {"action": "setting", "name": "palette_source", "value": "camera"}
+# Availability follows the selected source, even when actual output falls back.
+window.update_state({**VIEW_DEFAULTS, "palette_source": "camera", "image_source": "raw", "color_source": "app"})
+assert window.hardware_rows["palette"].input.isEnabled()
+assert not window.controls["color_palette"].isEnabled()
+window.update_state({**VIEW_DEFAULTS, "palette_source": "app", "color_source": "camera"})
+assert window.controls["color_palette"].isEnabled()
+assert not window.hardware_rows["palette"].input.isEnabled()
+
+window.update_state(VIEW_DEFAULTS)
+count = len(messages)
+
 
 row = window.hardware_rows["ambient"]
 window.update_state({**VIEW_DEFAULTS, "hardware": {
@@ -440,7 +462,8 @@ window.update_state({**state, "temperature_unit": "C", "settings_locked": False}
 assert window.advanced_auto.isEnabled()
 assert window.reset_button.isEnabled() and window.restore_button.isEnabled()
 assert all(control_row.input.isEnabled()
-           for control_row in (*window.rows.values(), *window.hardware_rows.values()))
+           for control_row in (*window.rows.values(), *window.hardware_rows.values())
+           if control_row is not window.rows["color_palette"])
 # Unlocking must still respect controls that are unavailable on this camera.
 window.update_state({**state, "hardware": {"ambient": {"value": 30, "available": False}}})
 assert not row.input.isEnabled()

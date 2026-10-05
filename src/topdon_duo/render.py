@@ -231,8 +231,10 @@ class ThermalRenderer:
 
         # Image processing and measurement data remain independent. Some modes
         # leave the preview empty; those retain the radiometric visualization.
-        use_preview = self.image_source == "preview" and (
-            self.camera_preview or bool(np.any(preview))
+        use_preview = (
+            not (self.camera_color and self.palette_source == "app")
+            and self.image_source == "preview"
+            and (self.camera_preview or bool(np.any(preview)))
         )
         image_plane = self._orient(preview) if use_preview else oriented_average
         low, high = np.percentile(image_plane, (1.0, 99.0))

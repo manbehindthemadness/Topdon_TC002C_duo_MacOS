@@ -50,8 +50,23 @@ class HardwareControl:
             payload[offset] = setting
 
 
-PALETTES = ((1, "White hot"), (2, "Black hot")) + tuple(
-    (value, f"Palette {value}") for value in range(10, 23)
+# Descriptive names from sampled TC002C Duo output; USB palette IDs stay unchanged.
+PALETTES = (
+    (1, "White hot"),
+    (2, "Black hot"),
+    (10, "Violet iron"),
+    (11, "Classic rainbow"),
+    (12, "Fire"),
+    (13, "Sunset"),
+    (14, "Soft iron"),
+    (15, "Amber"),
+    (16, "Vivid rainbow"),
+    (17, "Neon sunset"),
+    (18, "Silver"),
+    (19, "Pastel rainbow"),
+    (20, "Red hot"),
+    (21, "Green hot"),
+    (22, "Ocean heat"),
 )
 HARDWARE_CONTROLS = {
     "ambient": HardwareControl(

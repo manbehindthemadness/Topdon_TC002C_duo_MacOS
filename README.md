@@ -247,9 +247,48 @@ identical results to a phone GPU have not been established.
 Desktop measurements always use the camera count conversion (`raw / 64 - 50`),
 including before edits and after restoring hardware settings;
 readings remain approximate. Camera image controls preserve its preview intensity,
-and camera palettes use its YUYV color output. The display gradient still applies
-to raw images and grayscale previews. Unsupported or unvalidated hardware switches
+and camera palettes use its YUYV color output. The two palette controls have
+different roles:
+
+- **App palette (raw / grayscale)** colors raw thermal data and grayscale previews
+  in the program. It is inactive while camera color output is being displayed.
+- **Camera palette (color preview)** sets colors inside the camera. Selecting one
+  enables camera colors when **Image source → Camera preview** is selected. It
+  is inactive when **Raw thermal image** is selected.
+
+Use **Color source → App colors** or **Camera colors (preview)** to choose which
+palette supplies the displayed colors. App colors use native thermal data when
+a colored camera preview is active, so the camera's palette cannot alter the app
+palette's appearance. Camera colors require **Image source → Camera preview**.
+Selecting an app palette switches to App colors; selecting a camera palette
+switches to Camera colors. The active source is shown below the app palette.
+Only the palette for the selected Color source is editable: App colors disables
+the camera palette, and Camera colors disables the app palette.
+Both palette choices and the color source persist; temperature measurements
+remain unchanged. Unsupported or unvalidated hardware switches
 are omitted.
+
+### Camera palette names
+
+Palettes 10–22 have descriptive names based on sampled TC002C Duo output.
+These are app labels rather than official vendor names; their camera IDs are
+unchanged. White hot (1) and Black hot (2) retain their existing labels.
+
+| Camera ID | Name | Sampled colors, cool → warm |
+| --- | --- | --- |
+| 10 | Violet iron | Dark blue, violet, magenta, orange, yellow |
+| 11 | Classic rainbow | Dark violet, blue, green, orange, cream |
+| 12 | Fire | Black, dark red, red, orange, yellow, cream |
+| 13 | Sunset | Purple, magenta, red, orange, pale yellow |
+| 14 | Soft iron | Dark blue, muted violet, magenta, orange, pale yellow |
+| 15 | Amber | Black, brown, amber, yellow, pale gold |
+| 16 | Vivid rainbow | Bright magenta, violet, blue, cyan, green, yellow, orange |
+| 17 | Neon sunset | Blue, violet, bright magenta, red, orange, yellow |
+| 18 | Silver | Black, gray, silver, white |
+| 19 | Pastel rainbow | Dark violet, magenta, blue, green, yellow, peach, pale pink |
+| 20 | Red hot | Black, dark red, bright red |
+| 21 | Green hot | Black, dark green, bright green |
+| 22 | Ocean heat | Dark blue, blue, cyan, green, yellow, pale highlights |
 
 ## Web viewer
 

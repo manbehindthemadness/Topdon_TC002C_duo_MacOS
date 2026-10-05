@@ -67,3 +67,27 @@ def test_view_switch_changes_only_image_and_empty_preview_falls_back():
     empty = renderer.render_detailed(make_frame())
     assert empty.image_source == "raw"
     assert np.array_equal(empty.image, raw.image)
+
+
+def test_app_palette_is_independent_of_camera_colors_and_switching_preserves_temperatures():
+    frame, _ = frame_with_preview(preview_scale=1)
+    words = np.frombuffer(frame, dtype="<u2").copy()
+    words[2320 : 2320 + SENSOR_WIDTH * SENSOR_HEIGHT] = (
+        np.arange(SENSOR_WIDTH * SENSOR_HEIGHT) // 32 + 20000
+    )
+    original = words.tobytes()
+    changed = words.copy()
+    changed[IMAGE_OFFSET:] = 0x4020
+    renderer = ThermalRenderer(scale=1, smoothing=1)
+    renderer.camera_preview = renderer.camera_color = True
+    renderer.set_view_setting("palette_source", "app")
+    first = renderer.render_detailed(original)
+    second = renderer.render_detailed(changed.tobytes())
+    assert first.image_source == "raw"
+    assert np.array_equal(first.image, second.image)
+    renderer.set_view_setting("palette_source", "camera")
+    camera = renderer.render_detailed(original)
+    assert camera.image_source == "preview"
+    assert not np.array_equal(first.image, camera.image)
+    assert np.array_equal(first.temperatures_celsius, camera.temperatures_celsius)
+    assert np.array_equal(first.raw_counts, camera.raw_counts)
