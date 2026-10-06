@@ -63,6 +63,7 @@ def load_settings() -> dict:
         "advanced_auto",
         "show_graph",
         "auto_calibrate",
+        "fixed_range",
         "capture_cursor",
         "capture_graphs",
     ):

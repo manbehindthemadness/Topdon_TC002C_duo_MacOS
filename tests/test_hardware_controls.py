@@ -1,5 +1,6 @@
 import json
 import struct
+from unittest.mock import Mock
 
 import cv2
 import numpy as np
@@ -8,8 +9,143 @@ from test_render import frame_with_preview
 
 from topdon_duo import hardware_controls as module
 from topdon_duo.camera import IMAGE_OFFSET, CameraError
-from topdon_duo.hardware_controls import BLOCK_LENGTHS, HardwareControls
+from topdon_duo.hardware_controls import (
+    BLOCK_LENGTHS,
+    HardwareControls,
+    validate_fixed_range_bounds,
+)
 from topdon_duo.render import ThermalRenderer
+
+
+def test_fixed_range_packets_and_restore_order(controls):
+    controls._fixed_range_bounds = (1000, 2800)
+    controls._fixed_range_baseline = Mock(return_value=(1000, 2800))
+    device = Mock()
+    packets = []
+
+    def transfer(kind, request, value, index, data, timeout):
+        assert value == 0 and index == 0xA00
+        if kind == 0x41:
+            assert request == 1
+            packets.append(bytes(data))
+            return len(data)
+        if request == 0x85:
+            assert kind == 0xC1 and data == 4
+            return (11).to_bytes(2, "little")
+        assert kind == 0xC1 and request == 0x81 and data == 11
+        return bytes.fromhex("f00736fe030000000138ff")
+
+    device.ctrl_transfer.side_effect = transfer
+    controls.camera.device = device
+    controls.set_fixed_range(True)
+    assert controls.fixed_range
+    with pytest.raises(CameraError, match="Turn off fixed range"):
+        controls.set("contrast", 50, True)
+    controls.set_fixed_range(False)
+    assert not controls.fixed_range and not controls._fixed_range_owned
+    for packet, bounds in zip(packets, [(0, 16383), (0, 16383), (1000, 2800), (0, 0)], strict=True):
+        body = b"\x36\xfe\x00" + struct.pack(">IHH", 0xF113, *bounds)
+        assert packet == bytes((0xF0, len(body))) + body + bytes((sum(body) & 255, 0xFF))
+    controls.restore_fixed_range()
+    assert len(packets) == 4
+
+
+def test_fixed_range_failed_enable_restores_bounds_and_disables(controls):
+    controls._fixed_range_bounds = (1000, 2800)
+    controls._fixed_range_baseline = Mock(return_value=(1000, 2800))
+    controls._fixed_range_command = Mock(side_effect=[None, CameraError("ack failed"), None, None])
+    with pytest.raises(CameraError, match="ack failed"):
+        controls.set_fixed_range(True)
+    assert [call.args for call in controls._fixed_range_command.call_args_list] == [
+        (0, 16383), (0, 16383), (1000, 2800), (0, 0)
+    ]
+    assert not controls.fixed_range and not controls._fixed_range_owned
+
+
+def test_fixed_range_failed_restore_still_disables_and_retains_cleanup(controls):
+    controls._fixed_range_bounds = (1000, 2800)
+    controls._fixed_range_owned = controls.fixed_range = True
+    controls._fixed_range_command = Mock(side_effect=[CameraError("restore failed"), None])
+    with pytest.raises(CameraError, match="restore failed"):
+        controls.restore_fixed_range()
+    assert [call.args for call in controls._fixed_range_command.call_args_list] == [(1000, 2800), (0, 0)]
+    assert controls._fixed_range_owned
+
+
+def test_fixed_range_rejects_unknown_preset_before_serial_writes(controls):
+    device = Mock()
+    device.ctrl_transfer.side_effect = [2, (5).to_bytes(4, "little"), b"\x01\x00\x00\x00\x00"]
+    controls.camera.device = device
+    with pytest.raises(CameraError, match="tested Duo ISP layout"):
+        controls.set_fixed_range(True)
+    assert not controls._fixed_range_owned
+    assert all(call.args[0] != 0x41 for call in device.ctrl_transfer.call_args_list)
+
+
+def test_fixed_range_requires_boolean(controls):
+    with pytest.raises(ValueError, match="boolean"):
+        controls.set_fixed_range(1)
+
+
+def test_fixed_mode_requires_detail_but_detail_is_independent(controls):
+    controls._fixed_range_command = Mock()
+    controls.set("detail_enabled", 0, True)
+    with pytest.raises(CameraError, match="Enable detail enhancement"):
+        controls.set_fixed_range(True)
+    controls._fixed_range_command.assert_not_called()
+    controls.set("detail_enabled", 1, True)
+    assert not controls.fixed_range
+    controls._fixed_range_command.assert_not_called()
+
+
+def test_disabling_detail_restores_fixed_mode_before_writing_control(controls):
+    controls._fixed_range_bounds = (1000, 2800)
+    controls._fixed_range_baseline = Mock(return_value=(1000, 2800))
+    controls._fixed_range_command = Mock()
+    controls.set_fixed_range(True)
+    assert controls.fixed_range
+    controls.set("detail_enabled", 0, True)
+    assert not controls.fixed_range and not controls._fixed_range_owned
+    assert controls.state()["detail_enabled"]["value"] == 0
+    assert [call.args for call in controls._fixed_range_command.call_args_list] == [
+        (0, 16383), (0, 16383), (1000, 2800), (0, 0)
+    ]
+
+
+def test_detail_strength_can_change_while_fixed_mode_stays_enabled(controls):
+    controls._fixed_range_bounds = (1000, 2800)
+    controls._fixed_range_baseline = Mock(return_value=(1000, 2800))
+    controls._fixed_range_command = Mock()
+    controls.set_fixed_range(True)
+    controls.set("detail", 60, True)
+    assert controls.fixed_range and controls.state()["detail_enabled"]["value"] == 1
+    assert controls.state()["detail"]["value"] == 60
+    assert [call.args for call in controls._fixed_range_command.call_args_list] == [
+        (0, 16383), (0, 16383), (1000, 2800), (0, 0), (0, 16383), (0, 16383)
+    ]
+
+
+@pytest.mark.parametrize("bounds", [(0, 0), (100, 99), (-1, 100), (0, 16384), (True, 100), (0, 1.5), None])
+def test_fixed_range_rejects_invalid_bounds(bounds):
+    with pytest.raises(ValueError):
+        validate_fixed_range_bounds(bounds)
+
+
+def test_fixed_range_rejects_modified_isp_export(controls):
+    export = bytes(3956)
+    packets = [
+        b"\x02" + sequence.to_bytes(4, "little") + export[start:start + 507]
+        for sequence, start in enumerate(range(0, len(export), 507), 1)
+    ]
+    device = Mock()
+    device.ctrl_transfer.side_effect = [
+        2, (5).to_bytes(4, "little"), b"\x01\x74\x0f\x00\x00", *packets
+    ]
+    controls.camera.device = device
+    with pytest.raises(CameraError, match="verified factory ISP preset"):
+        controls.set_fixed_range(True)
+    assert not controls._fixed_range_owned
+    assert all(call.args[0] != 0x41 for call in device.ctrl_transfer.call_args_list)
 
 
 class Device:

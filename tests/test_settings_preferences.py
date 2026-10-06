@@ -3,6 +3,15 @@ import json
 from topdon_duo.settings_preferences import load_settings, save_settings
 
 
+def test_fixed_mode_persists_and_retired_bounds_are_ignored(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    save_settings({"fixed_range": True, "fixed_range_bounds": [4800, 5600]})
+    assert load_settings()["fixed_range"] is True
+    assert "fixed_range_bounds" not in load_settings()
+    save_settings({"fixed_range": "yes"})
+    assert "fixed_range" not in load_settings()
+
+
 def test_invalid_preferences_preserve_independent_valid_fields(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     path = tmp_path / "topdon-duo" / "settings.json"

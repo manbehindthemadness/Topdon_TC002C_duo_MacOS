@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import math
 import os
 import struct
@@ -14,6 +16,8 @@ from uuid import uuid4
 import usb.core
 
 from .camera import CameraError
+
+LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,15 @@ HARDWARE_CONTROLS = {
 BLOCK_LENGTHS = {(2, 1): 2, (2, 2): 2, (2, 5): 79, (3, 1): 80}
 
 
+def validate_fixed_range_bounds(bounds: object) -> tuple[int, int]:
+    if not isinstance(bounds, (tuple, list)) or len(bounds) != 2:
+        raise ValueError("Fixed range needs lower and upper bounds")
+    lower, upper = bounds
+    if type(lower) is not int or type(upper) is not int or not 0 <= lower < upper < 0x4000:
+        raise ValueError("Fixed range needs integer bounds: 0 <= lower < upper <= 16383")
+    return lower, upper
+
+
 class HardwareControls:
     def __init__(self, camera) -> None:
         self.camera = camera
@@ -111,6 +124,93 @@ class HardwareControls:
         self.snapshot_path: Path | None = None
         self.auto_calibrate: bool | None = None
         self._auto_calibrate_owned = False
+        self.fixed_range = False
+        self._fixed_range_owned = False
+        self._fixed_range_bounds: tuple[int, int] | None = None
+
+    def _fixed_range_baseline(self) -> tuple[int, int]:
+        """Only enable the experimental path with the exact tested ISP preset."""
+        if self._fixed_range_bounds is not None:
+            return self._fixed_range_bounds
+        self.load()
+        if self._transfer(0x21, 1, 5, b"\x01\x10") != 2:
+            raise CameraError("Incomplete ISP export selection")
+        length = bytes(self._transfer(0xA1, 0x85, 1, 4))
+        if int.from_bytes(length, "little") != 5:
+            raise CameraError("Unsupported ISP export metadata")
+        metadata = bytes(self._transfer(0xA1, 0x81, 1, 5))
+        if metadata != b"\x01\x74\x0f\x00\x00":
+            raise CameraError("Fixed range requires the tested Duo ISP layout")
+        export = bytearray()
+        for sequence in range(1, 9):
+            packet = bytes(self._transfer(0xA1, 0x81, 1, 512))
+            if len(packet) <= 5 or packet[0] != 2 or int.from_bytes(packet[1:5], "little") != sequence:
+                raise CameraError("Invalid ISP export sequence")
+            export.extend(packet[5:])
+        if hashlib.sha256(export).hexdigest() != "b1ae66b05878b4d44b68697b4ca185c482b9d8c69b1ad51d9863387908f76e90":
+            raise CameraError("Fixed range requires the verified factory ISP preset")
+        # Bounds are public parameters. Preserve them separately: disable restores
+        # the four cached processing controls, but does not restore the bounds.
+        parameters = dict(struct.iter_unpack("<II", export[20:20 + 197 * 8]))
+        bounds = parameters[0x20603C], parameters[0x206040]
+        if bounds != (1000, 2800):
+            raise CameraError("Unexpected original fixed-range bounds")
+        self._fixed_range_bounds = bounds
+        return bounds
+
+    def _fixed_range_command(self, lower: int, upper: int) -> None:
+        if (lower, upper) != (0, 0):
+            validate_fixed_range_bounds((lower, upper))
+        body = b"\x36\xfe\x00" + struct.pack(">IHH", 0xF113, lower, upper)
+        packet = bytes((0xF0, len(body))) + body + bytes((sum(body) & 255, 0xFF))
+        try:
+            device = self.camera.device
+            if device.ctrl_transfer(0x41, 1, 0, 0x0A00, packet, timeout=2000) != len(packet):
+                raise CameraError("Incomplete fixed-range command")
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                length = bytes(device.ctrl_transfer(0xC1, 0x85, 0, 0x0A00, 4, timeout=2000))
+                size = int.from_bytes(length, "little")
+                if len(length) not in (2, 4) or size > 128:
+                    raise CameraError("Unsupported fixed-range mailbox")
+                if size:
+                    reply = bytes(device.ctrl_transfer(0xC1, 0x81, 0, 0x0A00, size, timeout=2000))
+                    if reply != bytes.fromhex("f00736fe030000000138ff"):
+                        raise CameraError("Unexpected fixed-range acknowledgement")
+                    LOG.info("Fixed-range command acknowledged: lower=%d upper=%d (raw units)", lower, upper)
+                    return
+                time.sleep(0.04)
+            raise CameraError("Fixed-range command timed out")
+        except (usb.core.USBError, AttributeError) as exc:
+            raise CameraError(f"Fixed-range transfer failed: {exc}") from exc
+
+    def set_fixed_range(self, enabled: bool) -> None:
+        if type(enabled) is not bool:
+            raise ValueError("Fixed range state must be a boolean")
+        if not enabled:
+            self.restore_fixed_range()
+            return
+        self.load()
+        if self.state()["detail_enabled"]["value"] != 1:
+            raise CameraError("Enable detail enhancement before enabling fixed mode")
+        self._fixed_range_baseline()
+        self._fixed_range_owned = True  # Retain cleanup responsibility after failure.
+        try:
+            self._fixed_range_command(0, 16383)
+            self._fixed_range_command(0, 16383)  # Second enable latches the update.
+        except CameraError:
+            self.restore_fixed_range()
+            raise
+        self.fixed_range = True
+
+    def restore_fixed_range(self) -> None:
+        if self._fixed_range_owned:
+            try:
+                self._fixed_range_command(*self._fixed_range_bounds)
+            finally:
+                self._fixed_range_command(0, 0)
+            self._fixed_range_owned = False
+            self.fixed_range = False
 
     def _transfer(self, request_type, request, selector, data):
         try:
@@ -226,6 +326,12 @@ class HardwareControls:
         if not isinstance(enabled, bool):
             raise TypeError("Control enabled state must be a boolean")
         spec = HARDWARE_CONTROLS[name]
+        resume_fixed = self.fixed_range and name == "detail"
+        if self._fixed_range_owned and name in ("detail_enabled", "detail"):
+            spec.apply(bytearray(self.original[2, 5]), value)
+            self.restore_fixed_range()
+        if self._fixed_range_owned and spec.selector == 2:
+            raise CameraError("Turn off fixed range before changing camera display controls")
         self.load()
         proposed = self.enabled | {name} if enabled else self.enabled - {name}
         values = {**self.values, name: value}
@@ -252,8 +358,11 @@ class HardwareControls:
             raise
         self.enabled = proposed
         self.values = values
+        if resume_fixed:
+            self.set_fixed_range(True)
 
     def restore(self) -> None:
+        self.restore_fixed_range()
         for name in tuple(self.enabled):
             self.set(name, self.values[name], False)
 

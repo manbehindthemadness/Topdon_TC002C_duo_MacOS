@@ -1,0 +1,110 @@
+TC002C Duo discovery index
+=========================
+Updated 2026-10-06. Detailed evidence, command paths, caveats and experiment
+restoration records live in docs/hardware-research.txt. This index preserves
+side leads as well as the automatic-brightness/contrast investigation.
+"Verified" applies to this device/firmware and the stated experiment scope.
+
+Finding                               Status / useful implication
+------------------------------------  -----------------------------------------
+Ambient / distance / emissivity        Verified hardware measurement corrections.
+Reflected temp / optical transmission  Verified radiometric effects; calibration
+                                      and display processing are separate.
+Humidity                              Writable; useful effect not demonstrated
+                                      at the tested one-metre distance.
+Preview controls                      Brightness, contrast, noise/detail,
+                                      mirrors and palettes have verified paths.
+Six stream formats                    Captured; temperature-only and preview-only
+                                      modes can reduce USB payload needs.
+Phone TISR                            Official Android path uses host Anime4K09;
+                                      generic camera AI field was ignored here.
+                                      iOS implementation was not traced.
+Initialization readiness              Phone checks hardware readiness; protocol
+                                      GET_CUR selector 4 initializes SDK 2.0
+                                      layout in volatile firmware state.
+Manual / automatic calibration        Established shutter action and auto control;
+                                      telemetry byte-32 DWORD marks frozen frames.
+Fixed range f113                       Volatile CPU/FPGA path verified, but default
+                                      forced configuration yields flat output.
+                                      All 16 original/forced combinations tested;
+                                      no usable bound-controlled lock established.
+20600c original value 2                Restoring this single value recovers image
+                                      contrast; bounds-controlled lock unproven.
+Fixed mode loses thermal shading       Detail off/zero makes every preview pixel
+                                      identical; raw temperatures still vary.
+                                      Selector 20600c 1 -> 2 -> 1 switches flat
+                                      -> shaded -> flat with detail held off.
+Fixed mode retains display modifiers   Contrast/brightness shift the flat level;
+                                      detail supplies visible edges, palette
+                                      colors them. Bound changes had no useful
+                                      effect in original or re-entry sequences.
+2060a4 original value 1                Restore brightens the value-1 branch but
+                                      full/half/narrow bounds still do not show
+                                      predictable mapping; enum remains unknown.
+Hardware readback limitation           Physical ISP getters returned zero;
+                                      never use zero alone as rollback baseline.
+Normal SDK AGC selectors               Tested manual/wide-field writes ignored;
+                                      documented ISP enums accepted only mode 1
+                                      in this firmware's inspected validator.
+ISP configuration export              Read-only stored data; 3,956 bytes, seven
+                                      banks plus public parameters. It is not
+                                      a complete calibration backup or an active
+                                      FPGA register/flag snapshot.
+Public vs selected-bank defaults       Merge both when looking up restored values;
+                                      2061d4 is public, unlike 206008/00c.
+Gain/settings ISP refresh              Can reload cached bank values without
+                                      checking private fixed-mode flag. Ordinary
+                                      shutters are not proven to do this reload.
+Gamma / contrast / boost curves        Firmware Agc5v1 paths construct/combine
+                                      256-entry curves; not all processing
+                                      controls are simple scalar multipliers.
+Image-statistics ROI                   Offline lead; gates fixed-mode changes.
+                                      Scales histogram thresholds by region area;
+                                      first enable selects bank 8, which needs
+                                      separate initialization/restore audit.
+                                      Some read-looking ROI commands also write.
+Fixed-mode acknowledgement            Can report success even when ROI gate
+                                      prevented register changes; inspect effects.
+Temperature-range f114 worker          Converts wire temperatures and computes
+                                      inverse thresholds; inspected worker does
+                                      not apply those outputs to IspTempMode.
+Thermal correction history             Decoded 32-slot tec_kwkc ring and verified
+                                      with CPU producer replay. Did not change
+                                      for observed ordinary shutter calibration.
+                                      Units, enum meaning and cursor unknown.
+Other snapshot state                  Later rolling fields and scene statistics
+                                      change; no additional reliable calibration
+                                      counter or AGC-lock status identified.
+FPGA package identity                 Build header names Titanium Ti60F225 and
+                                      T7_V2.0.29_512x384_OSD. Package metadata,
+                                      not physical chip inspection or register map.
+Sibling firmware comparison           Mini shares the forced quartet but uses a
+                                      different FPGA project and first-enable
+                                      refresh. Six CPU replays verified paths;
+                                      its preset must not be copied to Duo.
+Duo stored preset provenance          Live stored ISP equals the firmware's
+                                      compiled default table byte-for-byte.
+                                      Does not validate radiometric NVM or RAM.
+Mini additional configuration section Parsed separate B0/B1..B5 section; firmware
+                                      labels AiSr parameters. Not an established
+                                      neural-SR feature or ordinary register bank.
+LogicDeb AGC dump                      Numeric physical-read sweep, not a named
+                                      map or new active-register read mechanism.
+Correction-trigger thresholds         f124 offline lead for uniformity/offset/
+                                      average-change criteria; not AGC lock.
+Magic register operations              Table rebuilds affect several processing
+                                      blocks; excluded from live experimentation.
+Flash / factory / calibration writes   Identified command traps and excluded;
+                                      never treated as harmless restore actions.
+
+Evidence locations (under this repository; diagnostics are gitignored)
+--------------------------------------------------------------------
+  diagnostics/telemetry-research/             Initial controls / SDK / phone audit.
+  diagnostics/agc-research/firmware-offline/  Extracted firmware, traces, replays.
+  diagnostics/agc-research/deep-audit/        Live captures, saved originals,
+                                             comparisons and restoration checks.
+
+Track facts separately from hypotheses: recovering contrast does not establish
+an AGC lock; a success reply does not establish a feature applied; a stored
+export does not establish active FPGA state. Preserve failed probes and side
+leads, their exact payloads, and the original configuration used in each run.

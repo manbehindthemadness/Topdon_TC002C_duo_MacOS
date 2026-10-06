@@ -52,6 +52,11 @@ class NoWheelSpinBox(QDoubleSpinBox):
         event.ignore()
 
 
+class NoWheelCheckBox(QCheckBox):
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
 class ControlRow(QWidget):
     """An editable value with a slider for range controls."""
 
@@ -88,7 +93,10 @@ class ControlRow(QWidget):
         label.setStyleSheet("font-weight: 600")
         layout.addWidget(label)
         line = QHBoxLayout()
-        if self.options:
+        if self.is_switch:
+            self.input = NoWheelCheckBox("Enabled")
+            self.input.toggled.connect(self._input_changed)
+        elif self.options:
             self.input = NoWheelComboBox()
             for value, text in self.options:
                 self.input.addItem(text, value)
@@ -119,6 +127,8 @@ class ControlRow(QWidget):
         layout.addLayout(line)
 
     def value(self):
+        if self.is_switch:
+            return self.options[int(self.input.isChecked())][0]
         if self.options:
             return self.input.currentData()
         value = self.input.value()
@@ -164,7 +174,10 @@ class ControlRow(QWidget):
 
     def _set_value(self, value):
         with QSignalBlocker(self.input):
-            if self.options:
+            if self.is_switch:
+                self.input.setChecked(value == self.options[1][0])
+                position = int(self.input.isChecked())
+            elif self.options:
                 index = self.input.findData(value)
                 self.input.setCurrentIndex(index)
                 position = max(0, index)
@@ -551,7 +564,7 @@ class ViewWindow(QWidget):
         heading = QLabel("Camera")
         heading.setStyleSheet("font-size: 20px; font-weight: bold")
         layout.addWidget(heading)
-        self.auto_calibrate = QCheckBox("Auto calibrate")
+        self.auto_calibrate = NoWheelCheckBox("Auto calibrate")
         self.auto_calibrate.setToolTip(
             "Allow the camera to calibrate automatically. Use Calibrate now in the image's right-click menu when off."
         )
@@ -559,13 +572,22 @@ class ViewWindow(QWidget):
             lambda value: self._send({"action": "auto_calibrate", "value": value})
         )
         layout.addWidget(self.auto_calibrate)
+        self.fixed_range = NoWheelCheckBox("Fixed mode")
+        self.fixed_range.setToolTip(
+            "Flatten thermal shading and retain enhanced detail in Camera preview. "
+            "Requires detail enhancement. Turning detail enhancement off also turns this off. "
+            "Camera processing is restored on exit."
+        )
+        self.fixed_range.toggled.connect(
+            lambda value: self._send({"action": "fixed_range", "value": value})
+        )
         description = QLabel(
             "Adjust controls directly. Use Restore camera settings to return to the "
             "original values. Camera overrides are also restored on exit."
         )
         description.setWordWrap(True)
         layout.addWidget(description)
-        self.advanced_auto = QCheckBox("Advanced / Auto")
+        self.advanced_auto = NoWheelCheckBox("Advanced / Auto")
         self.advanced_auto.setChecked(True)
         self.advanced_auto.setToolTip(
             "Reserved for future automatic controls. All inputs stay enabled."
@@ -701,6 +723,9 @@ class ViewWindow(QWidget):
                     switch_count += 1
                 else:
                     rows.addWidget(row)
+                if name == "detail_enabled":
+                    switches.addWidget(self.fixed_range, switch_count // 2, switch_count % 2)
+                    switch_count += 1
             if switches is not None:
                 switches.setHorizontalSpacing(24)
                 switches.setVerticalSpacing(16)
@@ -764,6 +789,13 @@ class ViewWindow(QWidget):
                 row.timer.stop()
         self.advanced_auto.setEnabled(not self._settings_locked)
         self.auto_calibrate.setEnabled(not self._settings_locked)
+        detail = state.get("hardware", {}).get("detail_enabled", {})
+        self.fixed_range.setEnabled(
+            not self._settings_locked and detail.get("available", True)
+            and (detail.get("value", 0) == 1 or state.get("fixed_range", False))
+        )
+        with QSignalBlocker(self.fixed_range):
+            self.fixed_range.setChecked(state.get("fixed_range", False))
         with QSignalBlocker(self.auto_calibrate):
             self.auto_calibrate.setChecked(state.get("auto_calibrate", False))
         self.reset_button.setEnabled(not self._settings_locked)
@@ -792,6 +824,8 @@ class ViewWindow(QWidget):
                 setting.get("value", HARDWARE_CONTROLS[name].minimum),
                 setting.get("available", True)
                 and not self._settings_locked
+                and not (state.get("fixed_range", False) and HARDWARE_CONTROLS[name].selector == 2
+                         and name not in ("detail_enabled", "detail"))
                 and not (name == "palette" and not camera_palette_selected),
             )
         if camera_colors:

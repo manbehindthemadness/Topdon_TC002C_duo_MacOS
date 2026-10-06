@@ -1116,6 +1116,7 @@ def main(argv: list[str] | None = None) -> int:
     remembered_hardware = saved_settings.get("hardware", {}).copy()
     advanced_auto = saved_settings.get("advanced_auto", True)
     auto_calibrate = saved_settings.get("auto_calibrate", False)
+    remembered_fixed_range = saved_settings.get("fixed_range", False)
     calibration_available = False
     startup_calibration_pending = True
     show_graph = saved_settings.get("show_graph", False)
@@ -1208,6 +1209,7 @@ def main(argv: list[str] | None = None) -> int:
                     "rotation": renderer.rotation,
                     "advanced_auto": advanced_auto,
                     "auto_calibrate": auto_calibrate,
+                    "fixed_range": remembered_fixed_range,
                     "show_graph": show_graph,
                     "graph_interval": graph_interval,
                     "graph_settings": graph_settings,
@@ -1421,6 +1423,8 @@ def main(argv: list[str] | None = None) -> int:
             message += " · Camera temperatures (approximate)"
         if renderer.measurement_status:
             message += f" · {renderer.measurement_status}"
+        if hardware.fixed_range:
+            message += " · Fixed detail mode"
         if renderer.upsampling != "off":
             if not renderer.enhancement_amount:
                 message += " · Enhancement amount 0 (original image)"
@@ -1457,6 +1461,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "advanced_auto": advanced_auto,
             "auto_calibrate": auto_calibrate,
+            "fixed_range": hardware.fixed_range,
             "settings_locked": graphs.logging
             or emissivity_calibration.running
             or reflected_calibration.running,
@@ -1508,7 +1513,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     def initialize_hardware() -> bool:
-        nonlocal calibration_available
+        nonlocal calibration_available, remembered_fixed_range
         try:
             hardware.load()
             hardware.error = ""
@@ -1528,6 +1533,13 @@ def main(argv: list[str] | None = None) -> int:
         except CameraError as exc:
             hardware.error = f"Could not set Auto calibrate: {exc}"
             LOG.warning("%s", hardware.error)
+        if remembered_fixed_range:
+            try:
+                hardware.set_fixed_range(True)
+            except (CameraError, ValueError) as exc:
+                remembered_fixed_range = False
+                hardware.error = f"Could not restore fixed mode: {exc}"
+                LOG.warning("%s", hardware.error)
         return True
 
     try:
@@ -1650,6 +1662,7 @@ def main(argv: list[str] | None = None) -> int:
                     "hardware",
                     "advanced_auto",
                     "auto_calibrate",
+                    "fixed_range",
                     "restore_hardware",
                     "reset",
                     "distance_calibration",
@@ -1672,6 +1685,19 @@ def main(argv: list[str] | None = None) -> int:
                         reflected_calibration.cancel()
                     if command.get("action") == "setting":
                         set_view_setting(command["name"], command["value"])
+                    elif command.get("action") == "fixed_range":
+                        if emissivity_calibration.active:
+                            emissivity_calibration.cancel()
+                        if reflected_calibration.active:
+                            reflected_calibration.cancel()
+                        hardware.set_fixed_range(command["value"])
+                        remembered_fixed_range = command["value"]
+                        persist_settings()
+                        hardware.error = ""
+                        if hardware.fixed_range:
+                            notify("Fixed detail mode enabled")
+                        else:
+                            notify("Normal camera processing restored")
                     elif command.get("action") == "auto_calibrate":
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
@@ -1702,6 +1728,8 @@ def main(argv: list[str] | None = None) -> int:
                                 2,
                             )
                         hardware.set(command["name"], value, command["enabled"])
+                        if command["name"] == "detail_enabled":
+                            remembered_fixed_range = False
                         if command["name"] == "ambient":
                             ambient_input_celsius = command["value"] if command["enabled"] else None
                         if command["name"] == "palette" and command["enabled"]:
@@ -1808,6 +1836,7 @@ def main(argv: list[str] | None = None) -> int:
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
                         hardware.restore()
+                        remembered_fixed_range = False
                         remembered_hardware.clear()
                         ambient_input_celsius = None
                         persist_settings()

@@ -290,7 +290,35 @@ assert scroll.verticalScrollBar().value() > 0
 assert messages == []
 scroll.verticalScrollBar().setValue(0)
 
-assert window.findChildren(QCheckBox) == [window.auto_calibrate, window.advanced_auto]
+switches = [row.input for row in (*window.rows.values(), *window.hardware_rows.values()) if row.is_switch]
+assert all(isinstance(control, QCheckBox) for control in switches)
+assert set(window.findChildren(QCheckBox)) == set(switches + [window.auto_calibrate, window.fixed_range, window.advanced_auto])
+assert not hasattr(window, "fixed_lower") and not hasattr(window, "fixed_bounds_apply")
+window.update_state({"hardware": {"detail_enabled": {"value": 0, "available": True}}})
+assert not window.fixed_range.isEnabled()
+window.update_state({"hardware": {"detail_enabled": {"value": 1, "available": True}}})
+assert window.fixed_range.isEnabled() and not window.fixed_range.isChecked()
+window.fixed_range.click()
+assert messages.pop() == {"action": "fixed_range", "value": True}
+window.update_state({"fixed_range": True, "hardware": {"detail_enabled": {"value": 1}}})
+assert window.fixed_range.isChecked()
+assert window.hardware_rows["detail_enabled"].input.isEnabled()
+assert window.hardware_rows["detail"].input.isEnabled()
+assert not window.hardware_rows["contrast"].input.isEnabled()
+assert window.hardware_rows["ambient"].input.isEnabled()
+window.update_state({"fixed_range": False})
+assert not window.fixed_range.isChecked()
+detail_row = window.hardware_rows["detail_enabled"]
+detail_row.input.click()
+detail_row._emit()
+assert messages.pop() == {"action": "hardware", "name": "detail_enabled", "value": 1, "enabled": True}
+assert type(detail_row.value()) is int and not window.fixed_range.isChecked()
+window.update_state({"hardware": {"detail_enabled": {"value": 1}}})
+detail_row.input.click()
+detail_row._emit()
+assert messages.pop() == {"action": "hardware", "name": "detail_enabled", "value": 0, "enabled": True}
+window.update_state({"hardware": {"detail_enabled": {"value": 0}}})
+assert not window.fixed_range.isEnabled()
 assert not window.auto_calibrate.isChecked()
 window.auto_calibrate.click()
 assert messages.pop() == {"action": "auto_calibrate", "value": True}
@@ -314,7 +342,10 @@ for name, value in [("image_source", "raw"), ("temperature_unit", "F"),
     if name == "color_palette":
         window.update_state({**VIEW_DEFAULTS, "palette_source": "app"})
     control = window.controls[name]
-    control.setCurrentIndex(control.findData(value))
+    if isinstance(control, QCheckBox):
+        control.setChecked(value)
+    else:
+        control.setCurrentIndex(control.findData(value))
     window.rows[name]._emit()
     assert messages[-1] == {"action": "setting", "name": name, "value": value}
 for name, value in [("enhancement_amount", 0.5), ("anime4k_passes", 2)]:
@@ -325,7 +356,7 @@ count = len(messages)
 window.update_state({**VIEW_DEFAULTS, "status": "Camera preview"})
 assert len(messages) == count
 assert window.controls["image_source"].currentData() == "preview"
-assert window.controls["mirror_horizontal"].currentData() is False
+assert not window.controls["mirror_horizontal"].isChecked()
 assert window.controls["mirror_horizontal"].isEnabled()
 assert window.status.text() == "Camera preview"
 assert set(window.hardware_rows) == set(HARDWARE_CONTROLS)
@@ -468,6 +499,7 @@ for control_row in (*window.rows.values(), *window.hardware_rows.values()):
     control_row._emit()
 assert not window.advanced_auto.isEnabled()
 assert not window.auto_calibrate.isEnabled()
+assert not window.fixed_range.isEnabled()
 assert not window.reset_button.isEnabled() and not window.restore_button.isEnabled()
 window._reset_display()
 window._restore_hardware()
@@ -475,6 +507,7 @@ assert len(messages) == count
 window.update_state({**state, "temperature_unit": "C", "settings_locked": False})
 assert window.advanced_auto.isEnabled()
 assert window.auto_calibrate.isEnabled()
+assert not window.fixed_range.isEnabled()  # No enabled detail setting in this state.
 assert window.reset_button.isEnabled() and window.restore_button.isEnabled()
 assert all(control_row.input.isEnabled()
            for control_row in (*window.rows.values(), *window.hardware_rows.values())
@@ -587,11 +620,12 @@ assert switches.columnCount() == 2
 assert headings["Display controls"] < body_layout.indexOf(switches) < headings["AI enhancement"]
 expected = [row for row in (*window.rows.values(), *window.hardware_rows.values())
             if row.is_switch]
-assert switches.count() == len(expected)
+assert switches.count() == len(expected) + 1
 for index, control in enumerate(expected):
     assert switches.itemAtPosition(index // 2, index % 2).widget() is control
     assert control.slider is None
     assert control.input.isVisible()
+assert switches.itemAtPosition(len(expected) // 2, len(expected) % 2).widget() is window.fixed_range
 
 window.rows["color_palette"].timer.start()
 next(b for b in window.findChildren(QPushButton) if b.text().startswith("Reset")).click()

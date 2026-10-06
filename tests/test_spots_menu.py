@@ -305,8 +305,14 @@ def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monk
         [],
     ]
     settings.poll.side_effect = [
-        [{"action": "auto_calibrate", "value": True}],
-        [{"action": "auto_calibrate", "value": False}],
+        [
+            {"action": "auto_calibrate", "value": True},
+            {"action": "fixed_range", "value": True},
+        ],
+        [
+            {"action": "auto_calibrate", "value": False},
+            {"action": "fixed_range", "value": False},
+        ],
         [],
     ]
     step = 0
@@ -324,12 +330,15 @@ def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monk
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_: 1)
     assert desktop.main([]) == 0
     assert viewer.hardware.set_auto_calibrate.call_args_list == [call(False), call(True)]
+    viewer.hardware.set_fixed_range.assert_called_once_with(True)
+    assert load_settings()["fixed_range"] is True
     assert viewer.hardware.calibrate_now.call_count == 2  # Startup plus the manual request.
     viewer.hardware.restore_auto_calibrate.assert_called_once()
     assert load_settings()["auto_calibrate"] is True
     assert settings.update.call_args.args[0]["auto_calibrate"] is True
     # Reload uses the saved switch, rather than replacing it with the default.
     viewer.hardware.set_auto_calibrate.reset_mock()
+    viewer.hardware.set_fixed_range.reset_mock()
     viewer.hardware.calibrate_now.reset_mock()
     panel.poll.side_effect = None
     panel.poll.return_value = []
@@ -338,4 +347,5 @@ def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monk
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set_auto_calibrate.assert_called_once_with(True)
+    viewer.hardware.set_fixed_range.assert_called_once_with(True)
     viewer.hardware.calibrate_now.assert_called_once()  # Startup runs on each launch.

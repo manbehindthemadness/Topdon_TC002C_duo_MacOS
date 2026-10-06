@@ -611,3 +611,1482 @@ This supports queued acquisition as the practical fix; it does not establish
 the camera firmware's precise failure mechanism. The Linux desktop now defaults
 to depth 32, with --usb-queue-depth 0 retaining the synchronous fallback. macOS
 and the generic camera API retain their synchronous defaults pending validation.
+
+Internal automatic brightness/contrast investigation (2026-10-05 local)
+----------------------------------------------------------------------
+The related SDK exposes byIspAgcMode in USB_IMAGE_ENHANCEMENT (wire byte 23)
+and byAGCMode in USB_IMAGE_ENHANCEMENT_EX (wire byte 26). The SDK describes
+ISP manual mode as 4 and AGC manual/automatic as 1/2. byAutoBrightness appears
+in USB_IMAGE_VIDEO_OSD_CFG, which configures OSD graphics, not the thermal
+image intensity; it is not evidence of an independent thermal auto toggle.
+
+With the desktop closed, a single camera owner streamed through queued reads.
+Saved originals: enhancement 79 bytes, brightness 2 bytes, contrast 2 bytes.
+Baseline bytes 23/26 were 1/0. Tested ISP values 1,2,3,4; only the unchanged
+value 1 read back successfully. Values 1 and 2 at AGC byte 26 were ignored.
+Also tested ISP=4 plus AGC=1 together; both bytes stayed at their baseline.
+The prior capability response advertises byIspAgcmode=1 (a supported-mode bit
+mask), consistent with only the current mode being available. Preview sampling
+continued throughout, with no verified automatic-mode change. Every trial
+restored its original enhancement block; final enhancement, brightness and
+contrast readbacks matched the originals exactly.
+
+Local evidence: diagnostics/agc-research/results.json and combined/results.json,
+with saved original blocks and bounded preview statistics. Conclusion: this
+firmware does not honor the tested SDK manual/automatic AGC controls. Manual
+brightness and contrast offsets remain verified controls; they do not establish
+that scene-dependent automatic scaling can be disabled. An undocumented serial
+command remains possible, but unverified. App-controlled mapping of raw thermal
+data is the practical alternative if a fixed display range is desired.
+
+Scene-dependent preview verification (2026-10-05 local):
+Captured 288 raw/preview pairs over about 57 seconds with a stationary scene,
+a warm hand entering (covering most of the scene), then leaving. All sampled
+measurement frames were valid. At 38.225 s after hand removal, 12,772 pixels
+matched their baseline raw temperatures within 0.15 C; their median temperature
+difference was 0 C, while median preview luminance differed by -20/255. The
+preview recovered over subsequent seconds. This verifies changing camera
+preview mapping independently of those near-baseline raw temperatures. The
+hand obscured nearly all background while present, so a whole-run fixed-pixel
+comparison is unavailable; analysis uses temperature-matched pixels after
+removal. Camera ISP temporal filtering/AGC recovery may both contribute; the
+precise algorithm and an effective disable command remain unverified. No
+hardware settings were changed in this capture. Evidence and comparison image:
+diagnostics/agc-scene-repeat/verification.json, summary.json, comparison.png.
+
+Deeper AGC interface audit (2026-10-05 local)
+------------------------------------------
+Additional paired test: byIspAgcMode=4 plus byAGCMode=2 was ignored, matching
+its paired manual-mode counterpart. Final enhancement/brightness/contrast
+blocks again matched their saved originals. See combined-auto/results.json
+and restoration-summary.json under diagnostics/agc-research.
+
+Standard USB video processing unit descriptor on this device:
+0c2405050100400200000009. Unit ID=5, bControlSize=2, bmControls=0000: no
+processing controls advertised. GET_INFO/GET_LEN for brightness/contrast/gain
+and contrast-auto timed out; current brightness returned a one-byte response,
+not a validated two-byte brightness setting. These unsupported responses are
+not a basis for standard-control writes. Existing extension-unit controls
+remain the verified image-adjustment path. No standard-control writes made.
+Evidence: serial/video-control-descriptors.json and standard-controls.json.
+
+Official HIKMICRO cube manual's serial-command QR resolves to:
+https://enpinfo.hikmicrotech.com/analysisQR/showQR/a938b529
+This is a diagnostic console command reference (shell, network, bootloader,
+etc.), not the binary USB serial register protocol of our camera. No console
+commands were sent. The unrelated Tiny1C SDK includes an AGC enable switch,
+but its command transport is a different protocol family; no Tiny1C writes
+were sent to this HIKMICRO-family device.
+
+Android TC002C Duo app lock path recovered locally:
+TC02CDuoThermalActivity.java:1168..1208 toggles pseudoSeekBar selection and
+local limitTempMin/Max. Setters at 411..422 pass limits to HikSurfaceView.
+HikSurfaceView setters at 217/225 only store fields. Refresh at 321 calls
+IrDecorUtil.argbIsothermal on the already received image. No camera USB write
+was found in this lock path. This is app-side image decoration/range selection,
+not evidence that camera AGC is disabled; behavior of the iOS app is unverified.
+The app's recovered USB_SetSystemSerialData call sites establish 0x2001 for
+auto-shutter and 0xf026/value 2 for startCorrect (background/pot-lid correction).
+The latter was not executed; it is not an AGC-disable command. No evidenced
+AGC-disable serial opcode has emerged.
+Unmapped writes cannot currently satisfy the original-setting restore policy.
+
+Native SDK lock and related-control audit (2026-10-05 local)
+---------------------------------------------------------
+Expanded the audit beyond the thermal command map to the SDK's camera and
+transmission families. USB_CTRL_IMAGE_PARAM_LOCK=3133 initially looked useful.
+Linux Excute at 0xfe9f2 supplies wValue=0x0200 and command=0x16 to
+DoUvcCommonExcuteImpl. PackageSendData and ProtocolStrategyUvc20 establish the
+same selector-5 command-selection mechanism: selector 2, command 22. The native
+device-type guard permits thermal types 3/5 as well as type 7; the command is
+not excluded simply because this is a thermal camera. Android's bundled native
+library also contains this command. Its API has no input/output structure, and
+an unlock/current-state operation was not identified. No lock action was sent.
+
+Bounded read-only checks, with one queued-stream USB owner:
+  selector:command  SDK feature                    result
+  2:15              image mode                     invalid length 01010100
+  2:22              image parameter lock           invalid length 01010100
+  2:23              image color-space standard     invalid length 01010100
+  2:24              image output configuration     invalid length 01010100
+  1:25              private UVC capabilities       invalid length 01010100
+  2:7               WDR                           invalid length 01010100
+  2:18              exposure/shutter               invalid length 01010100
+  8:35              enhancement capabilities       valid 71-byte response
+  8:32              image capabilities             valid 9-byte response
+  1:4               hardware status                valid 3-byte response
+
+01010100 interpreted as a length is 65,793, not a usable control layout. These
+results do not establish working lock/WDR/exposure controls. Payload reads were
+skipped when the size was invalid; the lock probe requested only its length.
+SET_CUR was used only for the established selector-5 command selection, never
+for a setting/action payload. Brightness, contrast, enhancement and thermometry
+were saved before each run and read back byte-identical afterward. Each run
+finished with 77 streamed frames over three seconds. All probe owners closed.
+Evidence: diagnostics/agc-research/deep-audit/{queries.json,summary.json},
+related-controls/{queries.json,summary.json}, original blocks and native excerpts.
+
+Both native libraries independently serialize byIspAgcMode to byte 23 and
+byAGCMode to byte 26, confirming the earlier manual-mode trials targeted the
+correct wire fields. The fresh 71-byte enhancement capability response again
+has byte 45=1, advertising only linear ISP AGC. The existence of SDK methods
+does not establish that this camera firmware implements their full behavior.
+
+The Android app includes a real setLevelAgc toggle, but it takes
+com.energy.iruvc.ircmd.IRCMD and uses IMAGE_PROP_ONOFF_AGC in the other camera
+backend. The recovered TC02CDuoThermalActivity uses HikHelper/HikCmdUtil for
+camera contrast/enhancement; no equivalent hardware AGC toggle was found there.
+Do not transplant the IRCMD opcode into the HIKMICRO-family USB serial mailbox.
+The phone's iOS implementation remains unexamined.
+
+Current conclusion: verified manual brightness/contrast remain available, but
+no working on-camera AGC freeze/disable has been demonstrated. This audit rules
+out additional SDK paths as presently usable controls, not all possible firmware
+commands. Further progress needs a module-specific serial register reference or
+a captured phone transaction that actually changes hardware AGC. Unknown serial
+writes, firmware/ISP-bin uploads, factory resets and calibration-table writes
+were deliberately excluded to preserve the module and its factory calibration.
+
+Bundled Duo firmware and USB UART mailbox breakthrough (2026-10-05 local)
+------------------------------------------------------------------------
+The conclusion above describes the SDK audit before this discovery. The Android
+APK already downloaded for research includes assets/LineFirmwareV1.02.000.zip.
+Its UpgradePack.ini explicitly identifies TC002CDuo and names
+TC002C_Duo_V2.09.031.bin. The extracted image matches the manifest MD5:
+  MD5    932a8e4c0710380b4c6a28a41bae947a
+  SHA256 c34b8c5f21dd304b0c37429231e7aedeac8d555d52a55aba1ad3b5de2acf9ad1
+No firmware was uploaded. The image was unpacked and analyzed offline only.
+The outer container contains FPGA and CPU components. The CPU component has
+another 48-byte header followed by RV32 RISC-V code/data. Address 0x20000000
+and gp=0x200919a0 produce consistent references to diagnostic strings.
+Artifacts: diagnostics/agc-research/firmware-offline/, including analysis-only
+ELF, disassembly, string references and the untouched extracted image.
+
+The CPU firmware supplies a USB UART mailbox outside the normal A1/21 UVC
+extension-control channel. Firmware dispatch at 0x200507e4 and 0x200505f4:
+  wIndex=0x0a00, wValue=0
+  bmRequestType=0x41, bRequest=1: send a raw UART command packet
+  bmRequestType=0xc1, bRequest=0x85: get queued reply byte count
+  bmRequestType=0xc1, bRequest=0x81: read and consume the queued reply
+GET_LEN requests four bytes but this camera returns a two-byte LE byte count.
+Only positive lengths <=128 were read in these probes. GET_CUR consumes the
+reply, so do not poll it alongside another owner. The firmware response builder
+at 0x2001e284 sends replies both to physical UART and this USB queue. A physical
+USB analyzer or UART tap is therefore unnecessary for these live readbacks.
+
+Legacy request framing, verified live:
+  F0 | length | 36 | command | operation | optional data | checksum | FF
+Length counts bytes from device 36 through the optional data. Checksum is their
+8-bit sum. For the verified getter commands below operation=1; operation=0 is
+an entirely different setter path and was NOT used. Replies return operation
+/status byte 03, followed by data. This is not a blanket safety rule for every
+opcode: each getter must first be traced to its handler. Some legacy opcodes
+perform actions irrespective of the operation byte.
+
+Read-only live results, all reply checksums and lengths valid:
+  command  traced handler   meaning                 returned data
+  0x19     0x2003ab5c       AGC background switch   0000 (0)
+  0x23     0x2003acf4       AGC parameter mode      0001 (1)
+  0x17     0x2003a9e4       global brightness       0032 (50)
+  0x18     0x2003aaa0       global contrast         0032 (50)
+  0x02     0x2003a0bc       version getter          010108
+Example AGC background request: f00336190150ff
+Verified response: f005361903000052ff
+The version bytes are recorded verbatim: their semantics and relationship to
+USB bcdDevice/packaged V2.09 firmware are not established. The exact running
+firmware has not been proven byte-identical to the bundled image.
+
+Both probe runs saved original brightness/contrast/enhancement/thermometry
+blocks, read all four back byte-identical afterward, and completed healthy
+streaming (77-78 frames in the final three seconds). SET_CUR here sent getter
+requests and established command selection only; there were no setting writes.
+Evidence: deep-audit/read_agc_background.py and read_agc_getters.py, original
+blocks and summaries in agc-background-read/ and agc-getter-audit/.
+
+The SDK serial wrapper is not a generic getter channel. Firmware 0x20055d3c
+accepts wrapper mode 2; mode 1 returns failure. It synthesizes operation-zero
+packets for several command families. Earlier mode-1 trials cannot establish
+that the underlying UART getters are absent. Raw USB mailbox commands bypass
+that wrapper and do return actual current values.
+
+AGC_BACK is NOT yet an AGC freeze solution. The getter 0x2002561c reads internal
+register 0x2060d0 and reports whether its low byte equals 1. It already reports
+0 while the preview has exhibited automatic rescaling. The setter 0x20025530
+also alters 0x2060d4; its enable path rewrites the values it reads at entry,
+rather than simply forcing 0x2060d0=1. A disable/enable pair is consequently
+not an evidenced restoration procedure. Neither setter was executed.
+
+Another promising offline path is IspTempMode (0x2002584c). It has an explicit
+on/off path and low/high thresholds bounded below 0x4000, and interacts with
+ROI. The FE command family routes command 0x0000f113 (write operation 0) to
+0x20042570, which splits the 32-bit value into low/high 16-bit thresholds;
+zero/zero closes the mode. The adjacent 0x0000f114 path is related but differs.
+This is a candidate for fixed camera-side image mapping, not a demonstrated
+control. Threshold units, current-value readback, version compatibility and
+complete restoration still need verification. Do not assume these thresholds
+are Celsius or the USB thermometry pixel encoding. No test writes were sent.
+
+Next: map and verify the IspTempMode/ROI getters and original thresholds before
+any reversible fixed-range experiment. Keep firmware updates, raw register
+writes, factory resets and calibration-table writes outside the test scope.
+
+Follow-up: traced readback, fixed-range restoration audit (2026-10-06 UTC)
+------------------------------------------------------------------------
+User reiterated that avoiding brick risk takes priority over exploration.
+This pass sent 27 firmware-traced getter requests, a one-step change through
+an existing UVC contrast control, and an SDK-defined wide-temperature enable
+trial. No raw UART setting commands, raw register writes, flash actions,
+firmware uploads, factory resets or calibration-table writes were executed.
+
+Generic read-only FPGA register command was verified:
+  family 0x74, subcommand 0x13, operation 1, 32-bit BE address
+  request body: 36 74 13 01 [address4]
+  reply body:   36 74 13 03 [value4]
+The same F0/length/checksum/FF framing and USB vendor mailbox apply.
+Firmware route: 0x2003d5dc -> 0x2003d938 -> 0x20040e3c.
+Its operation-one branch at 0x20040ea8 calls register read 0x2001c21c and packs
+four reply bytes. Operation zero instead reaches ISP parameter modification;
+it is explicitly prohibited in the read scripts. Reads were restricted to
+individual traced addresses, not an address-space sweep.
+
+Positive controls:
+  register   reply       cross-check
+  0x209014   00010108    legacy version getter 0x02 returns 010108
+  0x209000   20250414    legacy identity getter 0x03 returns 20250414
+Legacy sensor-identity getter 0x0e returns 20250122. These values look like
+version/build-date identifiers, but keep them raw until their interpretation is
+verified. Matching identity replies establish that register readback is real;
+this is not proof that the bundled CPU image is identical to the running one.
+The 20250414 value also resembles the date in the packaged FPGA metadata.
+
+All tested AGC/ROI registers returned 0:
+  0x206008, 0x20600c, 0x20603c, 0x206040, 0x2060a4, 0x2061d4,
+  0x20610c, 0x2060d0, 0x2060d4, 0x2061c4, 0x206088.
+Additional brightness/contrast addresses 0x20601c and 0x206118 also read 0.
+Zero here must NOT be treated as a verified effective setting or restoration
+baseline. The addresses may not expose readable active state on this FPGA
+revision; write-only registers and inactive/alternate paths remain hypotheses.
+Evidence: deep-audit/agc-register-read/ and register-positive-controls/.
+
+Important correction to interpretation of the earlier legacy getter table:
+Valid replies prove command transport and response format. They do not prove
+that the returned parameter tracks the active UVC image-processing state.
+A bounded cross-check saved all four original blocks, changed 2:2 from 0132
+(value 50) to 0133 (51), and verified UVC readback. The legacy contrast getter
+0x18 continued returning 50, while physical 0x206118 stayed 0. The original
+0132 block was restored in finally and all four blocks matched byte-for-byte.
+Thus neither of these alternate getters is currently an evidenced replacement
+for the normal UVC contrast getter. Do not use them to authorize unverified
+serial setting writes or infer that AGC is actually off.
+Evidence: deep-audit/contrast-readback/{summary.json,original-*.bin} and
+verify_contrast_readback.py. The final stream check yielded 77 frames/3 s.
+
+Additional legacy getters, operation 1 only, valid replies:
+  0x03  hardware identity                    20250414
+  0x0e  sensor identity                      20250122
+  0x39  legacy palette getter                0000
+  0x20  processing parameter (0x207030)       0000
+  0x25  processing parameter (0x208044 path)  0064 (100)
+  0x26  processing parameter (0x208008 path)  0064 (100)
+The normal UVC enhancement block reports palette 1, so the palette getter's
+zero provides another reason to distinguish legacy state from active UVC
+configuration. Exact human-facing names and coupling of processing parameters
+0x20/25/26 need verification; diagnostic script labels are hypotheses.
+Evidence: deep-audit/legacy-feature-audit/. All four saved blocks stayed
+unchanged; final streaming was 77 frames/3 s.
+
+Fixed-range path narrowed down, but not executed through raw serial:
+  FE command 0x0000f113, operation 0 -> 0x20042570 -> 0x2002584c.
+  The value is two 16-bit thresholds, lower first, upper second, on the wire.
+  Limits below 0x4000 apply inside IspTempMode; exact image-domain units remain
+  unverified. Zero/zero takes the explicit disable branch.
+  FE command 0x0000f114, operation 0 -> 0x20042658.
+  It interprets each 16-bit threshold as signed, computes
+      threshold_internal = ((threshold_wire - 1000) * 256) / 10,
+  then truncates/sign-extends to 16 bits. This is consistent with the SDK's
+  (Celsius+100)*10 threshold encoding, followed by Celsius*256 internally.
+  Unlike f113, the nonzero path calls 0x200318cc, which stores enable/work and
+  lower/upper values in RAM for the temperature worker. Zero/zero also closes
+  IspTempMode and writes the worker's enable as 0. These two commands are
+  related, but NOT interchangeable implementations.
+The direct f114 helper writes RAM, not flash. However, no trustworthy getter
+for its active worker flags/thresholds was established. A reversible live
+experiment still requires a verified effective baseline and restoration path,
+not simply a plausible disable packet. Neither raw setter was sent.
+
+The SDK-defined wide-temperature fields in 2:5 were also checked separately:
+  byte 8 enable; u32 LE upper at 9; u32 LE lower at 13.
+Original state: disabled, upper 1300 (30 C), lower 1200 (20 C).
+A trial changed ONLY byte 8 from 0 to 1, preserving all other 78 bytes.
+The camera ignored it, and the existing write/readback verifier timed out.
+The complete original block was restored and all four blocks matched. This
+rules out that normal SDK enable path in the tested configuration, not the
+raw f113/f114 paths. Captured samples remained valid and the final stream check
+yielded 78 frames/3 s. Evidence: deep-audit/wide-mode-check/.
+
+Offline candidates worth further study (not new supported app controls):
+  * Image statistics ROI: 0x20023ffc/0x2002400c with coordinate/mode inputs;
+    it interacts with IspTempMode and gain. Legacy command 0x24 and other paths.
+  * Gamma/global contrast/image boost: 0x20024cxx-0x200253xx, using parameter
+    tables and LUT generation. This is broader than just a brightness offset.
+  * Automatic correction thresholds: FE 0x0000f124 branches include high/low
+    gain average-offset, uniformity and average-change thresholds. These are
+    correction-trigger parameters, not AGC locks; no edits or probes sent.
+
+Read-looking opcode traps identified offline:
+  * Legacy 0x24 loads and stores ROI coordinates BEFORE checking operation.
+    A seven-byte generic getter would therefore not be safely read-only.
+  * Legacy 0x31/32/33 and class 78 subcommand 0x26 getter paths return a constant
+    acknowledgement rather than actual current settings.
+  * Legacy 0x30 operation-zero action selectors include flash-related helpers.
+    Do not include this opcode in a generic setting/action sweep.
+  * Class 78 subcommand 0x30 returns without a response in this image.
+Do not infer safety or support from command names, operation=1 alone, or a
+success-looking acknowledgement. Trace each handler before any live probe.
+
+Additional restoration-path audit (offline, 2026-10-06 UTC):
+  FE f113/f114 do not have matching operation-one read paths in the inspected
+  dispatcher. The read branch at 0x2003c358 routes through 0x2003c7c0 for a
+  nonzero address byte 7, where only the f0xx family is admitted. An f1xx
+  read request falls into the unsupported response, not a current-state getter.
+  Register writes (0x2001c17c) and reads (0x2001c234) use the same physical
+  0xf8800000 | low16 mapping. There is no demonstrated alternate read-bank
+  address that would explain the zero-valued AGC replies.
+  IspTempMode disable restores four AGC registers from 0x2001f66c's cached
+  parameter bank (008,00c,0a4,1d4), but leaves bounds 03c/040 in place.
+  The cached accessor searches parameter tables and the selected bank; it is
+  not equivalent to the physical register getter. No generic external read
+  access to this ISP cache has been established from the inspected callers.
+  Another restore-looking handler, 0x20040cfc operation zero, calls
+  0x20020218. That helper reaches flash-related routines 0x2001cdd8 and
+  0x2001d018 using 0xf00ea000/0xf00e3000 addresses before rebuilding ISP state.
+  Its operation-one branch returns a constant acknowledgement. Do NOT use
+  this handler as an experimental rollback action. No live requests sent.
+
+An additional web search for the exact firmware filename, IspTempMode, and
+HIKMICRO T7 AGC documentation did not surface a module-specific primary command
+reference. Manuals for network cameras do not establish this USB protocol.
+
+Further offline tracing and discovery ledger (2026-10-06 UTC)
+-----------------------------------------------------------
+This pass inspected the extracted firmware and existing saved frames only.
+No camera connection, new USB requests, setting writes or firmware execution.
+Analysis artifacts: firmware-offline/side-feature-string-xrefs.json and
+firmware-offline/header-coordinate-crosscheck.json under diagnostics/agc-research/.
+
+New directly cross-checked telemetry fields, mode-8 assembled-frame offsets:
+  byte 156: u32 LE hottest-pixel X, normalized 0..1000
+  byte 160: u32 LE hottest-pixel Y, normalized 0..1000
+  byte 164: u32 LE coldest-pixel X, normalized 0..1000
+  byte 168: u32 LE coldest-pixel Y, normalized 0..1000
+  bytes 172/176: third coordinate pair; both zero in these captures,
+                purpose not established by the saved-frame cross-check.
+All three wide-mode-check/{warmup,test,restored}-frame.bin files report
+hot=(611,848), cold=(905,554). Their raw plane extrema are respectively
+(156,162) and (231,106). Each header value equals floor(pixel*1000/(size-1)),
+with size 256 horizontally and 192 vertically, exactly in all three files.
+These are three captures of the same scene/locations, not a moving-target
+validation. Coordinate ordering is HOT then COLD in these captures; do not
+blindly transfer a generic SDK comment suggesting a different ordering.
+Potential app use: device-reported extrema markers and a frame consistency
+cross-check. No production decoder or invalid-frame policy changed here.
+
+Fixed-temperature worker modes narrowed down offline:
+  0x2003244c reads two scene summary counts through 0x20016470 and uses
+  (count-3200)*4, consistent with (raw/64-50)*256 if those counts use the
+  native temperature encoding. The reader itself copies two uint16 values
+  from a RAM summary structure; their min/max identity is not yet traced.
+  work=1: preserve the configured bounds, apart from degeneracy handling.
+  work=2: replace lower bound with one scene-derived endpoint; keep upper.
+  work=3: replace upper bound with the other scene-derived endpoint; keep lower.
+This supports the earlier clue of one-sided automatic range modes, but exact
+scene endpoint identity and effective preview support remain unverified.
+
+Important limitation of FE f114:
+  0x20032ec4 passes worker enable to 0x200325c4. At 0x20032dc8, the enabled
+  path updates the bounds and calls 0x2003251c to obtain two uint16 outputs
+  into stack locations 0x72/0x70. This function evaluates two thermometry
+  structures via 0x200303f0. The enclosing function does not subsequently
+  load those stack outputs or call IspTempMode (0x2002584c).
+  Within the traced path, f114 therefore does NOT establish the bridge from
+  temperature thresholds to preview scaling. It may be unfinished test code
+  or have other effects through its library calls; do not claim it freezes AGC.
+  f113 is still the stronger direct candidate: its nonzero branch calls
+  IspTempMode, which writes the FPGA scaling bounds and changes AGC controls.
+  An effective original-state getter/restoration baseline is still missing.
+
+Another misleading acknowledgement, class 78 subcommand 26:
+  dispatcher 0x2003dd24 -> 0x2003de80 -> handler 0x2003f39c.
+  operation 1 returns constant 1 (the operation byte), not active range state.
+  operation 0 acknowledges first, then uses packet bytes 5/6 as arguments
+  to IspTempMode. Byte 5 is also the operation byte, making this a particularly
+  poor candidate for assuming a clean documented enable/range interface.
+  No requests sent to this handler in this pass.
+
+Other useful discoveries to retain for future app/research work:
+
+Feature                    Evidence / status             Possible use
+-------------------------  ----------------------------  -------------------------
+Hot/cold coordinates       Saved raw/header exact match   Hardware extrema markers
+Fixed image-domain range   f113 -> IspTempMode traced      Stable camera colors;
+                                                         live effect unverified
+One-sided auto range       Worker modes 2/3 traced        Follow one scene endpoint;
+                                                         live support unverified
+Image statistics ROI       0x2002400c, 0x200242xx          Meter brightness from a
+                           gain/TempMode exclusion        chosen region; interacts
+                           guards traced                  with fixed-range mode
+Thermometry region output  Header builder 0x200132f8+;     Region statistics and
+                           generic SDK rectangle/point    per-region correction;
+                           structures, list maximum 10    current device support
+                                                         needs a live validation
+Gamma / image boost        0x20024ca0, 0x20024dc4,        Tone curve and detail
+                           0x2002535c logs and LUT code    tuning; live support
+                                                         unverified
+Detail enhancement (DDE)   0x2002666c mapping and          Another hardware detail
+                           0x20026784 state code          path; not yet mapped into
+                                                         a reversible control
+Processing diagnostic      AGC 0x20057d20, DDE            Potential internal state
+dumps                      0x20057d50 -> 0x200579d8        visibility; output route
+                                                         and safe trigger unknown
+Bird/highlight/edge modes  Firmware log/config strings    Leads only; names are not
+                           0x200463e0..0x20046418         proof this device supports
+                                                         the generic SDK features
+
+The diagnostic dump reads the same register function 0x2001c21c used by our
+verified mailbox getter, rather than an alternate cached-state accessor.
+It allocates a buffer and prints ranges (AGC 0x206000..0x2061d4;
+DDE 0x207000..0x2070fc). It therefore does not currently solve the zero-valued
+AGC readback problem. No dump trigger, register sweep, or undocumented setter
+was sent. Keep these candidates separate from verified app controls.
+
+Breakthrough: read-only ISP parameter export (2026-10-06 UTC)
+-----------------------------------------------------------
+Native SDK USB_GET_SYSTEM_ISP_BIN_FILE=2066 is supported on the connected
+camera. Downloaded the stored file without setting image controls or writing
+flash. Evidence under diagnostics/agc-research/deep-audit/:
+  read_isp_export_length.py / isp-export-check/
+  read_isp_export_metadata.py / isp-export-metadata/
+  download_isp_read_only.py / isp-export-download/
+  isp-export-download/{isp-export.bin,isp-parameters.json,isp-parameters.csv}
+
+Transport established from SDK and firmware before the download:
+  Linux SDK Excute 0x105c80 -> DoubleGet helper 0x18be22:
+    selector 1, command 16 (0x10), no setting payload.
+  Standard selector-5 command selection: OUT 21/01, value 0500, index 0a00,
+    bytes 01 10. This is command selection, not an ISP setting write.
+  GET_LEN a1/85, value 0100, index 0a00 returns 0500 (5 bytes).
+  First GET_CUR a1/81, value 0100, index 0a00, length 5 returns
+    01 74 0f 00 00: tag 1, little-endian transfer size 3956.
+  Following GET_CUR requests of 512 bytes, with NO reselection in between:
+    tag 2, u32 LE sequence (1..8), then file bytes.
+    Packets 1..7 were 512 bytes, packet 8 was 412 bytes.
+    Payload lengths 7*507+407=3956; no padding or truncation required.
+  Do not interpret GET_LEN during this active transfer as the next chunk size:
+    firmware's active branch reports a sequence count instead.
+
+Downloaded file SHA256:
+  b1ae66b05878b4d44b68697b4ca185c482b9d8c69b1ad51d9863387908f76e90
+Its length/framing and parameter-count consistency checks all passed:
+  file byte 0: u32 LE parameter-file length 3952 (total minus leading 4).
+  byte 4: header marker a0b0c0d0.
+  byte 8: 494 entries including three entries of framing/metadata overhead.
+  byte 12: 197 public parameters.
+  byte 16: 002a0007: seven banks, 42 parameters per bank.
+  byte 20 onward: 491 address/value pairs, each two u32 LE words.
+    Address high byte is bank ID; low 24 bits are the parameter address.
+    bank 0 is public; banks 1..7 each contain 42 records.
+  byte 3948: trailer marker a0b0c0d0; final DWORD zero.
+Thus 197+7*42=491 parameters, with matching header/trailer and exact packet
+sequence. Decoded CSV/JSON preserve offsets, raw bank IDs, addresses and values.
+Semantic names for most individual registers remain unverified.
+
+Useful stored values directly recovered:
+  address     bank      value       relation to fixed-range helper
+  20603c      public    1000        image-domain lower threshold
+  206040      public    2800        image-domain upper threshold
+  2061d4      public    64          one of four controls restored on disable
+  206008      1..7      0           one of four controls restored on disable
+  20600c      1..7      2           one of four controls restored on disable
+  2060a4      1..5      1           one of four controls restored on disable
+  2060a4      6         0
+  2060a4      7         2
+  206118      public    50          legacy contrast getter's parameter
+  10400c      public    50          saved user contrast percentage
+Seven banks have substantial differences across AGC histogram/tone and noise
+parameters. Bank IDs are NOT yet friendly names or validated app presets.
+Do not label 1000/2800 as Celsius, radiometric counts, or SDK wide-mode values;
+the f113 image-domain thresholds have not been calibrated against raw samples.
+
+Important distinction: this is STORED ISP data, not an active-register snapshot.
+The firmware system table at 0x20084c1c has subcommand 0x10 at 0x20084cd0,
+get handler 0x2004eb40 and no set handler. It copies the ISP data from flash
+0xf00e3000 with read helper 0x2001cdd8 (operation register 0x200804=1), stages
+it in RAM, and uses multi-frame sender 0x2004e6ec. No erase/program helper is
+called on this getter path. This export does not serialize the modified ISP
+RAM cache and does not expose the fixed-range enabled flag. It is valuable
+baseline evidence and a backup of the stored parameters, but is NOT by itself
+an exact runtime rollback plan or a complete device/factory-calibration backup.
+
+Resolved the contrast getter discrepancy offline:
+  UVC setter 0x2005194c updates user percentage through 0x20020f58, calls
+  the contrast LUT builder 0x200250f8, then updates the UVC percentage cache.
+  The legacy getter instead reaches 0x200253a4 -> 0x2001f66c(206118), which
+  reads the ISP parameter cache. The export contains 206118=50.
+  The two getters address different representations; a legacy reply of 50
+  during UVC value 51 does NOT demonstrate that the entire legacy ISP path
+  is inactive. It also does not establish readable physical AGC registers.
+
+Each of the three export probes saved/read back brightness, contrast,
+enhancement and thermometry blocks byte-identically. Final stream checks were
+77, 77 and 78 frames over 3 seconds. All USB owners/pumps closed after their
+checks. No f113/f114 setter, register modification, firmware upload, factory
+reset or calibration-table write was executed.
+
+Current status: USB register/identity readback and the command map advanced,
+but a working on-camera AGC freeze remains unverified. Saved originals were
+restored, every probe owner closed, and production application behavior was
+not changed. Next useful evidence is a reliable current-state getter for the
+raw fixed-range worker or an exact firmware/register map for this revision.
+
+
+Breakthrough: matching live firmware and diagnostic snapshot (2026-10-06 UTC)
+-------------------------------------------------------------------------
+Read-only SDK diagnostic export 2024 was verified on the connected camera.
+Native SDK Excute 0x104a7c selects system 1:7 without an input condition.
+Firmware table entry 0x20084c94 maps to getter 0x2004f90c, no set handler.
+Its snapshot builder is 0x2005705c. We traced its helper calls before testing:
+RAM copies, version getters, physical register reads, indexed RAM values, and
+Smartdata reads. The Smartdata path temporarily writes the read-address latch
+0x200020 and read/status control 0x200084; this is not a strictly zero-MMIO-write
+getter, but no flash/OTP erase or programming helper is called. No camera
+setting setter, firmware upload, factory reset or calibration-table write was
+sent by the probe.
+
+Transport is the same bounded multiframe reader as ISP export:
+  select [01 07], GET_LEN=0500, initial GET_CUR=01 a9 29 00 00;
+  declared size 10665; 22 sequence-checked packets, first 21 each 512 bytes,
+  last 23 bytes (each has tag 02 plus u32 LE sequence then data).
+  All declared bytes recovered; no GET_LEN queries between chunks.
+Evidence: deep-audit/download_diagnostic_read_only.py and
+  diagnostic-export-download/{diagnostic-export.bin,decoded.json,summary.json}.
+SHA256 70eea6b53371a92fc80d8ceb6431e4641d0b76506a72e5cedf4f356575034512.
+
+Verified diagnostic fields (offsets into exported data):
+  0x0003  u8      format tag                      1
+  0x0004  u32 LE  diagnostic format version       20231111 hex
+  0x0008  u32 LE  CPU software revision           00209031 hex (V2.09.031)
+  0x000c  u32 LE  second version identifier       20250917 hex
+  0x0010  u32 LE  FPGA version identifier         00010108 hex
+  0x0014  u32 LE  hardware identity               20250414 hex
+  0x03ca  96 u32  indexed runtime words from      0x2009334c RAM via 0x20023e28
+  0x1130  u32 LE  cached parameter 0x100000        34 decimal
+  0x1134  u8      selected ISP bank               1
+  0x1946  528 B   region diagnostic structure     22 records, 24 bytes each
+  0x1b62  3655 B  copied camera configuration RAM 0x200f5650
+  0x1c2a  u32 LE  UVC brightness cache            50
+  0x1c2e  u32 LE  UVC contrast cache              50
+
+The reported CPU revision matches the downloaded V2.09.031 image, and version
+getter 0x20035970 in that image returns precisely 0x00209031. This establishes
+matching reported software revision, not a byte-for-byte firmware checksum.
+FPGA and identity values also match the independent mailbox positive controls.
+Region helper 0x20056e84 serializes enabled state, region type and coordinates
+from its RAM region objects; region functionality is not yet app-validated.
+
+The snapshot is useful runtime evidence but NOT a full RAM dump or exact AGC
+rollback. Neither the private IspTempMode enabled byte gp-0x6b3 nor its active
+threshold/cache values are explicitly serialized by this getter. No parameter
+address pairs for 0x20603c/0x206040 appear in this diagnostic file. The 96 indexed
+words are not an exported ISP address/value table; avoid assigning control names
+until their producers are traced.
+
+SDK 2050 advertises a conditional PSRAM/FLASH diagnostic read (type, address,
+length in USB_SYSTEM_DIAGNOSED_DATA_COND). Native Excute 0x104af8 still uses
+system 1:7, now with an input condition. However, this exact module's 1:7 handler
+builds the fixed diagnostic structure and does not inspect those requested
+memory fields. Arbitrary-memory readback is not established, and that alternate
+request was not sent. A generic SDK capability is not evidence this module
+implements it.
+
+All four saved controls (2:1, 2:2, 2:5, 3:1) matched byte-for-byte after download;
+warmup 73 frames/3 s, final 77 frames/3 s. The probe closed its frame pump and USB
+owner. Production application behavior is unchanged. The remaining prerequisite
+for a raw f113/f114 lock experiment is a reliable original active-state readback
+and a demonstrated complete rollback; stored ISP defaults alone do not supply it.
+
+
+Controlled cold-boot baseline strategy (prepared, not yet executed)
+-----------------------------------------------------------------
+A physically confirmed cold boot can establish the missing fixed-mode state.
+Startup at 0x20000040..0x2000005c clears BSS 0x2009122c..0x200facf0 (upper
+address is 0x20000048 + 0xfb000 - 0x358). The IspTempMode byte
+0x200912ed (gp-0x6b3) lies in that cleared range. Its only explicit stores in
+the disassembly are in 0x2002577c; that helper is reached by IspTempMode, not
+an initialization call. Camera.open negotiates the USB stream without calling
+image/thermometry setters. Thus, after a real power cycle with no viewer or
+phone app changing settings, fixed-mode state starts at zero in this image.
+This is a code-derived baseline, not newly discovered external readback.
+
+Prepared coldboot_fixed_range_trial.py (not run yet). It requires an explicit
+cold-boot-confirmed argument, refuses to overwrite evidence, saves fresh control
+blocks, requires equality with pre-coldboot saved blocks, and checks the complete
+stored ISP export against the earlier byte-for-byte reference before sending
+anything. It uses only f113 with the EXISTING stored limits 1000/2800, captures
+4-second automatic/fixed/restored phases, and sends f113 zero/zero in finally.
+Using existing bounds avoids introducing different threshold register contents.
+Disable restores four AGC values from the unchanged ISP cache. Firmware-traced
+setter calls touch FPGA registers, RAM flags, DMA restart and semaphore helpers;
+no flash/OTP programming path identified. A final physical power cycle remains
+the independent cleanup/verification step; no software reboot command is used.
+
+Fresh pre-coldboot runtime snapshot and originals are saved in
+  deep-audit/pre-coldboot-snapshot/.
+Its diagnostic hash is 9855ae6f7c3abbf82297abb768b18ba5fbfcc486054517cffb22ebded5815f6f;
+all four control blocks matched the previous originals, and final streaming
+was 77 frames/3 seconds. No fixed-range write has been sent at this stage.
+
+
+First f113 bounded live trial and cold-boot protocol discovery
+-------------------------------------------------------------
+User confirmed physical unplug/reconnect with viewer closed. Early startup
+had no frames; a later bounded retry obtained frames but all 15 reads of 2:1
+reported length 512 (0002) instead of 2. No setting commands were sent in
+those aborted attempts; evidence directories retain the startup failures.
+
+Root cause recovered from matching firmware: 0x200500b8 dispatches controls
+through a legacy default path while gp-0x5b8 is zero. Default length getter
+0x20051330 returns 512. GET_CUR selector 4 follows 0x20050260..0x200502d0,
+copies protocol version 0x00302e32 ('2.0\0') into the reply, then sets
+that protocol flag to 1. This is communication initialization, no ISP edit,
+flash action or private fixed-mode flag write. After GET_LEN selector 4=4
+and GET_CUR selector 4='2.0\0', all four normal controls immediately returned
+their expected lengths and matched pre-power-cycle originals byte-for-byte.
+This is a plausible explanation for unavailable controls on freshly powered
+hardware that worked after a phone-app session. Production startup does not
+yet perform this protocol-version read; integration remains follow-up work.
+
+The prepared f113 trial then executed:
+  enable, stored 1000/2800 bounds: f00b36fe000000f11303e80af01dff
+  disable, zero/zero:             f00b36fe000000f1130000000038ff
+Both returned f00736fe030000000138ff (four-byte value 1 acknowledgement).
+Four-second phases streamed 102 automatic, 101 fixed, and 102 restored frames.
+All four controls matched afterward. Stored ISP export before and after had
+SHA256 b1ae66b05878b4d44b68697b4ca185c482b9d8c69b1ad51d9863387908f76e90.
+No other setting command, flash/OTP programming, firmware upload, factory reset
+or calibration-table modification was sent.
+
+This does NOT yet validate effective image locking: the saved phase images
+show a hand/object entering the scene during the experiment, and raw scene
+upper percentiles changed substantially. Automatic-before luminance mean was
+84.722, fixed mean 63.876, restored mean 53.616, but those are confounded by
+scene contents. Evidence: deep-audit/coldboot-fixed-range-trial/, including
+summary.json, original controls, before/after ISP exports and trial-comparison.png.
+A repeat with an unchanged scene is prepared as static_fixed_range_trial.py.
+The disable packet was sent and acknowledged; independent final cold power
+cycle verification is still outstanding.
+
+
+Steady-scene and repeated f113 checks (2026-10-06 UTC)
+---------------------------------------------------
+User restarted the experiment and confirmed ready after cold reconnect.
+Protocol version read initialized SDK 2.0; all originals matched again.
+Three bounded captures completed, each restoring original limits/mode and
+verifying all four controls and the entire stored ISP file unchanged:
+  static-fixed-range-trial: original 1000/2800, then disable;
+  narrow-fixed-range-trial: 1000/1800, original 1000/2800, then disable;
+  repeat-fixed-range-trial: broad/narrow/broad/narrow/broad, restore, disable.
+All setting acknowledgements were f00736fe030000000138ff. No restoration
+error occurred. No NVM write, firmware upload or calibration-table edit sent.
+
+Late valid-frame means (0..255 luminance), static comparison:
+  automatic-before 55.603; original-bounds mode 57.744; restored 55.982.
+Raw 1/50/99-percentile spreads were 35.3/31.7/34.1 temperature counts across
+these three phases. This alone did not establish useful image locking.
+Narrow comparison means: automatic 59.59, narrow 70.54, restored 57.97;
+raw median increased gradually from 4365.3 through 4389.1 to 4398.9.
+
+Repeat capture established a much stronger output-path effect:
+  automatic 57.116; first broad 68.751; narrow 20.918; second broad 20.920;
+  second narrow 20.905; third broad 20.836; automatic-restored 60.084.
+Late raw medians remained changing, approximately 4372..4419 counts. During
+narrow-1, the preview 1/50/99 percentiles were 17/21/22, nearly flat dark output,
+while the corresponding temperature percentiles were 4298/4388/4522. Later raw
+hot values increased (scene changed near the end); the preview stayed in the
+dark mapping, then recovered on disable. This demonstrates that f113 can affect
+the actual camera preview while radiometry continues; it is not a useful,
+fully calibrated AGC lock yet. Threshold-domain interpretation remains open.
+Evidence directories include summaries, original blocks, whole ISP before/after
+exports, phase frame binaries and analysis/comparison artifacts.
+
+Offline explanation to test next: the first-enable branch at 0x20025a14 writes
+thresholds, calls mode helper and returns via 0x200259cc without the explicit
+refresh helper 0x2000bd38. The already-enabled branch at 0x20025960 updates bounds
+and reaches 0x20025924, whose a3=1 path triggers that refresh. This is consistent
+with the large change occurring on a second enable/update, but the source trace
+alone does not prove FPGA latch timing. Test same bounds twice before judging a
+first-call result; do not send an unmapped direct refresh opcode.
+
+A useful unit lead is the independently captured mode-3/mode-9 SENSOR-count
+plane, distinct from calibrated mode-8 temperatures. Existing saved frames have
+sensor min/max around 4908/5286 and 1/50/99 percentiles near 5093/5130/5197.
+They must not be converted using raw/64-50 or assumed to be identical to ISP
+input counts. Comparing this plane with the fixed-range output may establish
+proper thresholds. Existing defaults 1000/2800 are stored baseline values, not
+proof that those bounds bracket the live image signal.
+
+The final disable was acknowledged and automatic output recovered. User was
+asked for a final physical power cycle; independent read-only verification is
+prepared in verify_post_lock_coldboot.py and is pending reconnection confirmation.
+
+
+Independent post-trial cold-power-cycle verification completed
+------------------------------------------------------------
+User confirmed the requested 10-second unplug/reconnect, viewer closed.
+verify_post_lock_coldboot.py made no setting writes. Fresh startup initially
+had no frames; warmup progressed to 101 frames/4 seconds. The protocol-version
+GET_CUR initialized SDK 2.0. All four current control blocks matched the saved
+pre-test originals byte-for-byte, and remained unchanged after verification.
+The complete 3956-byte stored ISP export matched the original reference:
+  b1ae66b05878b4d44b68697b4ca185c482b9d8c69b1ad51d9863387908f76e90.
+Final stream check: 77 frames/3 seconds. Probe/pump and USB owner closed.
+Evidence: deep-audit/post-lock-powercycle-verify/{summary.json,isp-export.bin,
+original-*.bin,queries.json}. The cold boot also reestablishes the code-derived
+zero private fixed-mode/worker flags. This completes the independent cleanup
+check requested after the live range experiments.
+
+Current result: f113 has demonstrated a real camera-preview effect with live
+radiometry, and explicit disable restores useful preview output. Meaningful
+threshold units, first-enable refresh behavior, and a usable range that stays
+stable across deliberate scene changes remain to be established. No production
+lock UI or camera setting was added, and no claim of a calibrated AGC lock is
+made from acknowledgement values or the nearly-flat clipped output.
+
+
+Sensor-domain range trial and offline safety audit
+-------------------------------------------------
+Evidence: deep-audit/sensor-domain-capture and deep-audit/sensor-range-trial.
+The supported stream selector 3:5 was temporarily changed from mode 8 to mode 9
+by changing only byte 1 of its saved 14-byte block. Mode 9 supplied 102 frames
+in four seconds; sensor-count min/1/50/99/max percentiles on the saved frame
+were approximately 5073/5165/5193/5222/5486. Preview luma correlated with that
+plane at 0.885. These counts differ from the mode-8 temperature encoding.
+The exact stream block was restored to mode 8; 77 subsequent frames arrived
+in three seconds. All four temperature/image control blocks were unchanged.
+
+The next bounded f113 trial tested 4000/6400 twice, then 4800/5600, then the
+original 1000/2800 bounds. All three produced nearly identical flat preview
+output: last-two-second luma means 20.939, 20.938, and 20.938 respectively.
+Automatic before/after means were 87.608 and 77.099; scene/sensor drift means
+those automatic means are not a controlled quantitative comparison. The
+calibrated temperature plane continued changing throughout the trial.
+Cleanup explicitly restored 1000/2800 and then disabled the private mode.
+All four control blocks and the complete stored ISP export matched originals;
+the stored ISP SHA remained b1ae66b05878b4d44b68697b4ca185c482b9d8c69b1ad51d9863387908f76e90.
+Pump and USB owner closed. This experiment did not establish usable threshold
+units or a working camera AGC lock. Stop range tuning and investigate offline.
+
+Offline audit of family 0x74/subcommand 0x13 operation 0:
+  handler 0x20025aac -> ordinary-address path 0x20025b40 -> 0x200203ec.
+  0x200203ec checks the high-byte bank against the selected bank (zero means
+  public), strips that byte, and calls physical setter 0x2001c0b0. For the
+  0x206xxx ISP addresses this directly writes F8800000 | low16(address).
+  It is not a getter or a demonstrated active-cache update. Physical reads
+  of these ISP addresses returned zero in earlier probes, so read-back alone
+  cannot establish an exact original value or reliable rollback.
+  The handler also recognizes magic addresses 0x7a7b7c7d (acknowledgement) and
+  0x7d7c7b7a (calls 0x20024808 with argument zero, then 0x2001f994).
+  0x2001f994 only clears gp-0x6cc; it is NOT itself a flash-save routine.
+  0x20024808 regenerates image-processing tables through other helpers. Its
+  full transitive side effects still require audit; do not send either magic
+  operation or use the generic setter as a speculative refresh mechanism.
+No generic register writes, firmware uploads, erase commands, calibration-table
+writes, or factory resets were performed in this audit. Further investigation
+is offline until effects and restoration of a prospective command are known.
+
+
+Offline fixed-mode instruction replay (2026-10-06)
+--------------------------------------------------
+User reiterated no bricking, then authorized continuing the offline audit.
+No camera was opened and no USB commands or hardware writes were issued.
+Artifacts: firmware-offline/emulate_fixed_mode.py, fixed-mode-replay.json,
+fixed-mode-audit-excerpts.txt. The replay interprets the existing RV32 disassembly
+for explicitly allowed routines; RTOS, logging, reply transport, cache reads and
+physical writes are mocked. Unknown instructions/callees fail closed, execution
+is bounded, and output records hashes of the software payload and ISP reference.
+This is CPU control-flow evidence, NOT an FPGA simulator or a hardware test.
+
+Validation completed: 12 f113 handler replays (three tested range pairs, each
+first enable, second enable, original-bounds restore, disable), six documented
+SDK-mode validator inputs, and one ROI-blocked command. Assertions check exact
+threshold writes, private flag transitions, refresh presence/absence and the
+four original bank-1 values restored by disable.
+
+The wire parser at 0x20042570 correctly decodes all three tested big-endian
+range pairs, and they reach 0x20603c/0x206040 without unexpected clamping.
+First enable additionally writes:
+  0x206008=2, 0x20600c=1, 0x2060a4=0, 0x2061d4=256.
+Second enable updates bounds and writes 0x2090a4=1; first enable does not.
+Disable restores cached 0/2/1/64 respectively, toggles 0x20610c around its
+restart, and refreshes. The bounds must still be restored explicitly before
+disable. This confirms the earlier branch analysis and makes a parser byte-order
+mistake unlikely as an explanation for the flat dark output. It does not prove
+threshold units, FPGA latching behavior or compatibility of the forced mode.
+
+SDK enhancement validation is explicit in the firmware:
+  0x200462c0 substitutes the existing mode when byte 23 is zero.
+  0x20046304 calls 0x20043718 on that byte; for documented inputs 0..5 the
+  validator accepts only 1 and returns -1 for the others. The caller rejects
+  invalid modes before the enhancement apply dispatcher at 0x20038ee0.
+This agrees with the independently read capability byte advertising only linear
+ISP AGC; alternate SDK modes are not merely dormant choices awaiting a slider.
+The validator uses a masked RV32 shift, so this statement concerns documented
+enum values, not an invitation to try out-of-range byte values.
+
+The normal apply dispatcher calls noise/detail, enhancement, palette and ISP
+mode helpers (0x20038b20, 0x20038c20, 0x20038dc4, 0x20038cd4). It has no call to
+the f113 fixed-range handler. Within these traced helpers, mode byte 23 is used;
+the advertised wide-range bytes 8..16 and separate AGC byte 26 are not consumed.
+This helps explain why the SDK fields tested earlier did not yield a lock;
+it is not proof that no other command or firmware variant implements them.
+
+With the ROI gate mocked enabled, f113 made no register writes and left its
+private flag zero, yet the outer handler still set its success value to 1 and
+constructed a reply. An acknowledgement cannot establish that a lock applied.
+
+Generic refresh caution is now more specific: magic address 0x7d7c7b7a reaches
+0x20024808, which calls 0x20025260 (tone tables), 0x20024718 (other processing
+tables), 0x200210f8, 0x20023f30 and 0x20027f3c. Helper 0x20023f30 can change both
+the cached and physical 0x208040 detail-processing enable via 0x2001f1a0 and
+0x2001c0b0; 0x20027d38 also updates cached 0x208044. Thus this operation is
+not an isolated bounds-latch refresh, even if its processing-table writes are
+volatile. It remains excluded from live experimentation without a complete
+active-state restore plan. No flash-save behavior is inferred from 0x2001f994.
+
+Remaining boundary: the CPU trace reveals which FPGA processing values change,
+but not their transfer function. The nearly identical output across both stored
+and sensor-bracketing ranges does not identify the cause. Unsupported processing
+mode, a different input domain or an additional prerequisite remain hypotheses.
+No usable hardware brightness/contrast lock or production control was added.
+
+
+Pipeline, FPGA identity and correction-history audit (2026-10-06)
+----------------------------------------------------------------
+Continued offline only; no camera connection or USB transaction this round.
+New artifacts in firmware-offline/:
+  trace_register_calls.py, register-call-arguments.json
+  decode_correction_history.py, correction-history.json
+  verify_correction_history.py, pipeline-history-audit-excerpts.txt
+  firmware-components.json, fpga-build-header.txt
+
+Conservative RV32 constant propagation resolved arguments at 758 direct helper
+calls, following branches and discarding caller-saved registers across calls.
+It identified the previously traced f113 paths as the direct constant-address
+writes to 206008/20600c/20603c/206040/2060a4/2061d4. Fourteen physical-write
+call sites retained unknown addresses, including bulk bank/parameter loaders,
+generic host writes, and analysis-boundary losses. This is not proof that those
+registers cannot be overwritten; memory-driven and indirect paths remain.
+
+One concrete overwrite path is RefreshIspMode at 0x20024850. It selects an ISP
+bank from gain and user mode, then calls 0x20020288 to apply the bank's cached
+address/value pairs. That includes 206008/20600c/2060a4 in the saved ISP banks.
+There is an ROI gate, but no private fixed-mode flag check in this refresh path.
+The gain-change sequence at 0x200188bc calls it at 0x20018928; its diagnostic
+strings explicitly identify high/low gain. Consequently a gain/settings refresh
+can replace fixed-mode processing
+values while leaving gp-0x6b3 set. A later f113 command then updates bounds only.
+This is a code-derived lifecycle hazard, not evidence that every ordinary shutter
+event follows this path or caused the earlier flat output. Do not confuse SDK ISP mode enums with the
+separate FPGA 206008/20600c values just because their numbers overlap.
+
+Correction history: the snapshot's 96 words at byte 0x3ca are a circular buffer
+of 32 three-word records, produced by 0x20022c84 at RAM 0x2009334c. Its cursor
+gp-0x6b9 advances by three words and wraps after word 93. The printer at
+0x20023c54 supplies labels AVG, T, CT, SHUT, ERR, STATE:
+  word 0: AVG low 14 bits; SHUT bits 14..16 (source register 0x202088)
+  word 1: signed T low 16 bits; ERR bits 16..18; STATE bits 24..26
+  word 2: signed CT low 16 bits.
+The writer reserves eight ERR bits; the printer displays the low three. The
+decoder preserves complete words as well as the printer-compatible fields.
+Temperature units, error/state enum meanings and the snapshot's chronological
+cursor are not established. Zero slots must not be assumed valid observations.
+The previously downloaded snapshot has two nonzero slots:
+  slot 0: AVG=0, T=1446, CT=1448, SHUT=0, ERR=1, STATE=0
+  slot 1: AVG=0, T=1024, CT=1510, SHUT=0, ERR=2, STATE=1.
+Do not label these as diagnosed camera faults or convert T/CT to Celsius yet.
+This history concerns thermal correction (firmware label tec_kwkc), not an AGC
+register cache. It may be useful for investigating shutter/calibration events.
+Decoder validation replays the actual producer instructions for 36 synthetic
+records, checks signed fields and wraparound against decoded output, and rejects
+wrong-size/unknown-format snapshots. All checks passed without device access.
+
+Firmware package boundaries were independently checked: FPGA component offset
+48, length 1049314; CPU offset 1049362, length 598474. The CPU component exactly
+matches the previously extracted software.bin. The FPGA's 256-byte textual build
+header names Titanium, Ti60F225, Ti60_MP and a T7_V2.0.29_512x384_OSD project;
+generation time is Mon Apr 14 22:03:52 2025. This identifies the bundled FPGA
+target, not a physical chip inspection or evidence of an AGC version mismatch.
+Primary vendor documentation confirms the Titanium Ti60F225 family:
+  https://www.efinixinc.com/docs/ti60f225-devkit-ug-v2.4.pdf
+It does not document the camera's custom processing registers. Searches for
+HIKMICRO T7 AGC and IspTempMode did not provide a matching primary register map.
+
+Added offline f113 replay for 0..0x3fff: the full 14-bit interval reaches the
+limits unchanged, then original bounds and the cached mode values restore.
+Total fixed-mode checks now cover 16 command replays, six SDK validators and
+one ROI rejection. This interval has NOT been sent to the camera. It would be
+a useful bounded transfer-function test, but cannot by itself prove the FPGA
+input domain. Existing live tests still have not produced a usable lock.
+
+Live correction-history check (2026-10-06)
+-----------------------------------------
+Artifacts: diagnostics/agc-research/deep-audit/
+  correction_history_trial.py
+  correction-history-trial-20261006/{summary.json,frames.csv,
+    history-before-1.bin,history-before-2.bin,history-after-1.bin,
+    history-after-2.bin,snapshot-differences.json,isp-before.bin,isp-after.bin}
+
+Stream warmed up immediately. Read-only SDK 2.0 handshake, four original control
+blocks and the stored ISP export were saved. Two diagnostic snapshots preceded
+one established selector 2 / command 4 manual calibration; two followed it.
+No configuration setters, private register writes, gain/stream-mode changes or
+NVM writes were issued. Acquisition ran separately throughout the control reads.
+
+829 frames were observed over approximately 33 seconds. Telemetry DWORD at byte
+32 marked two freeze runs: 16 observed frames around 12.316..12.916 seconds,
+and 16 around 16.717..17.317 seconds. The first occurred during the baseline
+without an explicit calibration command; the second followed our manual command
+at 16.556 seconds. The command completed successfully. Latest-frame delivery can
+skip frames, so these are observed counts, not a complete shutter-frame census.
+No invalid endpoint pixels or collector failures were observed.
+
+All 32 correction-history slots at 0x3ca were byte-identical in all four
+snapshots. Only slot 0 was nonzero: words 00000000/00010556/00000558, decoded as
+AVG=0, T=1366, CT=1368, SHUT=0, ERR=1, STATE=0. Thus this buffer is NOT established
+as a per-shutter event history. On this session it did not record either the
+baseline freeze or the commanded calibration. A likely distinction is the
+firmware's tec_kwkc correction sequence versus ordinary shutter calibration;
+that interpretation still needs separate call-path confirmation.
+
+The complete exports did change (52 bytes between baseline snapshots, 140 across
+the manual-calibration interval, 55 between post-calibration snapshots). Changes
+occurred principally in a later rolling region around 0x83e..0xa49, fields around
+0x114d..0x1163, and scene-dependent values around 0x194e..0x195d. Baseline and
+post-command changes prevent assigning these differences to calibration alone.
+No reliable additional calibration counter or AGC-lock status was identified.
+Full byte comparisons are saved for further offline tracing.
+
+All four original controls (2:1, 2:2, 2:5, 3:1) were byte-identical afterward.
+Stored ISP export before/after was also identical, SHA256:
+  b1ae66b05878b4d44b68697b4ca185c482b9d8c69b1ad51d9863387908f76e90.
+The camera stream remained healthy and the experiment closed its USB owner.
+No production behavior changed. This rules out the decoded tec_kwkc history as
+our current shutter detector; frame telemetry remains the validated indicator.
+
+Fixed-range domain and refresh follow-up (2026-10-06)
+---------------------------------------------------
+New offline artifacts in firmware-offline/:
+  brightness-contrast-domain-excerpts.txt
+  full-interval-command-replay.json
+  fixed-range-chroma-audit.json
+New live artifacts in deep-audit/:
+  full_interval_range_trial.py
+  full-interval-range-trial-20261006/{summary.json,analysis.json,
+    original-*.bin,before-isp.bin,after-isp.bin,*-last.bin}
+
+CPU tracing establishes that f113 has no temperature-to-sensor conversion:
+its two wire limits directly reach 0x20603c/0x206040 after ordering/clamping.
+No additional prerequisite was found in its other direct callers. The legacy
+caller 0x2003f39c feeds byte-sized arguments through the same helper; this is
+not evidence of a better or complete alternative implementation. The f114
+worker's 0x2003251c inverse-temperature helper calls 0x200303f0 and stores its
+results at stack 0x70/0x72; the inspected worker does not pass them to IspTempMode.
+Do not assume its mere presence supplies the missing f113 input conversion.
+
+The established refresh helper 0x2000bd38 only writes its argument to 0x2090a4;
+it is not a CPU-side LUT rebuild or calibration computation. First f113 enable
+writes the forced mode and bounds without this explicit refresh. Later updates
+write bounds and then refresh. CPU execution alone cannot expose the FPGA's
+input routing, register meanings or internal latch behavior.
+
+Manual brightness path 0x20024e1c maps the 0..100 UI setting through cached
+signed limits at 0x105000..0x105002 (original -128/0/127), writes 0x20601c, and
+refreshes with a temporary 0x20610c disable/re-enable. Thus the existing 50
+setting maps to physical offset zero; it is not an AGC-off switch. Its diagnostic
+cache helper 0x2005688c stores only the requested/mapped values in RAM. Gamma
+mapping at 0x200253f0 uses 0x105006..0x105008 (original 0/50/100), then
+0x20024c5c/0x200249b4 constructs a 256-entry LUT at 0x206114. The firmware labels
+this Agc5v1GammaCurveSet. The separate Agc5v1GbceInit path composes contrast,
+gamma and image-boost curves into a table at 0x206110; do not label every LUT
+parameter as a simple global contrast multiplier. Neither inspected route
+writes the fixed-range limits or explicitly enables their forced mode.
+
+Saved sensor-range trial frames were checked as full YUY2/BGR, not only Y.
+Chroma was neutral (1/50/99 percentiles 128/128/128) in both automatic and fixed
+phases. BGR standard deviation was about 21.7 automatic, 1.12 fixed, 21.1 restored.
+The loss of image contrast is not an artifact of ignoring the color channels.
+
+Bounded live discriminator: retain current mode 8, snapshot all four controls
+and stored ISP, verify originals and useful automatic-preview contrast, then
+send f113 with 0/16383 twice (observe first enable separately), 0/8192, and
+8192/16383. The six-command sequence including restoration was replayed offline
+and exact physical threshold writes asserted. This uses the full interval
+accepted by the firmware and its two halves, without guessing temperature units.
+No fresh cold boot was claimed. The previous trial recorded explicit disable;
+this trial verified matching original settings and a working automatic preview.
+The private flag is still not independently readable through a verified getter.
+
+Late valid-frame results (mean Y; median 1/50/99 Y):
+  automatic before: 68.067; 36/64/141.5
+  full interval, first enable: 63.969; 33/61/137
+  full interval, explicit refresh: 20.936; 16/21/23
+  lower half: 20.936; 16/21/23
+  upper half: 20.936; 16/21/23
+  automatic restored: 56.818; 25/53/126.
+Radiometric values continued changing. Frozen samples were excluded from the
+last-two-second summaries. Latest-frame delivery may skip frames. Scene drift
+and a freeze during first enable prevent treating the first image as proof that
+this call applied a functional lock. Refreshed full/half intervals all yielded
+indistinguishable flat output, making an ordinary threshold mismatch within
+0..16383 less likely. This does not prove the FPGA input fits that interval or
+that the forced processing mode is supported by this FPGA build.
+
+Cleanup restored original bounds 1000/2800 and then explicitly disabled fixed
+mode. All four control blocks matched originals. Stored ISP before/after matched
+byte-for-byte, SHA256 b1ae66b05878b4d44b68697b4ca185c482b9d8c69b1ad51d9863387908f76e90.
+No restoration errors; stream and USB owner closed normally. No NVM, firmware,
+calibration-table or generic register writes. No production code was changed.
+
+Current best lead is the forced processing configuration or an unimplemented
+FPGA prerequisite, rather than further speculative threshold tuning. A following
+audit should isolate which of 206008/20600c/2060a4/2061d4 determines the flat path,
+first offline. Direct individual-register tests remain excluded until current
+active state and a reliable restoration method are established. The supported
+brightness/contrast controls could be used in a later bounded output-stage test;
+they have not been changed during this full-interval experiment.
+
+Four-register isolation: first live contrast recovery (2026-10-06)
+----------------------------------------------------------------
+Offline artifacts: firmware-offline/verify_fixed_register_isolation.py,
+fixed-register-isolation-replay.json, fixed-register-isolation-safety-excerpts.txt.
+Eight exact family 74 / subcommand 13 / operation 0 packets were replayed through
+0x20040e3c -> 0x20025aac -> 0x200203ec -> 0x2001c0b0. Every allowed command
+produced one store to its matching F880xxxx MMIO address, unchanged mocked cache,
+and success reply; unapproved MMIO addresses/callees fail closed. This traces
+actual physical-writer instructions, not just a mocked top-level setter. For
+these four addresses, the bit-21 branch directly stores to F8800000|low16(address)
+and returns. It has no flash-helper call or table-rebuild branch. Existing
+fixed-mode disable was independently replayed to restore all four cached values.
+The original fixed-mode and correction-history replay checks still pass.
+
+Live artifacts: deep-audit/fixed_register_isolation_trial.py and
+fixed-register-isolation-trial-20261006-attempt2/{summary.json,analysis.json,
+initial-diagnostic.bin,original-*.bin,before-isp.bin,after-isp.bin,*-last.bin}.
+A first attempt stopped BEFORE any setting write because its baseline guard
+looked up 2061d4 in bank 1 only. This parameter is public. The guard was corrected
+to merge public parameters with the selected bank; failed-attempt evidence is
+preserved separately. Its four controls and ISP export were unchanged.
+
+The successful attempt required selected ISP bank 1 in the diagnostic snapshot,
+matching stored ISP and original controls, and useful initial preview contrast.
+It enabled full-range f113 twice, then changed each of its four processing
+registers individually to its original cached configuration value. A subsequent
+f113 update provided the established refresh. Each register was returned to its
+forced value and refreshed before testing the next. No magic commands, cache
+setters, flash/NVM writes, firmware uploads or unknown register values were used.
+This is the first explicitly audited live use of the four whitelisted physical
+setters; earlier exclusions applied before this exact path/restoration audit.
+
+Late unfrozen-frame results (mean Y; median 1/50/99 Y):
+  automatic-before: 58.977; 20/51/213
+  fixed baseline: 20.939; 13/21/27
+  206008 restored 2->0: 20.935; 13/21/26 (no useful recovery)
+  20600c restored 1->2: 51.417; 15/45/215.5 (substantial contrast recovery)
+  20600c returned to 1: 22.116; 12/21/27 (near-flat output returns)
+  2060a4 restored 0->1: 78.693; 73/82/88 (brighter, still narrow image range)
+  2060a4 returned to 0: 20.937; 12/21/27
+  2061d4 restored 256->64: 20.910; 15/21/24 (no useful recovery)
+  2061d4 returned to 256: 20.918; 16/21/23
+  automatic-restored: 65.683; 15/59.5/145.
+Camera scene changed near the last register test (radiometric upper percentile
+fell substantially), so means across all phases are not controlled scene-brightness
+comparisons. Adjacent 20600c restore/reapply phases nevertheless give a strong
+specific lead: this selector value determines whether the forced configuration
+can retain substantial image contrast. Its actual hardware enum meaning is not
+known; do not name it as an established AGC-disable or input-format control.
+Useful output is not yet proof that range limits or a hardware lock work.
+
+Final cleanup restored limits 1000/2800 and disabled f113. Four controls and the
+stored ISP export matched originals; no cleanup errors. Stream/USB owner closed.
+The safest next discriminator is to keep 20600c=2 within the otherwise forced
+configuration and vary only already-tested range limits. Determine whether the
+recovered image responds to bounds before proposing a production AGC-lock UI.
+
+Mixed-mode bound response follow-up (2026-10-06)
+-----------------------------------------------
+Artifacts: deep-audit/mixed_mode_range_trial.py and
+mixed-mode-range-trial-20261006/{summary.json,analysis.json,*-last.bin,
+initial-diagnostic.bin,original-*.bin,before-isp.bin,after-isp.bin}.
+Kept the otherwise forced configuration, restored only 20600c=2, and refreshed
+using the existing f113 update. Compared full 0/16383, lower 0/8192, upper
+8192/16383, then full again. Mean Y / median 1/50/99 Y:
+  fixed baseline: 20.924; 16/21/23
+  mixed full: 49.916; 15/39/136
+  mixed lower half: 50.733; 18.5/42/217
+  mixed upper half: 55.022; 21/45/138
+  mixed full repeat: 57.174; 25/50/135.
+Substantial contrast survived both halves. Scene changed during lower-half
+capture (radiometric upper percentile rose from about 4453 to 4792), preventing
+clean amplitude comparisons. These observations do not demonstrate predictable
+bound-controlled output; simply restoring 20600c=2 may bypass the fixed-range
+path or return to automatic processing. Its actual enum meaning remains open.
+Do not call this mixed configuration an established lock.
+All four controls and stored ISP matched originals after original-bounds restore
+and f113 disable. No restoration errors; stream and USB owner closed normally.
+
+Side findings are also indexed in docs/hardware-discoveries.txt. The detailed
+research log remains the canonical source for payloads, evidence and caveats;
+the index distinguishes verified controls, code-derived leads and failed tests.
+
+All original/forced register combinations (2026-10-06)
+-----------------------------------------------------
+Artifacts: deep-audit/fixed_mode_combination_trial.py and
+fixed-mode-combination-trial-20261006/{summary.json,analysis.json,*-last.bin,
+initial-diagnostic.bin,original-*.bin,before-isp.bin,after-isp.bin}.
+Tested all 16 combinations of only the original and f113-forced values, keeping
+full 0/16383 bounds and the private fixed flag enabled. Gray ordering changes
+one register per phase. Each phase lasted three seconds after the established
+refresh. No unrecognized values/addresses or persistent-write paths were used.
+
+Late unfrozen means and median 1/50/99 Y (columns are 206008/00c/0a4/1d4):
+    2  1  0  256    20.91    6 /21  /35
+    0  1  0  256    20.92    7 /21  /34
+    0  2  0  256    44.91   21 /33  /223
+    2  2  0  256    54.29   27 /46  /211
+    2  2  1  256    45.66   21 /38  /215
+    0  2  1  256    48.12   20 /38.5/219.5
+    0  1  1  256    74.74   61.5/75 /86
+    2  1  1  256    78.13   69 /82  /86
+    2  1  1   64    71.43   67 /72  /75
+    0  1  1   64    73.35   68 /73.5/76.5
+    0  2  1   64    58.99   28 /49  /127
+    2  2  1   64    65.30   35 /58  /137.5
+    2  2  0   64    53.05   23 /46  /124
+    0  2  0   64    50.95   21 /43  /121
+    0  1  0   64    22.94   18 /23  /26
+    2  1  0   64    22.94   18 /23  /26.
+Scene changed during the run (raw upper percentile about 5007 initially,
+about 4444 later), so do not interpret cross-phase brightness ratios as a
+controlled transfer function. Nevertheless, every 20600c=2 combination retained
+substantial image contrast; every 20600c=1 combination was compressed. In the
+latter branch, 2060a4=1 shifted the image to a brighter narrow distribution.
+Neither 206008 nor 2061d4 independently rescued the 20600c=1 branch here.
+The 20600c=1 / 2060a4=1 combination still deserves a bound-response test: its
+compressed full-range image alone cannot distinguish unsupported behavior from
+ordinary manual mapping over an excessively broad interval.
+All four controls and stored ISP matched originals after restoration. No
+trial/cleanup errors; stream and USB owner closed. Offline physical ISP reads
+remain unsuitable as rollback values even though exact setters now produce
+verified visual changes; enum names are still not established.
+
+20600c=1 / 2060a4=1 bound-response discriminator (2026-10-06)
+-----------------------------------------------------------
+Artifacts: deep-audit/alternate_normalization_range_trial.py,
+analyze_fixed_trial.py and alternate-normalization-range-trial-20261006/
+{summary.json,tail-analysis.json,*-last.bin,initial-diagnostic.bin,
+original-*.bin,before-isp.bin,after-isp.bin}.
+Retained forced 206008=2, 20600c=1, 2061d4=256 but restored 2060a4=1. Tested
+only previously used range intervals through f113, with refresh each time:
+                              mean Y    median 1/50/99 Y
+  0 / 16383                    69.939    66/71/73
+  0 / 8192                     67.468    58/63/66
+  8192 / 16383                 67.411    58/63/66
+  4000 / 6400                  69.046    58/63/66
+  4800 / 5600                  73.344    66/71/74
+  original 1000 / 2800         72.570    66/71/73
+  0 / 16383 repeat             70.992    66/71/73.
+Late windows excluded frozen frames. No frozen observations occurred in these
+range phases. Raw medians remained about 4306..4334 and upper percentiles
+4438..4458. Lower and upper disjoint halves produced essentially identical
+compressed output; narrowing to 4800/5600 did not restore substantial contrast.
+Thus the brighter 2060a4=1 branch also fails to demonstrate meaningful fixed
+bound response. This substantially weakens a simple over-broad-limit explanation
+for its earlier compressed full-range image. It does not reveal the FPGA input
+units or prove a complete absence of every possible manual processing mode.
+Automatic-before had median 1/50/99 Y 40/64/143; automatic-restored 28/51.5/126.5.
+The current live distinction is contrast recovery with 20600c=2 versus compressed
+output with 20600c=1, not an established AGC freeze.
+
+All four controls and stored ISP matched originals after original-bounds restore
+and explicit f113 disable. No trial/restoration errors; stream and USB owner
+closed normally. Physical getter 0x2001c21c was reviewed again: bit-21 ISP
+addresses directly read the same F8800000|low16 MMIO mapping as the setter.
+The CPU getter contains no special active-register-cache fallback on this path.
+Observed zero replies therefore still do not establish valid original FPGA
+values; write-only/read-port behavior or hardware-specific semantics remain open.
+No new getter sweeps were sent.
+
+Stop further range permutations on these configurations. The next offline lead
+is to identify the meaning/support of 20600c=1 and what feeds that FPGA path,
+using available register/configuration evidence or a compatible firmware/source
+comparison. Existing cache/FPGA divergence and missing bounds response must be
+resolved before adding a production lock control. Unknown modes, new register
+values, firmware loading and persistent-write commands remain excluded.
+
+Bundled-family comparison and ISP data provenance (2026-10-06)
+-------------------------------------------------------------
+Offline only: no camera opened and no USB commands this round.
+Artifacts in firmware-offline/family-comparison/:
+  package-comparison.json, mini-software.bin, mini-analysis.elf,
+  mini-disassembly.txt, mini-selected-xrefs.json, mini-fixed-mode-excerpts.txt,
+  compare_fixed_paths.py, fixed-path-family-comparison.json,
+  mini-compiled-isp.bin, compiled-isp-comparison.json.
+Original bundled firmware images were read from the existing official Android
+APK assets/LineFirmwareV1.02.000.zip and preserved without modification. The
+TC001 Max container begins 0x52533721 and is a different family; it is not a
+compatible reference or a candidate firmware for this camera.
+
+TC001 Mini has the same outer-container shape and RV32 CPU family as Duo. Its
+FPGA build metadata names Titanium Ti60F225, generated Tue Aug 26 19:41:15 2025,
+project /share/users/yangyuan17/myfile/F0_IOS/T7/prj. Duo names the different
+project temp_T7_V2.0.29_512x384_OSD/T7/prj, generated Apr 14 2025. This is package
+metadata, not proof the bitstreams expose identical semantics, nor permission
+to load one product's firmware onto another. Mini analysis base 0x20000000 and
+gp=0x200932f8 are confirmed by startup instructions and diagnostic-string xrefs.
+
+Mini IspTempMode helper 0x20021f48 forces 206008=2, 20600c=1, 2060a4=0. Its
+caller 0x20021ff8 separately sets 2061d4=256. Thus its forced quartet matches
+Duo; the flat image cannot be explained by a different quartet in this sibling's
+CPU implementation. A notable lifecycle difference: Mini first enable explicitly
+writes 2090a4=1 at 0x20022234, while Duo first enable lacks that refresh. Mini
+updates also refresh. Mini disable restores the three helper controls plus
+2061d4, masking that last cached value to eight bits. Duo restores all four in
+its helper. Original cached 2061d4=64 fits both restore paths. Six instruction
+replays (first-enable/update/disable for each product) confirmed exact quartet,
+refresh difference and disable restoration. They simulate CPU control flow with
+mocked hardware/cache/RTOS, not either FPGA's image transfer function.
+The Duo's previously tested second-enable refresh already addresses the missing
+first-enable latch; this comparison does not explain its persistent flat output.
+
+Important ISP provenance result: the Duo CPU component's appended 3952-byte
+compiled ISP default table exactly matches the complete saved 3956-byte live
+stored-ISP export after removing its four-byte export-length prefix. Consequently
+that stored image-processing preset is the shipped default table, byte-for-byte;
+there is no evidence of a corrupted/custom stored ISP table causing these tests.
+This says nothing about untouched factory radiometric calibration tables, RAM
+private flags, active-register readback, or user thermometry configuration.
+
+The compiled-table parser separates public entries, per-bank entries, optional
+extension and footer. Duo: 197 public plus seven banks of 42, no extension.
+Mini: 129 public plus five banks of 35, followed by B0B0B0B0 extension header,
+five groups of four entries with B1..B5 high-byte tags. Those extension entries
+must NOT be interpreted as ordinary ISP banks/registers. Firmware strings call
+an additional section AiSr parameters; this does not establish camera neural
+super-resolution support or justify sending extension-tagged setters to Duo.
+In the sibling, the quartet's effective bank-1 defaults equal Duo (0/2/1/64),
+but public/banked placement differs for 20600c and 2060a4. After merging public
+and selected-bank values, 68 AGC-range addresses have different effective values
+or presence. Examples: 206090 Mini=2304/Duo=12288, 206094=2304/491,
+2060f8=960/8190, 206120=2/1. Their enum/scale meanings are not established.
+Do not import the Mini table or try these values speculatively on Duo.
+The initial exploratory compiled-isp-comparison.json includes raw eight-byte
+chunks after the main Mini section; the verified parser's extension object in
+fixed-path-family-comparison.json is authoritative for their interpretation.
+
+Other side leads audited this round:
+* ROI helper 0x20023ffc refuses operations when gain or private fixed-mode flag
+  is nonzero. First enable selects/applies bank 8 through 0x20020288/0x2001f99c
+  and calls the broader processing refresh. The stored Duo ISP exposes only
+  seven normal banks; bank 8 therefore needs independent RAM-initialization and
+  restoration tracing before any live ROI experiment. No ROI setter was sent.
+* ROI coordinates written to 20602c/030/034/038 are derived from normalized
+  coordinates and camera dimensions. Threshold-like 206088/08c/090/094 values
+  are scaled by the ROI's pixel area over full image area. This is a histogram/
+  region-statistics lead, not evidence those fields are alternate f113 bounds.
+* LogicDeb AGC dump at 0x20057d20 targets 206000..2061d4. Its helper
+  0x200579d8 iterates the normal physical getter, prints numeric address/value
+  pairs and does not expose a named register map or a different active-state
+  getter. Invoking the broad dump is not expected to solve the previously
+  observed zero readback. No debug-dump command or register sweep was sent.
+* Normal SDK ISP mode staging helper 0x20021188 updates a RAM address/value
+  pair for 2061c4, then bank refresh applies it through the existing overlay
+  machinery. This is distinct from writing 20600c directly. Its only accepted
+  documented SDK mode remains 1; no unsupported mode values were tested here.
+
+Web queries for exact Agc5v1/IspTempMode, AGC5_1_SURFACE_EN and HIKMICRO T7 ISP
+SDK returned no results in this round. No public matching FPGA register map was
+established. The common CPU routine across different FPGA projects remains a
+compatibility hypothesis, not a demonstrated root cause or working lock.
+
+Experimental viewer option (2026-10-06)
+-------------------------------------
+Added "Fixed range (experimental)" beside Auto calibrate in Camera settings,
+at the user's request after reviewing the settled dark/low-contrast captures.
+It starts off each session. Enabling uses only the already tested f113 full
+range 0..16383, twice so the second call applies the processing refresh.
+No register-isolation writes, arbitrary values, firmware or NVM writes added.
+The viewer first saves the existing hardware control blocks and downloads the
+stored ISP export; its complete SHA-256 must match the previously verified
+factory preset before any fixed-range command is sent. Original public bounds
+1000/2800 are retained independently of the four cached processing controls.
+Off, Restore camera settings and normal exit restore the original bounds before
+sending 0/0 disable. Failed enable attempts also run this cleanup; failed cleanup
+retains ownership for a later retry. Camera display-control writes are blocked
+while fixed range is owned, to avoid their bank refresh replacing its settings.
+Logging/calibration locks also cover the new checkbox and command dispatcher.
+The feature affects camera-preview processing, not an app-side raw palette.
+Acknowledgement remains command acceptance rather than verified active readback
+or proof of a useful AGC lock. No camera was opened for this implementation.
+Transport, failed-enable cleanup, restoration retry, preset rejection, settings
+lock and checkbox behavior are exercised with mocked USB and viewer tests.
+
+Custom bounds follow-up (2026-10-06)
+Added From/To numeric inputs and Apply bounds to the experimental fixed-range
+option. The accepted domain matches the inspected f113 handler: integers with
+0 <= lower < upper < 16384. They are labeled RAW CAMERA UNITS, not degrees;
+the prior full/half/narrow-bound experiments did not establish a predictable
+mapping to calibrated temperature, so no Celsius/Fahrenheit formula is assumed.
+Selected bounds persist as validated viewer preferences; enabling still starts
+off each session. Applying while off only updates preferences. Applying while
+on uses the same reversible f113 path and processing refresh. On command failure,
+cleanup restores original bounds and disables; the prior user selection is kept.
+The bounds inputs ignore scroll events and are locked with other camera settings
+during logging/calibration. Packet bounds are validated again before transmission.
+No live camera commands were sent while implementing the custom bounds UI.
+
+Apply typed-bounds correction (2026-10-06)
+Reproduced a viewer input bug with keyboard tracking disabled: setting displayed
+texts to 4800/5600 while the committed spin-box values remained 0/16383 caused
+Apply to send the old 0/16383 pair. Apply now explicitly interprets both text
+fields before validation and transmission. The same Qt reproduction now sends
+4800/5600. This corrects a demonstrated UI issue, not evidence that every lack of
+image response was caused by it; FPGA bound-to-temperature behavior is unresolved.
+No camera access or firmware/register changes were needed for this correction.
+
+Active range re-entry and acknowledgement feedback (2026-10-06)
+User reports changed fixed-mode appearance but no apparent bound update. Running
+viewer and popup process start times postdate the typed-input fix; saved selected
+bounds are 0/10000. This confirms handler/persistence activity, not active FPGA
+readback or that fixed mode was checked for that particular Apply operation.
+Active Apply now restores original bounds, disables, then enables the proposed
+bounds twice. This deliberately re-enters the already tested mode and reasserts
+all four controls instead of relying only on the private-flag update path.
+Offline CPU replay of full range -> restore/disable -> 0/10000 enable/update ->
+restore/disable confirms exact threshold writes and private flag cleanup.
+Every exact f113 reply is logged with its submitted bounds; Camera status shows
+the selected active bounds as "command acknowledged". Off-mode Apply explicitly
+reports that it saved bounds and that enabling is needed to send them.
+This is a safe lifecycle experiment and improved observability, not a demonstrated
+fix for the unresolved FPGA transfer behavior. No concurrent camera access,
+live process restart, or new undocumented hardware operation was performed.
+
+Live explanation of apparent fixed-range change (2026-10-06)
+----------------------------------------------------------
+User observes an apparent thermal-span change after custom-bounds implementation,
+but changing bounds still leaves the image unchanged despite acknowledgements.
+Four bounded trials compared original/custom/re-entry command sequences, saved
+viewer settings and individual processing controls. No viewer owned USB during
+these trials. Fresh originals were preserved before each run; all four normal
+control blocks and the complete stored ISP export matched after restoration in
+every run. There were no recorded trial or restoration errors. These are stored
+configuration comparisons, not a complete radiometric backup/active FPGA readback.
+Each run verified protocol 2.0, the known stored preset and selected ISP bank 1.
+Only previously audited f113 commands, documented reversible UVC controls, and
+the exact previously tested volatile 20600c values 1/2 were used. No NVM/firmware/
+factory/calibration-table or speculative magic-table rebuild operations occurred.
+
+Artifacts (all under diagnostics/agc-research/deep-audit):
+  fixed-ui-sequence-trial-20261006-085634/
+  fixed-profile-isolation-trial-20261006-093443/
+  fixed-stage-processing-trial-20261006-094159/
+  fixed-base-selector-trial-20261006-095149/
+Each folder contains originals, before/after ISP exports, raw first/last frames,
+per-observed-frame metrics, summary.json, tail-analysis.json, executed-trial.py
+and a source SHA-256. Consumer counts may skip frames; analysis excludes frozen
+observations and uses the final 1.5 seconds. Comparisons reconstruct actual YUY2
+preview output without per-image normalization. PNG comparison sheets from all
+four experiments were opened in ImageMagick for the user.
+
+1. Original vs production sequence:
+   After a known disable, the first full-range enable retains ordinary thermal
+   shading (mean Y ~62.60); second enable/refresh changes it to mean ~20.77.
+   Old full-range implementation and new production full-range implementation
+   both settle at ~20.77. Bound updates 0/10000 and 8192/16383, full off/on re-entry,
+   original 1000/2800 and repeat 0/16383 remain ~20.76..20.77. First-enable images
+   alone therefore remain misleading evidence for fixed-range operation.
+   With the user's saved profile loaded, 0/16383, 0/10000 and 4000/6400 likewise
+   settle ~22.77 despite substantially different submitted bounds.
+
+2. Same full bounds, individual viewer overrides:
+   Original median Y=21, p99~50; palette 10 alone median=33, p99~58;
+   contrast 85 alone median=8, p99~37; detail 60 alone median=21, p99~67.
+   General-noise strength 86 has little effect in the original selected noise
+   mode, which is not evidence all noise modes/strengths are ineffective.
+   Saved display profile median=22/p99~61; full saved profile ~22/60.
+   Thermometry-only profile retains ~21/49 despite changing corrected temperature
+   values. Thus display modifiers can substantially change apparent thermal span
+   while the f113 bounds remain unchanged. This is not proof which settings the
+   user had active at the exact earlier observation; no retrospective snapshot
+   of that running state exists.
+
+3. Thermal shading versus detail contribution (strong new result):
+   Disabling detail OR leaving detail enabled with strength zero makes the fixed
+   preview exactly uniform: every one of 196608 Y pixels equals 21, std=0, while
+   the temperature plane still has ~309 distinct values and p1/p99~4376/6138.
+   Updating to 4000/6400 leaves the same uniform level. Contrast zero moves that
+   uniform output to Y=95; brightness 100 moves it to Y=148. With detail enabled,
+   edge structure reappears around those levels. Operationally, the visible
+   structure in this fixed configuration comes from detail enhancement; the
+   underlying thermal shading has flattened out. Exact FPGA composition and
+   official meanings of its processing selectors remain unestablished.
+
+4. Targeted reversible selector isolation with detail held off:
+   Ordinary mode has median Y~40 and broad thermal shading. Forced 20600c=1
+   plus full range is uniformly Y=21. Restoring ONLY 20600c=2 plus the already
+   tested refresh restores shading (median ~39); disjoint lower/upper half bounds
+   both retain shading (median~40). Returning ONLY 20600c=1 and refreshing returns
+   to uniform Y=21. This pins the flat thermal base to that selector branch on this
+   device, rather than loss of sensor data or a detail-overlay artifact. It does
+   not establish selector 2 as a working fixed range; bounds remain ineffective.
+
+Conclusions within evidence scope: no settled full-range difference was measured
+between the old two-command implementation and new implementation under matched
+controls. Acknowledged bound changes still do not produce useful range mapping.
+The fixed configuration currently selects a flat thermal-shading branch while
+detail/brightness/contrast/palette remain able to change its appearance. Those
+surviving display paths explain how an apparent thermal-span change can occur
+without any effective bound change. The actual enum, missing prerequisite or
+FPGA compatibility cause is still unresolved; no working temperature-range lock
+or Celsius/Fahrenheit mapping is claimed. No production behavior was changed in
+this experiment turn; findings, scripts and captures were preserved.
+
+Fixed mode promoted to a dependent display setting (2026-10-06)
+-------------------------------------------------------------
+At the user's request, removed the custom From/To/Apply range UI and its stored
+preference/command handling. The setting is now labeled "Fixed mode" beside the
+Detail enhancement mode control in the Display controls grid. It always uses the
+already tested full 0/16383 processing bounds internally, with original-bound
+restoration before disable. It is described by its observed effect: flatten
+thermal shading and retain enhanced detail. No functional thermal range mapping
+is claimed. Historical bounds prefs are ignored on load and omitted on save.
+
+Dependency is one-way, per the user's correction: detail enhancement may run
+alone. Fixed mode can only be enabled when detail enhancement is enabled, enforced
+both by checkbox availability and by the hardware controller. Turning detail off
+first restores/disables fixed processing, then applies the detail-off control.
+The detail-strength slider remains usable in fixed mode: the controller restores
+fixed processing, applies the documented detail change, then re-enters fixed mode.
+This prevents the normal bank refresh from silently replacing its forced controls.
+Other camera display controls retain the existing fixed-mode lock.
+
+The mode preference now persists and is reapplied only after saved hardware/detail
+controls are loaded. An unmet dependency or command failure leaves it off with an
+error. Restore camera settings clears its desired mode without clearing calibration
+records. Exit restores camera processing while retaining the user's mode preference.
+All existing logging/calibration input locks apply.
+
+All binary Off/On controls in Camera settings now use scroll-ignoring checkboxes.
+Display switches retain boolean values; hardware switches retain encoded integer
+0/1 values. Multi-choice dropdowns and numeric sliders retain their existing forms.
+GUI/USB regression tests cover independent detail, fixed dependency, detail-off
+cleanup, strength updates, saved mode reload, input locking and checkbox mapping.
+No live camera access was needed for this UI/controller implementation.
