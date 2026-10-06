@@ -581,6 +581,17 @@ class ViewWindow(QWidget):
         self.fixed_range.toggled.connect(
             lambda value: self._send({"action": "fixed_range", "value": value})
         )
+        self.processing_preset = ControlRow(
+            "Camera processing preset",
+            lambda value: self._send({"action": "processing_preset", "value": value}),
+            options=(("balanced", "Balanced"), ("shadow", "Shadow"), ("soft", "Soft")),
+        )
+        self.processing_preset.setToolTip(
+            "Changes processing inside the camera, independently of its color palette. "
+            "Affects Camera preview, not the app's raw thermal colors. "
+            "Balanced is the normal preset; Shadow is darker; Soft has a gentler look. "
+            "Available with Fixed mode off. Original processing is restored on exit."
+        )
         description = QLabel(
             "Adjust controls directly. Use Restore camera settings to return to the "
             "original values. Camera overrides are also restored on exit."
@@ -660,6 +671,8 @@ class ViewWindow(QWidget):
             heading = QLabel(title)
             heading.setStyleSheet("font-size: 16px; font-weight: bold")
             rows.addWidget(heading)
+            if title == "Display controls":
+                rows.addWidget(self.processing_preset)
             switches = QGridLayout() if title == "Display controls" else None
             switch_count = 0
             for name in display_names:
@@ -784,6 +797,19 @@ class ViewWindow(QWidget):
 
     def update_state(self, state: dict) -> None:
         self._settings_locked = bool(state.get("settings_locked", False))
+        preset_available = (
+            not self._settings_locked
+            and state.get("processing_preset_available", False)
+            and not state.get("fixed_range", False)
+            and state.get("image_source", VIEW_DEFAULTS["image_source"]) == "preview"
+            and state.get("actual_image_source", "preview") == "preview"
+        )
+        if not preset_available:
+            self.processing_preset.timer.stop()
+        self.processing_preset.update_state(
+            state.get("processing_preset", "balanced"),
+            preset_available,
+        )
         if self._settings_locked:
             for row in (*self.rows.values(), *self.hardware_rows.values()):
                 row.timer.stop()
@@ -793,6 +819,7 @@ class ViewWindow(QWidget):
         self.fixed_range.setEnabled(
             not self._settings_locked and detail.get("available", True)
             and (detail.get("value", 0) == 1 or state.get("fixed_range", False))
+            and state.get("processing_preset", "balanced") == "balanced"
         )
         with QSignalBlocker(self.fixed_range):
             self.fixed_range.setChecked(state.get("fixed_range", False))

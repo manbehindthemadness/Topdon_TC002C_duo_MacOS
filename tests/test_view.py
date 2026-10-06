@@ -261,8 +261,32 @@ window.show()
 app.processEvents()
 assert messages == []
 assert window.windowTitle() == "Camera"
+assert window.processing_preset.slider is None
+assert [window.processing_preset.input.itemText(i) for i in range(3)] == ["Balanced", "Shadow", "Soft"]
+window.update_state({"processing_preset": "balanced", "processing_preset_available": True})
+# Raw selection and preview-to-raw fallback cancel pending preset edits.
+for extra in ({"image_source": "raw"}, {"actual_image_source": "raw"}):
+    window.processing_preset.timer.start()
+    window.update_state({"processing_preset": "shadow", "processing_preset_available": True, **extra})
+    assert not window.processing_preset.input.isEnabled()
+    assert not window.processing_preset.timer.isActive()
+    window.processing_preset._emit()
+    assert messages == []
+window.update_state({"processing_preset": "balanced", "processing_preset_available": True, "actual_image_source": "preview"})
+assert window.processing_preset.input.isEnabled()
+window.processing_preset.input.setCurrentIndex(window.processing_preset.input.findData("shadow"))
+window.processing_preset._emit()
+assert messages.pop() == {"action": "processing_preset", "value": "shadow"}
+window.processing_preset.timer.start()
+window.update_state({"processing_preset": "shadow", "processing_preset_available": True, "settings_locked": True})
+assert not window.processing_preset.input.isEnabled() and not window.processing_preset.timer.isActive()
+window.update_state({"processing_preset": "soft", "processing_preset_available": True, "fixed_range": True})
+assert not window.processing_preset.input.isEnabled()
+window.update_state({"processing_preset": "soft", "processing_preset_available": True, "hardware": {"detail_enabled": {"value": 1}}})
+assert window.processing_preset.input.isEnabled() and not window.fixed_range.isEnabled()
+window.update_state({"processing_preset": "balanced", "processing_preset_available": True})
 # Wheel events cannot edit dropdowns, numeric inputs or sliders, even with focus.
-for control_row in (*window.rows.values(), *window.hardware_rows.values()):
+for control_row in (window.processing_preset, *window.rows.values(), *window.hardware_rows.values()):
     for control in (control_row.input, control_row.slider):
         if control is None:
             continue
@@ -879,3 +903,35 @@ def test_startup_loads_all_calibration_references_and_applied_camera_values(view
         assert state["hardware"][name]["value"] == value
         assert state["hardware"][name]["enabled"]
     assert load_settings()["hardware"] == applied
+
+
+def test_processing_preset_is_saved_and_reloaded_after_hardware_settings(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    save_settings({"hardware": {"contrast": 70}, "processing_preset": "shadow"})
+    panel = Mock()
+    panel.poll.return_value = [{"action": "processing_preset", "value": "soft"}]
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
+    viewer.hardware.set_processing_preset.side_effect = lambda value: setattr(
+        viewer.hardware, "processing_preset", value
+    )
+    assert desktop.main([]) == 0
+    assert [call.args for call in viewer.hardware.set_processing_preset.call_args_list] == [
+        ("shadow",), ("soft",)
+    ]
+    calls = viewer.hardware.mock_calls
+    assert calls.index(next(c for c in calls if c[0] == "set")) < calls.index(
+        next(c for c in calls if c[0] == "set_processing_preset")
+    )
+    assert load_settings()["processing_preset"] == "soft"
+
+
+def test_processing_preset_command_is_locked_during_logging(viewer, monkeypatch):
+    viewer.graphs.logging = True
+    panel = Mock()
+    panel.poll.return_value = [{"action": "processing_preset", "value": "shadow"}]
+    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
+    assert desktop.main([]) == 0
+    viewer.hardware.set_processing_preset.assert_called_once_with("balanced")

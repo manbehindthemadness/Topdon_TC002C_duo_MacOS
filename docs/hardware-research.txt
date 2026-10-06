@@ -2090,3 +2090,186 @@ Display switches retain boolean values; hardware switches retain encoded integer
 GUI/USB regression tests cover independent detail, fixed dependency, detail-off
 cleanup, strength updates, saved mode reload, input locking and checkbox mapping.
 No live camera access was needed for this UI/controller implementation.
+
+Automatic brightness/contrast update-gate candidate (2026-10-06)
+--------------------------------------------------------------
+The investigation target remains a hold of automatic brightness/contrast while
+both live preview and temperature measurements continue. This is distinct from
+the flat-base fixed/detail setting. The precise stage that chooses an automatic
+mapping (sensor-domain range versus rendered-image histogram) is not established.
+
+Offline verify_agc_update_gate.py replayed the exact vendor setter for 20610c=0
+and =1. Each path performs one volatile F880610C write, with no NVM path or cache
+mutation. Normal brightness/bank updates bracket processing with 0 then 1;
+known ordinary f113 disable also ends at 1. The register is absent from the
+stored ISP export: the restore value comes from the audited normal lifecycle,
+not a successful physical register readback. Its FPGA semantics remain unknown.
+Replay evidence: firmware-offline/agc-update-gate-replay.json.
+
+Live agc-update-gate-trial-20261006-123232 used fresh originals, factory ISP hash
+and selected-bank checks, an explicit normal-disable baseline and detail off.
+Two bounded 0/1 cycles retained useful thermal shading. Settled mean Y was
+65.468 baseline, 65.941 gate0, 64.294 restored1, 65.026 repeated0, 64.953 repeated1.
+Image and raw plane hashes changed during both values: neither froze the entire
+stream. Static-scene data cannot establish an AGC mapping lock.
+
+Follow-up agc-update-gate-hand-trial-20261006-124455 captured a warm hand but the
+short automated phases ran ahead of the second user cue. Saved preview images
+show no hand in both normal snapshots and a hand in both candidate snapshots;
+the nominal phase labels do not establish actual hand timing. The sampled center
+background was covered by the hand, so its brightness changes are confounded by
+real temperature changes. This is an inconclusive scene-change comparison, not
+evidence for a successful hold or for a particular AGC source domain. Retain the
+failed synchronization as evidence; a next experiment needs explicit phase
+synchronization and an untouched background region.
+
+Both trials restored 20610c=1, original bounds, normal mode and original hardware
+controls. All four control blocks and the complete stored ISP export matched
+pretrial bytes, with no reported restoration errors. This verifies those saved
+surfaces, not all active FPGA state. Executed sources, hashes, binaries, frame
+statistics and unnormalized comparison images were retained in each trial dir.
+No production behavior changed and no AGC hold feature is claimed.
+
+Raw-image display rescaling isolated from camera AGC (2026-10-06)
+---------------------------------------------------------------
+Inspected user recording /home/kev0/Videos/contrast_test.mp4 (11.8s, 1152x800,
+25fps). Saved six extracted frames and contact sheet under diagnostics/agc-
+research/video-contrast-test/. At 0/2/6s the background is orange/purple; at
+4/8/10s a warm foreground object shifts the background toward dark purple while
+uncovered spot readings remain near their prior temperatures. For example spot
+3 reads about 69.31 F at 0s and 69.90 F at 4s. The scene maximum changes, so not
+all scene statistics are constant. This is display remapping, not a demonstrated
+sensor gain change or radiometric instability.
+
+Code inspection identifies an independent app-side automatic contrast path:
+render.py render_detailed chooses oriented_average for raw source, then computes
+1st/99th percentiles per frame and maps that changing range to 0..255 before
+palette conversion. Temperature measurements derive separately from averaged
+raw values and do not use this normalization. A warm object can therefore change
+background colors without materially changing background temperature readings.
+The recording of raw rendering is not additional proof of camera-side AGC.
+A fixed app rendering range would address this raw-display behavior directly;
+the separate camera-preview AGC freeze investigation remains unresolved. No
+production code changed as part of this diagnosis.
+
+Preview mode and state routing expansion (2026-10-06)
+----------------------------------------------------
+Offline only; no live camera commands during this pass or the user's accidental
+hibernation. USB output modes and ISP processing modes are separate. Previously
+captured output modes 6/10 carry 512x384 processed previews (10 without header),
+8 carries preview plus calibrated thermal plane, and 9 carries preview plus
+sensor counts whose temperature conversion is unestablished. A different output
+layout is not evidence of different automatic contrast behavior.
+
+New replay: firmware-offline/verify_preview_mode_states.py and
+preview-mode-state-replay.json, 20 routing cases with assertions. Expands legacy
+0x23 handler 2003acf4, mode staging 20021188/211e4, refresh selector 20024850,
+selected-bank setter/getter 2001f99c/2027c and normal SDK validator 20043718.
+This proves the CPU selection paths below, not FPGA preview behavior:
+
+Requested legacy mode    Gain state 0 bank    Gain state 1 bank
+  0                              3                   6
+  1                              1                   4
+  2                              2                   5
+
+Gain state comes from 2001731c; these labels do not claim gain enum units.
+ROI blocks refresh in gain state 0, but the gain-state-1 branch precedes that
+exclusion. Modes 3/4 stage their values yet select no new bank: the existing bank
+is reused. They must not be called newly discovered presets or manual AGC.
+Normal SDK byte-23 validation accepts 1, rejects 0/2/3/4. The RV32 variable-shift
+mask aliases 33 to 1 in replay; this is a validator quirk, not a supported mode.
+
+Important getter/setter asymmetry: legacy mode setter stages a mode number and
+selects a bank through 20025c0c -> 20024850, while its getter 20025c24 returns the
+selected bank via 2002027c. Thus setter 0 could yield getter 3; writing that getter
+value back would not restore mode 0. The staged mode getter 200211e4 is a separate
+RAM read. Recorded prior getter 1 was compatible with both concepts and did not
+reveal the distinction. Do not assume a generic read/set/read round trip is a
+valid mode restoration procedure.
+
+Compared merged public/selected-bank stored ISP tables. Banks 1 and 2 differ in
+23 fields; 31 fields vary across banks 1/2/3, 37 across banks 1..7. These include
+206050/054 output-like limits, 206078..094 statistics/threshold-like values,
+20611c, 206184..1a8 and detail controls. Values and differences are established;
+semantic names remain hypotheses without an FPGA map. Evidence retained in
+preview-preset-differences.json. This supports genuinely different stored
+processing presets, not yet a successful AGC freeze.
+
+Replay explicitly mocks the broad bank apply (20020288), processing-table
+rebuild (20025bb4 -> 20024808) and ROI state clear (20024368). They are marked
+unexpanded in its JSON and this is NOT a live-write safety/restore proof. Bank
+apply traverses the selected table and may apply the user overlay; rebuild also
+recreates tone/noise tables and adjusts detail state. Next live preset experiment
+requires expanding those effects, snapshotting staged mode AND selected bank,
+and demonstrating restoration of the processing state. No speculative legacy
+mode writes were sent. After hibernation, reacquire fresh stream/control snapshots
+rather than carrying an old connection or baseline into a live trial.
+
+Expanded preset apply audit and first live comparison (2026-10-06)
+----------------------------------------------------------------
+Added preview_replay_engine.py (bounded RV32 integer replay),
+verify_preview_preset_apply.py and verify_preview_preset_overlay.py. Expanded
+bank apply and table rebuild instruction paths instead of treating them as one
+opaque call. Cache lookup follows selected bank, with explicitly modelled cache
+updates; hardware transfers, cache helpers, log/RTOS/libc remain mocked. Unknown
+calls/instructions fail. The overlay variant expands 2001ef6c with one known
+2061c4 address/value pair per bank. This is a constrained overlay example, not a
+model of every live overlay or all firmware state.
+
+Sequences 1 -> 2 -> 0 -> 1 reconstruct identical mode-1 output write states in
+both models (487 keys without overlay; 488 with example overlay). Paths write
+45/46 unique processing addresses and tables at 206110, 2070a8/ac/b0/dc/e0 and
+208068. No firmware/NVM/factory/calibration command was invoked. These are CPU
+path and modelled restoration checks, not FPGA transfer-function predictions or
+an exact active-state readback guarantee. Preserve JSON events and software
+provenance in preview-preset-{apply,overlay}-replay.json.
+
+Fresh live trial preview-preset-trial-20261006-143026: after hibernation the
+module initially delivered no frames for seven 4-second windows, then recovered
+in the eighth without reset or experimental writes. Fresh original four blocks
+matched the historical audited originals; stored ISP export matched factory
+reference and diagnostic selected bank was 1. SDK enhancement byte23 was 1;
+legacy getter also reported 1 before writes. Under that baseline, exact legacy
+0x23 setters tested only modes 2,0,1 with getter checks 2,3,1 respectively.
+
+Useful preview and radiometric stream survived all transitions. Settled preview
+mean Y baseline-bank1=80.774, mode2-bank2=50.758, mode0-bank3=79.409,
+restored-bank1=78.077; preview p1/p50/p99 respectively 38/79/130, 17/54/81,
+43/82/128, 36/77/128. Mode2 visibly darkens/compresses this scene; mode0 is nearer
+the baseline appearance. Scene changes are visible, and this is not a controlled
+warm-object comparison or proof of any AGC freeze. Enum names such as histogram,
+manual, linear cannot be assigned solely from this appearance.
+
+Final explicit mode1 restoration reported bank1; all four controls and complete
+stored ISP export matched pretrial bytes, with no errors. Captures, exact executed
+script/hash and unnormalized YUY2 comparison preserved and opened in ImageMagick.
+An interactive live follow-up uses the same validated baseline and only the
+three tested preset values: keys 1/2/3 map to wire modes1/2/0. Esc/window-close or
+180-second limit restores mode1 and verifies bank/control/stored-ISP surfaces.
+No production menu option added and no automatic-contrast hold claimed.
+
+Camera settings integration: Balanced / Shadow / Soft (2026-10-06)
+----------------------------------------------------------------
+Added Camera processing preset under Display controls, separately from palettes.
+Keys balanced/shadow/soft map to exact tested legacy modes1/2/0. Selection is
+validated/persisted and restored after saved hardware controls on startup. Before
+claiming a non-Balanced override, verify factory ISP SHA, original SDK mode1 and
+legacy bank1 baseline. Every mode write requires its exact validated ACK plus a
+bank getter matching the mode-to-bank mapping. Gain-paired banks are accepted on
+subsequent verification; never write getter bank values back as modes.
+
+The hardware controller retains restoration ownership on failed cleanup, restores
+Balanced on failed preset selection, and reapplies a selected preset after normal
+camera display adjustments reload the default processing. Active preset overrides
+also mark preview processing active so app normalization does not erase their
+appearance. Raw-source rendering remains independent. Fixed mode requires Balanced
+and prevents preset changes. Logging/calibration locks cancel pending edits and
+reject backend commands. Restore settings clears selection; shutdown restores
+camera processing while preserving desired selection for startup.
+
+493 tests passed, Ruff and diff checks passed. Product API live integration check
+product-processing-presets-20261006-143924 selected Shadow, reapplied it after a
+normal contrast write (bank2 confirmed), selected Soft, then Balanced and restored.
+All four hardware control blocks matched originals and final bank was1; streaming
+continued (~52 observed frames per2s sample), no reported errors. This is control/
+restoration verification, not evidence of AGC freeze. Comparison opened for review.

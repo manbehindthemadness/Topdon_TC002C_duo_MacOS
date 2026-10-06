@@ -97,6 +97,22 @@ Magic register operations              Table rebuilds affect several processing
 Flash / factory / calibration writes   Identified command traps and excluded;
                                       never treated as harmless restore actions.
 
+Automatic mapping update-gate lead      20610c is bracketed 0/1 around normal
+                                      brightness/bank refreshes. Audited single
+                                      volatile writes retain live image/raw data.
+                                      No proven AGC hold; static trial insufficient,
+                                      hand trial mistimed and confounded. Original
+                                      controls and stored ISP restored in both.
+
+Preview preset state routing           Legacy modes 0/1/2 select banks 3/1/2 or
+                                      6/4/5 by gain state. Getter/setter differ.
+                                      Expanded apply/rebuild and example-overlay
+                                      CPU replays reconstruct mode1 output state.
+                                      Fresh live modes2/0/1 select banks2/3/1;
+                                      mode2 visibly darker, mode0 near baseline.
+                                      Stream stays live, saved originals restored.
+                                      No controlled AGC hold yet established.
+
 Evidence locations (under this repository; diagnostics are gitignored)
 --------------------------------------------------------------------
   diagnostics/telemetry-research/             Initial controls / SDK / phone audit.

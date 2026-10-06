@@ -106,3 +106,13 @@ def test_invalid_timelapse_rate_preserves_valid_preferences(monkeypatch, tmp_pat
     for value in (True, "120", 0, -1, 1501, 120.5, None):
         save_settings({"timelapse_fpm": value, "capture_graphs": True})
         assert load_settings() == {"display": {}, "hardware": {}, "capture_graphs": True}
+
+
+def test_processing_preset_preferences(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    for preset in ("balanced", "shadow", "soft"):
+        save_settings({"processing_preset": preset})
+        assert load_settings()["processing_preset"] == preset
+    for invalid in (None, 0, True, [], "manual", "Shadow"):
+        save_settings({"processing_preset": invalid})
+        assert "processing_preset" not in load_settings()

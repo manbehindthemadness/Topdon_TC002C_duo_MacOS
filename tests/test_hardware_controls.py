@@ -17,6 +17,88 @@ from topdon_duo.hardware_controls import (
 from topdon_duo.render import ThermalRenderer
 
 
+def test_processing_preset_wire_modes_and_bank_getter(controls):
+    device = Mock()
+    packets = []
+    bank = 1
+
+    def transfer(kind, request, value, index, data, timeout):
+        nonlocal bank
+        assert value == 0 and index == 0xA00
+        if kind == 0x41:
+            packet = bytes(data)
+            packets.append(packet)
+            if packet[4] == 0:
+                bank = {1: 1, 2: 2, 0: 3}[int.from_bytes(packet[5:7], "big")]
+                body = b"\x36\x23\x03\x01"
+            else:
+                body = b"\x36\x23\x03" + bank.to_bytes(2, "big")
+            device.reply = bytes((0xF0, len(body))) + body + bytes((sum(body) & 255, 0xFF))
+            return len(data)
+        if request == 0x85:
+            return len(device.reply).to_bytes(2, "little")
+        return device.reply
+
+    device.ctrl_transfer.side_effect = transfer
+    controls.camera.device = device
+    controls._fixed_range_baseline = Mock(return_value=(1000, 2800))
+    original = bytearray(controls.original[2, 5])
+    original[23] = 1
+    controls.original[2, 5] = bytes(original)
+    controls.set_processing_preset("shadow")
+    assert controls.preview_active
+    controls.set_processing_preset("soft")
+    controls.restore_processing_preset()
+    setters = [p for p in packets if p[4] == 0]
+    assert [int.from_bytes(p[5:7], "big") for p in setters] == [2, 0, 1]
+    assert all(p[-2] == sum(p[2:-2]) & 255 for p in packets)
+    assert controls.processing_preset == "balanced" and bank == 1
+    assert not controls._processing_preset_owned
+
+
+def test_preset_failure_restores_balanced_and_keeps_cleanup_on_restore_failure(controls):
+    controls._fixed_range_baseline = Mock()
+    original = bytearray(controls.original[2, 5])
+    original[23] = 1
+    controls.original[2, 5] = bytes(original)
+    controls._processing_command = Mock(return_value=1)
+    controls._apply_processing_preset = Mock(side_effect=[CameraError("failed"), None])
+    with pytest.raises(CameraError, match="failed"):
+        controls.set_processing_preset("shadow")
+    assert controls.processing_preset == "balanced"
+    assert not controls._processing_preset_owned
+    controls._processing_preset_owned = True
+    controls._apply_processing_preset = Mock(side_effect=CameraError("restore failed"))
+    with pytest.raises(CameraError, match="restore failed"):
+        controls.restore_processing_preset()
+    assert controls._processing_preset_owned
+
+
+def test_preset_survives_camera_adjustments_and_is_restored_on_exit(controls):
+    controls._processing_preset_owned = True
+    controls.processing_preset = "shadow"
+    controls._apply_processing_preset = Mock()
+    controls.set("contrast", 70, True)
+    controls._apply_processing_preset.assert_called_once_with("shadow")
+    with pytest.raises(CameraError, match="Balanced"):
+        controls.set_fixed_range(True)
+    controls.restore()
+    assert controls.processing_preset == "balanced"
+    assert not controls._processing_preset_owned
+    assert controls._apply_processing_preset.call_args_list[-1].args == ("balanced",)
+
+
+def test_unknown_preset_and_fixed_mode_reject_writes(controls):
+    controls._processing_command = Mock()
+    for value in ([], True, 1, "manual"):
+        with pytest.raises(ValueError):
+            controls.set_processing_preset(value)
+    controls._fixed_range_owned = True
+    with pytest.raises(CameraError, match="fixed mode"):
+        controls.set_processing_preset("shadow")
+    controls._processing_command.assert_not_called()
+
+
 def test_fixed_range_packets_and_restore_order(controls):
     controls._fixed_range_bounds = (1000, 2800)
     controls._fixed_range_baseline = Mock(return_value=(1000, 2800))

@@ -1117,6 +1117,7 @@ def main(argv: list[str] | None = None) -> int:
     advanced_auto = saved_settings.get("advanced_auto", True)
     auto_calibrate = saved_settings.get("auto_calibrate", False)
     remembered_fixed_range = saved_settings.get("fixed_range", False)
+    remembered_processing_preset = saved_settings.get("processing_preset", "balanced")
     calibration_available = False
     startup_calibration_pending = True
     show_graph = saved_settings.get("show_graph", False)
@@ -1210,6 +1211,7 @@ def main(argv: list[str] | None = None) -> int:
                     "advanced_auto": advanced_auto,
                     "auto_calibrate": auto_calibrate,
                     "fixed_range": remembered_fixed_range,
+                    "processing_preset": remembered_processing_preset,
                     "show_graph": show_graph,
                     "graph_interval": graph_interval,
                     "graph_settings": graph_settings,
@@ -1462,6 +1464,9 @@ def main(argv: list[str] | None = None) -> int:
             "advanced_auto": advanced_auto,
             "auto_calibrate": auto_calibrate,
             "fixed_range": hardware.fixed_range,
+            "processing_preset": hardware.processing_preset,
+            "processing_preset_available": bool(hardware.original),
+            "actual_image_source": actual_image_source,
             "settings_locked": graphs.logging
             or emissivity_calibration.running
             or reflected_calibration.running,
@@ -1513,7 +1518,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     def initialize_hardware() -> bool:
-        nonlocal calibration_available, remembered_fixed_range
+        nonlocal calibration_available, remembered_fixed_range, remembered_processing_preset
         try:
             hardware.load()
             hardware.error = ""
@@ -1532,6 +1537,12 @@ def main(argv: list[str] | None = None) -> int:
             calibration_available = True
         except CameraError as exc:
             hardware.error = f"Could not set Auto calibrate: {exc}"
+            LOG.warning("%s", hardware.error)
+        try:
+            hardware.set_processing_preset(remembered_processing_preset)
+        except (CameraError, ValueError) as exc:
+            remembered_processing_preset = hardware.processing_preset
+            hardware.error = f"Could not restore processing preset: {exc}"
             LOG.warning("%s", hardware.error)
         if remembered_fixed_range:
             try:
@@ -1663,6 +1674,7 @@ def main(argv: list[str] | None = None) -> int:
                     "advanced_auto",
                     "auto_calibrate",
                     "fixed_range",
+                    "processing_preset",
                     "restore_hardware",
                     "reset",
                     "distance_calibration",
@@ -1685,6 +1697,17 @@ def main(argv: list[str] | None = None) -> int:
                         reflected_calibration.cancel()
                     if command.get("action") == "setting":
                         set_view_setting(command["name"], command["value"])
+                    elif command.get("action") == "processing_preset":
+                        if renderer.image_source != "preview" or actual_image_source != "preview":
+                            raise ValueError("Camera processing presets require Camera preview")
+                        if emissivity_calibration.active:
+                            emissivity_calibration.cancel()
+                        if reflected_calibration.active:
+                            reflected_calibration.cancel()
+                        hardware.set_processing_preset(command["value"])
+                        remembered_processing_preset = hardware.processing_preset
+                        persist_settings()
+                        hardware.error = ""
                     elif command.get("action") == "fixed_range":
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
@@ -1836,6 +1859,7 @@ def main(argv: list[str] | None = None) -> int:
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
                         hardware.restore()
+                        remembered_processing_preset = hardware.processing_preset
                         remembered_fixed_range = False
                         remembered_hardware.clear()
                         ambient_input_celsius = None

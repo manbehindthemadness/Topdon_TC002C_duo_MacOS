@@ -8,7 +8,7 @@ from .distance_calibration import DistanceReference
 from .emissivity_calibration import validate_reference
 from .graph_settings import validate_graph_settings
 from .graphs import validate_graph_interval
-from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS
+from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS, PROCESSING_PRESETS
 from .reflected_calibration import validate_reference as validate_reflected_reference
 from .spot_preferences import validate_spots
 from .view_settings import validate_view_setting
@@ -69,6 +69,9 @@ def load_settings() -> dict:
     ):
         if isinstance(saved.get(name), bool):
             result[name] = saved[name]
+    preset = saved.get("processing_preset")
+    if isinstance(preset, str) and preset in PROCESSING_PRESETS:
+        result["processing_preset"] = preset
     try:
         result["graph_interval"] = validate_graph_interval(saved.get("graph_interval"))
     except (TypeError, ValueError):

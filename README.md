@@ -304,6 +304,18 @@ Use **Restore camera settings** to restore all original camera values. Quitting 
 Original payloads are saved under `$XDG_STATE_HOME/topdon-duo/camera-baselines`
 (default `~/.local/state/topdon-duo/camera-baselines`) before controls are enabled.
 
+**Display controls → Camera processing preset** offers **Balanced** (normal),
+**Shadow** (darker tones), and **Soft** (a gentler look). These change the camera's
+preview processing independently of its palette; they do not lock automatic
+contrast or change the app's raw-image color scaling. The selection persists,
+including after camera brightness/contrast and detail adjustments. Presets require
+the verified factory ISP configuration. **Fixed mode** requires Balanced; turn
+Fixed mode off before choosing another preset. Presets are locked during logging
+and calibration measurements. Restore camera settings or quitting returns the
+camera to its original Balanced processing; quitting retains the saved selection.
+The preset control is disabled while displaying raw thermal data, including
+when App colors makes Camera preview use the raw thermal source.
+
 **Camera → Enhancement algorithm** offers **Anime4K09 2×** (the algorithm selected
 by the inspected Android phone app), plus **ACNet 2×** with no, light, medium,
 or strong denoising.

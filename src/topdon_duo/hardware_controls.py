@@ -103,6 +103,7 @@ HARDWARE_CONTROLS = {
     "palette": HardwareControl("Camera color palette", 2, 5, 5, 1, 22, options=PALETTES),
 }
 BLOCK_LENGTHS = {(2, 1): 2, (2, 2): 2, (2, 5): 79, (3, 1): 80}
+PROCESSING_PRESETS = {"balanced": 1, "shadow": 2, "soft": 0}
 
 
 def validate_fixed_range_bounds(bounds: object) -> tuple[int, int]:
@@ -127,6 +128,78 @@ class HardwareControls:
         self.fixed_range = False
         self._fixed_range_owned = False
         self._fixed_range_bounds: tuple[int, int] | None = None
+        self.processing_preset = "balanced"
+        self._processing_preset_owned = False
+
+    def _processing_command(self, mode: int | None = None) -> int:
+        body = bytes((0x36, 0x23, 1 if mode is None else 0))
+        if mode is not None:
+            if mode not in PROCESSING_PRESETS.values():
+                raise ValueError("Unsupported camera processing mode")
+            body += struct.pack(">H", mode)
+        packet = bytes((0xF0, len(body))) + body + bytes((sum(body) & 255, 0xFF))
+        try:
+            device = self.camera.device
+            if device.ctrl_transfer(0x41, 1, 0, 0x0A00, packet, timeout=2000) != len(packet):
+                raise CameraError("Incomplete processing preset command")
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                length = bytes(device.ctrl_transfer(0xC1, 0x85, 0, 0x0A00, 4, timeout=2000))
+                size = int.from_bytes(length, "little")
+                if len(length) not in (2, 4) or size > 128:
+                    raise CameraError("Unsupported processing preset mailbox")
+                if size:
+                    reply = bytes(device.ctrl_transfer(0xC1, 0x81, 0, 0x0A00, size, timeout=2000))
+                    expected_body = bytes((0x36, 0x23, 3))
+                    data_size = 2 if mode is None else 1
+                    if (len(reply) != data_size + 7 or reply[0] != 0xF0
+                            or reply[1] != len(reply) - 4 or reply[-1] != 0xFF
+                            or reply[2:5] != expected_body
+                            or sum(reply[2:-2]) & 255 != reply[-2]):
+                        raise CameraError("Invalid processing preset acknowledgement")
+                    value = int.from_bytes(reply[5:-2], "big")
+                    if mode is not None and value != 1:
+                        raise CameraError("Camera rejected processing preset")
+                    return value
+                time.sleep(0.04)
+            raise CameraError("Processing preset command timed out")
+        except (usb.core.USBError, AttributeError) as exc:
+            raise CameraError(f"Processing preset transfer failed: {exc}") from exc
+
+    def _apply_processing_preset(self, preset: str) -> None:
+        mode = PROCESSING_PRESETS[preset]
+        self._processing_command(mode)
+        # The getter returns a bank, not the setter's mode. Gain selects
+        # a second set of banks; never use the returned bank as a restore mode.
+        if self._processing_command() not in {1: (1, 4), 2: (2, 5), 0: (3, 6)}[mode]:
+            raise CameraError("Camera processing bank did not match the selected preset")
+
+    def set_processing_preset(self, preset: str) -> None:
+        if not isinstance(preset, str) or preset not in PROCESSING_PRESETS:
+            raise ValueError("Unknown camera processing preset")
+        if self._fixed_range_owned:
+            raise CameraError("Turn off fixed mode before changing processing presets")
+        if preset == "balanced":
+            self.restore_processing_preset()
+            return
+        self.load()
+        if not self._processing_preset_owned:
+            self._fixed_range_baseline()  # Same verified factory ISP table.
+            if self.original[2, 5][23] != 1 or self._processing_command() != 1:
+                raise CameraError("Processing presets require the tested Balanced camera baseline")
+        self._processing_preset_owned = True
+        try:
+            self._apply_processing_preset(preset)
+        except CameraError:
+            self.restore_processing_preset()
+            raise
+        self.processing_preset = preset
+
+    def restore_processing_preset(self) -> None:
+        if self._processing_preset_owned:
+            self._apply_processing_preset("balanced")
+            self._processing_preset_owned = False
+        self.processing_preset = "balanced"
 
     def _fixed_range_baseline(self) -> tuple[int, int]:
         """Only enable the experimental path with the exact tested ISP preset."""
@@ -191,6 +264,8 @@ class HardwareControls:
             self.restore_fixed_range()
             return
         self.load()
+        if self.processing_preset != "balanced":
+            raise CameraError("Select the Balanced processing preset before enabling fixed mode")
         if self.state()["detail_enabled"]["value"] != 1:
             raise CameraError("Enable detail enhancement before enabling fixed mode")
         self._fixed_range_baseline()
@@ -353,8 +428,12 @@ class HardwareControls:
         spec.apply(bytearray(self.original[key]), value)
         try:
             self.write(key, bytes(target))
+            if spec.selector == 2 and self._processing_preset_owned:
+                self._apply_processing_preset(self.processing_preset)
         except CameraError:
             self.write(key, previous)
+            if spec.selector == 2 and self._processing_preset_owned:
+                self.restore_processing_preset()
             raise
         self.enabled = proposed
         self.values = values
@@ -363,6 +442,7 @@ class HardwareControls:
 
     def restore(self) -> None:
         self.restore_fixed_range()
+        self.restore_processing_preset()
         for name in tuple(self.enabled):
             self.set(name, self.values[name], False)
 
@@ -392,4 +472,6 @@ class HardwareControls:
 
     @property
     def preview_active(self) -> bool:
-        return any(HARDWARE_CONTROLS[name].selector == 2 for name in self.enabled)
+        return self._processing_preset_owned or any(
+            HARDWARE_CONTROLS[name].selector == 2 for name in self.enabled
+        )
