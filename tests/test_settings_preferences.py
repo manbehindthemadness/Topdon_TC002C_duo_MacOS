@@ -122,8 +122,19 @@ def test_tone_preferences_roundtrip_and_reject_invalid_values(monkeypatch, tmp_p
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
     save_settings({'camera_gamma': 25, 'camera_boost': True})
     assert load_settings()['camera_gamma'] == 25
-    assert load_settings()['camera_boost'] is True
+    assert load_settings()['camera_boost'] == 3
     for invalid in (-1, 101, True, 25.5, '25'):
         save_settings({'camera_gamma': invalid, 'camera_boost': 'yes'})
         assert 'camera_gamma' not in load_settings()
         assert 'camera_boost' not in load_settings()
+
+
+def test_boost_modes_persist_and_migrate_old_checkbox(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    for value, expected in ((False, 0), (True, 3), (0, 0), (1, 1), (2, 2), (3, 3)):
+        save_settings({"camera_boost": value})
+        actual = load_settings()["camera_boost"]
+        assert type(actual) is int and actual == expected
+    for invalid in (-1, 4, 1.0, "1", None):
+        save_settings({"camera_boost": invalid})
+        assert "camera_boost" not in load_settings()

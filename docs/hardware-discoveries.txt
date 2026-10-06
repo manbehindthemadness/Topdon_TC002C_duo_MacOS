@@ -170,3 +170,17 @@ apply and both replies consumed. Neither is an automatic contrast freeze.
 Actual production API trial153423 changed settled preview meanY from63 to43
 (gamma25) and126 (gamma75), with257 frames during each11s upload. All SDK blocks
 and stored ISP verified after cleanup; saved selection reloads next startup.
+
+Boost modes1/2/3 comparison (2026-10-06)
+Repeated bracketed trial162249: two repeats of each mode, with detail both on
+and off, stationary board on camera white-hot preview. All three enabled modes
+increase preview luminance span about4-5%. No repeatable distinct visual effect
+or ordered strength identified; firmware physical flags remain distinct but
+unexplained. Keep Off/On0/3; do not label intermediate values Low/Medium/High.
+Original SDK blocks and stored ISP export matched after restoration. Captures,
+exact packets and per-frame metrics retained; comparison opened in ImageMagick.
+
+Boost mode selector follow-up (2026-10-06)
+All four audited modes now exposed on user request in Camera Display controls:
+Off/Mode1/Mode2/Mode3. Neutral names reflect the unresolved flag distinction.
+Saved legacy On migrates to3; selected mode persists through gamma adjustments.

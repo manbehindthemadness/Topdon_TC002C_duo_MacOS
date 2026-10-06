@@ -132,7 +132,7 @@ class HardwareControls:
         self.processing_preset = "balanced"
         self._processing_preset_owned = False
         self.gamma = 50
-        self.boost = False
+        self.boost = 0
         self._tone_owned = False
         self._tone_queue: list[int] = []
         self._tone_sent = 0
@@ -165,18 +165,20 @@ class HardwareControls:
         except (usb.core.USBError, AttributeError) as exc:
             raise CameraError(f"Camera tone transfer failed: {exc}") from exc
 
-    def _apply_boost(self, enabled: bool) -> None:
+    def _apply_boost(self, mode: int) -> None:
+        if type(mode) is not int or mode not in (0, 1, 2, 3):
+            raise ValueError("Camera boost mode must be an integer 0..3")
         # This handler rebuilds before staging and emits success THEN a known
         # fall-through error. Consume both replies for EACH of the two applies.
         for _ in range(2):
             self._tone_command(
-                bytes((0x36, 0x78, 0x31, 0, 3 if enabled else 0)),
+                bytes((0x36, 0x78, 0x31, 0, mode)),
                 (bytes.fromhex("f0053678310301e3ff"), bytes.fromhex("f0053678310400e3ff")),
             )
 
-    def set_tone(self, gamma: int, boost: bool) -> None:
-        if type(gamma) is not int or not 0 <= gamma <= 100 or type(boost) is not bool:
-            raise ValueError("Gamma needs an integer 0..100 and boost needs a boolean")
+    def set_tone(self, gamma: int, boost: int) -> None:
+        if type(gamma) is not int or not 0 <= gamma <= 100 or type(boost) is not int or boost not in (0, 1, 2, 3):
+            raise ValueError("Gamma needs an integer 0..100 and boost mode needs an integer 0..3")
         if self._fixed_range_owned:
             raise CameraError("Turn off Fixed mode before changing gamma or boost")
         if gamma == 50 and not boost:
@@ -197,7 +199,7 @@ class HardwareControls:
                 self._tone_queue = []  # Native boost refresh already composes this.
             else:
                 contrast = round(self.state()["contrast"]["value"])
-                curve = composite_curve(gamma, boost, contrast, self.processing_preset)
+                curve = composite_curve(gamma, bool(boost), contrast, self.processing_preset)
                 self._tone_queue = [0x80000000 | (value << 16) | i for i, value in enumerate(curve)] + [0]
         except CameraError:
             self.restore_tone()
@@ -228,9 +230,9 @@ class HardwareControls:
     def restore_tone(self) -> None:
         self._tone_queue = []
         if self._tone_owned:
-            self._apply_boost(False)  # Native builder, not a guessed LUT backup.
+            self._apply_boost(0)  # Native builder, not a guessed LUT backup.
             self._tone_owned = False
-        self.gamma, self.boost = 50, False
+        self.gamma, self.boost = 50, 0
 
     def _processing_command(self, mode: int | None = None) -> int:
         body = bytes((0x36, 0x23, 1 if mode is None else 0))

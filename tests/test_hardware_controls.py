@@ -484,7 +484,7 @@ def prepare_tone_controls(controls):
 def test_tone_upload_is_incremental_and_preserves_brightness(controls):
     controls = prepare_tone_controls(controls)
     brightness = controls.read(2, 1)
-    controls.set_tone(25, False)
+    controls.set_tone(25, 0)
     assert controls.tone_busy and len(controls._tone_queue) == 257
     assert not controls.advance_tone()
     assert controls._tone_command.call_count == 1
@@ -498,34 +498,58 @@ def test_tone_upload_is_incremental_and_preserves_brightness(controls):
     assert controls._tone_command.call_args.args[0][-4:] == bytes(4)
     assert controls.read(2, 1) == brightness
     controls.restore_tone()
-    assert (controls.gamma, controls.boost, controls._tone_owned) == (50, False, False)
+    assert (controls.gamma, controls.boost, controls._tone_owned) == (50, 0, False)
 
 
 def test_neutral_gamma_rebuilds_native_curve_during_pending_upload(controls):
     controls = prepare_tone_controls(controls)
-    controls.set_tone(25, True)
+    controls.set_tone(25, 3)
     controls.advance_tone()
     controls._apply_boost.reset_mock()
-    controls.set_tone(50, True)
-    controls._apply_boost.assert_called_once_with(True)
+    controls.set_tone(50, 3)
+    controls._apply_boost.assert_called_once_with(3)
     assert not controls.tone_busy and controls.boost
 
 
 def test_tone_upload_failure_restores_native_processing(controls):
     controls = prepare_tone_controls(controls)
-    controls.set_tone(75, True)
+    controls.set_tone(75, 3)
     controls._tone_command.side_effect = CameraError('upload failed')
     with pytest.raises(CameraError, match='upload failed'):
         controls.advance_tone()
     assert not controls.tone_busy and not controls._tone_owned
-    controls._apply_boost.assert_called_with(False)
+    controls._apply_boost.assert_called_with(0)
 
 
-def test_boost_applies_twice_and_consumes_both_firmware_replies(controls):
+@pytest.mark.parametrize("mode", (0, 1, 2, 3))
+def test_boost_applies_twice_and_consumes_both_firmware_replies(controls, mode):
     controls._tone_command = Mock()
-    controls._apply_boost(True)
+    controls._apply_boost(mode)
     assert controls._tone_command.call_count == 2
     for call in controls._tone_command.call_args_list:
-        assert call.args == (bytes.fromhex('3678310003'),
+        assert call.args == (bytes((0x36, 0x78, 0x31, 0, mode)),
                              (bytes.fromhex('f0053678310301e3ff'),
                               bytes.fromhex('f0053678310400e3ff')))
+
+
+@pytest.mark.parametrize("mode", (1, 2, 3))
+def test_gamma_changes_keep_selected_boost_mode(controls, mode):
+    controls = prepare_tone_controls(controls)
+    controls.set_tone(25, mode)
+    first_curve = controls._tone_queue.copy()
+    assert controls.boost == mode
+    controls._apply_boost.assert_called_with(mode)
+    controls.set_tone(75, mode)
+    assert controls.boost == mode and controls._tone_queue != first_curve
+    controls.set_tone(50, mode)
+    controls._apply_boost.assert_called_with(mode)
+    assert controls.boost == mode and not controls.tone_busy
+
+
+@pytest.mark.parametrize("invalid", (-1, 4, True, 1.5, "1", None))
+def test_invalid_boost_mode_is_rejected_before_any_transfer(controls, invalid):
+    controls = prepare_tone_controls(controls)
+    with pytest.raises(ValueError):
+        controls.set_tone(50, invalid)
+    controls._apply_boost.assert_not_called()
+    controls._tone_command.assert_not_called()

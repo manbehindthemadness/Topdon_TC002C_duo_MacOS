@@ -2505,3 +2505,59 @@ boost-on56.369, neutral60.264. Corresponding scene medians21.616/21.666/21.432/
 All four SDK blocks exact on restore, factory ISP hash unchanged. Comparison
 opened in ImageMagick. Active boost/LUT originals remain unreadable; neutral native
 rebuild is the audited reference, not a claimed backup of unknown FPGA contents.
+
+Four boost modes, repeated bracketed live comparison (2026-10-06)
+----------------------------------------------------------------
+Boost-modes-trial-20261006-162249 tested ONLY the already audited class78/sub31
+values0/1/2/3, twice per phase with both firmware replies consumed. No register
+sweep, LUT upload, dedicated gamma command or persistent device write was used.
+Before writes: live SDK2.0 handshake, all four original control blocks matched
+the audited reference, read-only factory ISP export byte-for-byte verified,
+and diagnostic snapshot selected bank1. Active boost staging lacks a reliable
+getter; off is the established neutral reference, not an exact unread backup.
+
+Stationary warm circuit board on white-hot camera preview. For each detail state
+(on, then off), sequence0/1/0/2/0/3/0/3/0/2/0/1/0, three seconds each,77 frames
+per phase. Compare last1.5s valid samples to neighboring off captures; two paired
+repeats per enabled mode. CPU semantics say all nonzero modes share the same
+boost curve while physical flags distinguish them. This trial tests whether
+those flags yield independently visible effects on this device and scene.
+
+Mean paired preview p99-p1 span increase, luminance levels:
+                         Mode1        Mode2        Mode3
+  Detail on              +9.578       +10.145      +9.730
+  Detail off             +9.243       +8.789       +8.303
+Mean paired meanY shift:
+  Detail on              -3.612       -3.956       -3.411
+  Detail off             -3.776       -3.465       -3.989
+All modes consistently increase display span approximately4-5%; intermediate
+mode differences do not establish distinct or ordered strengths. Repeat spread
+and raw temperature drift confound small residual differences. Paired scene
+median differences ranged approximately-0.23..+0.19C; neither exact pixel-wise
+radiometric invariance nor temperature changes caused by mode are established.
+Visual contact sheets show stationary geometry and similar enabled-mode looks.
+No repeatable unique effect for mode1 vs2 vs3 was identified on this target,
+with or without detail. Do not name them Low/Medium/High or claim equivalence
+for every scene/gain state. Their physical flag meanings remain unresolved.
+
+Saved exact requests/replies, first/last raw frames for every phase, per-frame
+preview/raw statistics, diagnostic snapshot, originals, before/after ISP export,
+analysis.json, comparison.png (first four modes, both detail states) and
+repeat-comparison.png (all26 phases). Standard comparison opened in ImageMagick.
+Native boost0 double-apply plus SDK restoration completed; all four original
+control blocks and complete stored ISP export matched, no trial/restore error.
+Current production Off/On checkbox (0/3) retained; no new mode menu added based
+on unproven differences. This comparison does not test or establish AGC freeze.
+
+Boost mode menu integration (2026-10-06)
+User requested exposing all audited boost modes despite their similar observed
+appearance. Camera tone boost now offers Off/Mode1/Mode2/Mode3 beside the camera
+processing preset; it is a discrete selector without a slider. Mode labels do
+not imply ordered strengths. Strict integer0..3 reaches the exact class78/sub31
+wire value, twice with both replies consumed per apply. Nonzero modes share the
+composite boost curve while retaining their distinct physical flags. Additional
+gamma updates and native processing refreshes preserve the selected mode.
+Saved camera_boost values are now integers; old false/true migrate to0/3.
+Raw/fallback view, fixed mode, logging/calibration and upload locks still apply.
+Cancel/restore uses0. Preference, wire-mode, gamma-retention, invalid-value and
+popup tests cover integration; no extra live camera commands were required.

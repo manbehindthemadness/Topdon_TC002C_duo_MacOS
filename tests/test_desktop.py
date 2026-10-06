@@ -393,7 +393,7 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
     graphs.take_logging_error.return_value = None
     monkeypatch.setattr(desktop, "GraphWorker", lambda: graphs)
     hardware = Mock(original={}, enabled=set(), error="", preview_active=False,
-                    gamma=50, boost=False, tone_busy=False, _tone_sent=0)
+                    gamma=50, boost=0, tone_busy=False, _tone_sent=0)
     hardware.state.return_value = {}
     monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
     camera = Mock()

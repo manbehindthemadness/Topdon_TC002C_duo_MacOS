@@ -16,7 +16,7 @@ def viewer(monkeypatch, tmp_path):
     hardware = Mock(original={"loaded": True}, enabled=set(), error="", preview_active=False)
     hardware.processing_preset = "balanced"
     hardware.gamma = 50
-    hardware.boost = False
+    hardware.boost = 0
     hardware.tone_busy = False
     hardware._tone_sent = 0
     hardware.state.return_value = {"ambient": {"value": 30.0, "available": True}}

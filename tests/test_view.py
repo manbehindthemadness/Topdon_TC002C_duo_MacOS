@@ -296,10 +296,18 @@ assert window.cancel_tone.isEnabled() and "40%" in window.tone_status.text()
 window.cancel_tone.click()
 assert messages.pop() == {"action": "cancel_tone"}
 window.update_state({"processing_preset_available": True, "camera_gamma": 25,
-                     "camera_boost": True, "hardware": {"detail_enabled": {"value": 1}}})
+                     "camera_boost": 3, "hardware": {"detail_enabled": {"value": 1}}})
 assert window.camera_gamma.input.isEnabled() and window.camera_gamma.value() == 25
-assert window.camera_boost.input.isChecked() and not window.fixed_range.isEnabled()
+assert window.camera_boost.input.currentData() == 3 and not window.fixed_range.isEnabled()
 assert messages == []
+window.update_state({"processing_preset_available": True})
+# All audited boost modes have dropdown entries and send their actual mode ID.
+assert window.camera_boost.slider is None and not window.camera_boost.is_switch
+assert [window.camera_boost.input.itemText(i) for i in range(4)] == ["Off", "Mode 1", "Mode 2", "Mode 3"]
+for mode in (1, 2, 3, 0):
+    window.camera_boost.input.setCurrentIndex(window.camera_boost.input.findData(mode))
+    window.camera_boost._emit()
+    assert messages.pop() == {"action": "tone", "boost": mode}
 window.update_state({"processing_preset_available": True})
 # Locking the focused gamma input must not scroll to calibration controls.
 scroll = window.findChild(QScrollArea)
@@ -348,7 +356,7 @@ scroll.verticalScrollBar().setValue(0)
 
 switches = [row.input for row in (*window.rows.values(), *window.hardware_rows.values()) if row.is_switch]
 assert all(isinstance(control, QCheckBox) for control in switches)
-assert set(window.findChildren(QCheckBox)) == set(switches + [window.auto_calibrate, window.fixed_range, window.advanced_auto, window.camera_boost.input])
+assert set(window.findChildren(QCheckBox)) == set(switches + [window.auto_calibrate, window.fixed_range, window.advanced_auto])
 assert not hasattr(window, "fixed_lower") and not hasattr(window, "fixed_bounds_apply")
 window.update_state({"hardware": {"detail_enabled": {"value": 0, "available": True}}})
 assert not window.fixed_range.isEnabled()
@@ -707,7 +715,7 @@ assert switches.columnCount() == 2
 assert headings["Display controls"] < body_layout.indexOf(switches) < headings["AI enhancement"]
 expected = [row for row in (*window.rows.values(), *window.hardware_rows.values())
             if row.is_switch]
-assert switches.count() == len(expected) + 2
+assert switches.count() == len(expected) + 1
 for index, control in enumerate(expected):
     assert switches.itemAtPosition(index // 2, index % 2).widget() is control
     assert control.slider is None
@@ -1004,7 +1012,7 @@ def test_tone_selection_reloads_after_hardware_and_presets_and_persists(viewer, 
     from topdon_duo.settings_preferences import load_settings, save_settings
 
     save_settings({'hardware': {'contrast': 70}, 'processing_preset': 'shadow',
-                   'camera_gamma': 25, 'camera_boost': True})
+                   'camera_gamma': 25, 'camera_boost': 3})
     panel = Mock()
     panel.poll.return_value = [{'action': 'tone', 'gamma': 75}]
     monkeypatch.setattr(desktop, 'ViewPanel', lambda: panel)
@@ -1015,11 +1023,11 @@ def test_tone_selection_reloads_after_hardware_and_presets_and_persists(viewer, 
 
     viewer.hardware.set_tone.side_effect = apply
     assert desktop.main([]) == 0
-    assert [call.args for call in viewer.hardware.set_tone.call_args_list] == [(25, True), (75, True)]
+    assert [call.args for call in viewer.hardware.set_tone.call_args_list] == [(25, 3), (75, 3)]
     calls = viewer.hardware.mock_calls
     assert calls.index(next(c for c in calls if c[0] == 'set_processing_preset')) < calls.index(
         next(c for c in calls if c[0] == 'set_tone'))
-    assert load_settings()['camera_gamma'] == 75 and load_settings()['camera_boost'] is True
+    assert load_settings()['camera_gamma'] == 75 and load_settings()['camera_boost'] == 3
 
 
 def test_tone_commands_are_locked_during_logging(viewer, monkeypatch):

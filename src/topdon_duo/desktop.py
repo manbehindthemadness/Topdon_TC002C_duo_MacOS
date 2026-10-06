@@ -1119,7 +1119,7 @@ def main(argv: list[str] | None = None) -> int:
     remembered_fixed_range = saved_settings.get("fixed_range", False)
     remembered_processing_preset = saved_settings.get("processing_preset", "balanced")
     remembered_gamma = saved_settings.get("camera_gamma", 50)
-    remembered_boost = saved_settings.get("camera_boost", False)
+    remembered_boost = saved_settings.get("camera_boost", 0)
     calibration_available = False
     startup_calibration_pending = True
     show_graph = saved_settings.get("show_graph", False)
@@ -1732,7 +1732,7 @@ def main(argv: list[str] | None = None) -> int:
                         hardware.error = ""
                     elif command.get("action") == "cancel_tone":
                         hardware.restore_tone()
-                        remembered_gamma, remembered_boost = 50, False
+                        remembered_gamma, remembered_boost = 50, 0
                         persist_settings()
                     elif command.get("action") == "processing_preset":
                         if renderer.image_source != "preview" or actual_image_source != "preview":
@@ -1896,7 +1896,7 @@ def main(argv: list[str] | None = None) -> int:
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
                         hardware.restore()
-                        remembered_gamma, remembered_boost = 50, False
+                        remembered_gamma, remembered_boost = 50, 0
                         remembered_processing_preset = hardware.processing_preset
                         remembered_fixed_range = False
                         remembered_hardware.clear()

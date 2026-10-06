@@ -609,10 +609,14 @@ class ViewWindow(QWidget):
         )
         self.camera_boost = ControlRow(
             "Camera tone boost",
-            lambda value: self._send({"action": "tone", "boost": bool(value)}),
-            options=((0, "Off"), (1, "On")),
+            lambda value: self._send({"action": "tone", "boost": int(value)}),
+            options=((0, "Off"), (1, "Mode 1"), (2, "Mode 2"), (3, "Mode 3")),
         )
-        self.camera_boost.setToolTip("Increase camera preview contrast without changing temperature calibration.")
+        self.camera_boost.setToolTip(
+            "Camera preview tone boost. Modes 1, 2 and 3 set different camera flags; "
+            "our tests found similar contrast increases, not ordered strength levels. "
+            "Previous On corresponds to Mode 3."
+        )
         self.tone_status = QLabel()
         self.cancel_tone = QPushButton("Cancel tone update")
         self.cancel_tone.clicked.connect(lambda: self._send({"action": "cancel_tone"}))
@@ -693,6 +697,7 @@ class ViewWindow(QWidget):
             rows.addWidget(heading)
             if title == "Display controls":
                 rows.addWidget(self.processing_preset)
+                rows.addWidget(self.camera_boost)
             switches = QGridLayout() if title == "Display controls" else None
             switch_count = 0
             for name in display_names:
@@ -764,7 +769,6 @@ class ViewWindow(QWidget):
                     switches.addWidget(self.fixed_range, switch_count // 2, switch_count % 2)
                     switch_count += 1
             if switches is not None:
-                switches.addWidget(self.camera_boost, switch_count // 2, switch_count % 2)
                 switches.setHorizontalSpacing(24)
                 switches.setVerticalSpacing(16)
                 switches.setColumnStretch(0, 1)
@@ -846,7 +850,7 @@ class ViewWindow(QWidget):
             preset_available,
         )
         for row, value in ((self.camera_gamma, state.get("camera_gamma", 50)),
-                           (self.camera_boost, int(state.get("camera_boost", False)))):
+                           (self.camera_boost, state.get("camera_boost", 0))):
             if not preset_available:
                 row.timer.stop()
             row.update_state(value, preset_available)
@@ -865,7 +869,7 @@ class ViewWindow(QWidget):
             and (detail.get("value", 0) == 1 or state.get("fixed_range", False))
             and state.get("processing_preset", "balanced") == "balanced"
             and state.get("camera_gamma", 50) == 50
-            and not state.get("camera_boost", False)
+            and not state.get("camera_boost", 0)
         )
         with QSignalBlocker(self.fixed_range):
             self.fixed_range.setChecked(state.get("fixed_range", False))

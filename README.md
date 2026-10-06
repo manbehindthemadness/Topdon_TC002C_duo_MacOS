@@ -318,7 +318,9 @@ when App colors makes Camera preview use the raw thermal source.
 
 **Camera gamma adjustment** changes preview midtones on a 0–100 scale; **50**
 is neutral and preserves the selected processing preset. **Camera tone boost**
-increases preview contrast. Both settings persist and are disabled for raw thermal
+offers **Off**, **Mode 1**, **Mode 2**, and **Mode 3**. The enabled modes set
+different camera flags; tests found similar contrast increases, not ordered
+strength levels. Existing saved On settings become Mode 3. Both settings persist and are disabled for raw thermal
 viewing, logging, and calibration measurements. Gamma uploads gradually with a
 progress indicator and **Cancel tone update**, keeping preview and sampling active.
 Use neutral gamma and turn boost off before enabling Fixed mode. These controls

@@ -75,8 +75,11 @@ def load_settings() -> dict:
     gamma = saved.get("camera_gamma")
     if type(gamma) is int and 0 <= gamma <= 100:
         result["camera_gamma"] = gamma
-    if type(saved.get("camera_boost")) is bool:
-        result["camera_boost"] = saved["camera_boost"]
+    boost = saved.get("camera_boost")
+    if type(boost) is bool:  # Migrate the old Off/On checkbox (On used mode 3).
+        result["camera_boost"] = 3 if boost else 0
+    elif type(boost) is int and boost in (0, 1, 2, 3):
+        result["camera_boost"] = boost
     try:
         result["graph_interval"] = validate_graph_interval(saved.get("graph_interval"))
     except (TypeError, ValueError):
