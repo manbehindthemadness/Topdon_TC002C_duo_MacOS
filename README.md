@@ -140,7 +140,7 @@ Both checkboxes and the timelapse frames-per-minute setting save immediately
 and restore on the next launch. An explicit `--timelapse-fpm` value overrides
 the remembered rate.
 
-Image, video, timelapse, CSV log and TIDY model file dialogs each remember their
+Image, video, timelapse, CSV log dialogs each remember their
 last accepted directory across launches. Canceling leaves the previous directory
 unchanged. Missing directories fall back to the normal starting location; an
 explicit `--output` directory overrides the remembered capture/log location.
@@ -306,13 +306,12 @@ Original payloads are saved under `$XDG_STATE_HOME/topdon-duo/camera-baselines`
 
 **Camera → Enhancement algorithm** offers **Anime4K09 2×** (the algorithm selected
 by the inspected Android phone app), plus **ACNet 2×** with no, light, medium,
-or strong denoising, experimental **TIDY thermal denoise**, and **DnCNN blind denoise**.
+or strong denoising.
 It defaults to Off. **Enhancement input size** selects
 native sensor size (the default, 256×192 → 512×384) or the full preview.
 **Enhancement amount** blends ACNet output with ordinary interpolation, or
 adjusts Anime4K09's gradient strength; 0 gives the original image and 1 gives
-full enhancement. TIDY and DnCNN also blend their output with the original input at the
-selected amount. **Anime4K09 passes** offers 1–5 passes; the phone uses 3.
+full enhancement. **Anime4K09 passes** offers 1–5 passes; the phone uses 3.
 
 Anime4K09 uses a portable CPU port of the public OpenCL rules with the phone's
 parameters. ACNet uses four bundled ONNX models through the existing OpenCV CPU
@@ -322,59 +321,12 @@ The Camera status shows processing time or a fallback error.
 Enhancement also appears in saved images and recordings, while the temperature
 grid, spot positions, and temperature readings keep their original resolution.
 The existing display scale controls the final image size; Anime4K09 and ACNet run at 2×,
-while TIDY and DnCNN retain their input resolution, before that final resize. Native mode downsamples enlarged previews before
+before that final resize. Native mode downsamples enlarged previews before
 enhancement. Full preview mode retains their complete input resolution.
 Processing may reduce the live frame rate, especially for the full 512×384 preview.
 The portable Anime4K09 port has been checked against the public kernel rules;
 identical results to a phone GPU have not been established.
 
-**TIDY setup:** Select **TIDY — thermal denoise (experimental)**, then use
-**TIDY ONNX model file → Browse…** to choose an exported `tidy.onnx`. The path and
-enhancement settings persist across restarts. TIDY uses the existing OpenCV CPU
-backend; no PyTorch or ONNX Runtime installation is needed to view an exported
-model. A missing or incompatible file shows an error and keeps the original
-image visible. Switch modes or choose another file to retry.
-
-Obtain weights and export instructions from the
-[official TIDY repository](https://github.com/williamrheeth/TIDY). Export is a
-one-time development step requiring PyTorch and ONNX, using `python -m
-tidy.deployment onnx --output /usr/src/TIDY/artifacts/tidy.onnx` from that source
-tree. Verify the checkpoint against its supplied `weights/SHA256SUMS` before
-exporting. The exported ONNX file is portable; it does not need recompilation
-for Linux versus macOS. Keep the model outside this repository's bundled model
-directory. Upstream supplies it under **CC BY-NC 4.0**, and the roughly 443 MiB
-artifact is not bundled with this application.
-
-TIDY processes normalized thermal intensity before the app palette. For a camera
-color preview it denoises replicated luminance and preserves the original chroma.
-It targets noise and stripes, and may also soften small details; it does not
-increase sensor resolution or alter measured temperatures. Native sensor size
-is recommended for interactive use. In a local Intel i5-7267U test, native
-256×192 inference took about 0.5 seconds through OpenCV; ONNX Runtime took about
-0.3 seconds, versus 1.3–1.6 seconds for a 512×384 input. These are inference-only
-timings, not guaranteed live frame rates. OpenCV output matched the official
-PyTorch execution to within approximately 0.000003 on the tested normalized
-frame; macOS performance has not been measured.
-
-**DnCNN experiment:** Select **DnCNN — blind denoise (experimental)** under
-**Camera → Enhancement algorithm**. The bundled grayscale blind model uses the
-same OpenCV CPU engine and needs no model-file selection or extra dependencies.
-It estimates and subtracts noise from normalized thermal intensity before the
-app palette; camera color previews retain their chroma. **Enhancement amount**
-blends with the original intensity, and **Native sensor size** is recommended.
-This model was trained for Gaussian image noise, rather than thermal stripe
-artifacts, so changes can be subtle on already smooth images.
-
-The ONNX graph was exported from the authors'
-[KAIR grayscale blind checkpoint](https://github.com/cszn/KAIR/blob/master/main_test_dncnn.py),
-including the residual subtraction. The roughly 2.5 MiB model is MIT-licensed;
-attribution and the license accompany it. `tools/export_dncnn.py` reproduces the
-export with developer-only PyTorch and ONNX dependencies. On the same saved
-thermal frame used for TIDY, OpenCV inference took 0.49–0.50 seconds at native
-size and 1.90–2.04 seconds at 512×384. The output matched the official PyTorch
-model within 0.000003 on normalized pixels. This single-frame comparison has no
-clean thermal reference and does not establish improved measurement accuracy;
-the app's temperature measurements remain unchanged.
 
 Desktop measurements always use the camera count conversion (`raw / 64 - 50`),
 including before edits and after restoring hardware settings;

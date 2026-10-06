@@ -65,10 +65,8 @@ from .window_style import set_black_window_backgrounds, window_resize_size
 
 LOG = logging.getLogger(__name__)
 WINDOW_NAME = "TOPDON TC002C Duo"
-TOOLBAR_ROW_HEIGHT = 30
 TOOLBAR_BUTTON_HEIGHT = 24
 TOOLBAR_PADDING = 4
-TOOLBAR_STATUS_HEIGHT = 20
 TOOLBAR_FONT_SCALE = 0.36
 TIMELAPSE_DEFAULT_FPM = 60
 TIMELAPSE_MAX_FPM = FRAME_RATE * 60
@@ -441,7 +439,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
         x1 = TOOLBAR_PADDING * (index + 1) + round(available_width * weight / total_weight)
         buttons[action] = (x0, TOOLBAR_PADDING, x1, TOOLBAR_PADDING + TOOLBAR_BUTTON_HEIGHT)
     return ToolbarLayout(
-        height=TOOLBAR_PADDING * 2 + TOOLBAR_ROW_HEIGHT + TOOLBAR_STATUS_HEIGHT + READOUT_HEIGHT,
+        height=TOOLBAR_PADDING * 2 + TOOLBAR_BUTTON_HEIGHT,
         buttons=buttons,
     )
 
@@ -463,10 +461,6 @@ def draw_toolbar(
     layout = toolbar_layout(image.shape[1])
     canvas = np.zeros((image.shape[0] + layout.height, image.shape[1], 3), np.uint8)
     canvas[layout.height :] = image
-    if stats is not None:
-        canvas[layout.height - READOUT_HEIGHT :] = draw_temperature_readout(
-            image, stats, ambient_celsius, temperature_unit
-        )
     labels = {
         "rotate": "Rotate",
         "unit": f"Units: {temperature_unit}/{'in' if temperature_unit == 'F' else 'cm'}",
@@ -515,21 +509,6 @@ def draw_toolbar(
             1,
             cv2.LINE_AA,
         )
-    while (
-        status
-        and cv2.getTextSize(status, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0][0] > image.shape[1] - 12
-    ):
-        status = status[:-1]
-    cv2.putText(
-        canvas,
-        status,
-        (6, layout.height - READOUT_HEIGHT - 7),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.4,
-        (210, 215, 225),
-        1,
-        cv2.LINE_AA,
-    )
     return canvas
 
 
@@ -1449,11 +1428,7 @@ def main(argv: list[str] | None = None) -> int:
                 message += f" · {renderer.upsampler.error}; showing unenhanced image"
             else:
                 algorithm = (
-                    "TIDY denoise"
-                    if renderer.upsampling == "tidy"
-                    else "DnCNN denoise"
-                    if renderer.upsampling == "dncnn-gray-blind"
-                    else "Anime4K09 2×"
+                    "Anime4K09 2×"
                     if renderer.upsampling == "anime4k09"
                     else "ACNet 2×"
                 )

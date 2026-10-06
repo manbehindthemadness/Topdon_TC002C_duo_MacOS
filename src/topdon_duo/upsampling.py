@@ -1,16 +1,12 @@
-"""Portable Anime4K09, ACNet, TIDY, and DnCNN display enhancement."""
+"""Portable Anime4K09 and ACNet display enhancement."""
 
 from importlib.resources import files
-from pathlib import Path
 from time import perf_counter
 
 import cv2
 import numpy as np
 
 from .anime4k09 import upscale_anime4k09
-
-DENOISING_MODELS = {"tidy", "dncnn-gray-blind"}
-MODEL_NAMES = {"tidy": "TIDY", "dncnn-gray-blind": "DnCNN"}
 
 
 class VisionUpsampler:
@@ -22,8 +18,8 @@ class VisionUpsampler:
         self.error = ""
         self.elapsed_ms = 0.0
 
-    def _load(self, model: str, model_path: str = "") -> None:
-        key = (model, model_path) if model == "tidy" else model
+    def _load(self, model: str) -> None:
+        key = model
         if key == self._model:
             if self.error:
                 raise ValueError(self.error)
@@ -32,22 +28,13 @@ class VisionUpsampler:
         self._net = None
         self.error = ""
         try:
-            if model == "tidy":
-                if not model_path:
-                    raise ValueError("Choose a TIDY ONNX model file in Camera controls")
-                path = Path(model_path).expanduser()
-                if not path.is_file():
-                    raise ValueError("TIDY ONNX model file was not found")
-                # Avoid making a second copy of the ~443 MiB external model.
-                net = cv2.dnn.readNetFromONNX(str(path))
-            else:
-                data = files("topdon_duo").joinpath("models", f"{model}.onnx").read_bytes()
-                net = cv2.dnn.readNetFromONNX(np.frombuffer(data, dtype=np.uint8))
+            data = files("topdon_duo").joinpath("models", f"{model}.onnx").read_bytes()
+            net = cv2.dnn.readNetFromONNX(np.frombuffer(data, dtype=np.uint8))
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             # CPU is the default. OpenCV 5's graph engine warns on target setters.
             self._net = net
         except (OSError, ValueError, cv2.error) as exc:
-            self.error = f"{MODEL_NAMES.get(model, 'ACNet')} unavailable: {exc}"
+            self.error = f"ACNet unavailable: {exc}"
             raise ValueError(self.error) from exc
 
     def reset(self) -> None:
@@ -61,7 +48,6 @@ class VisionUpsampler:
         model: str,
         amount: float = 1.0,
         passes: int = 3,
-        model_path: str = "",
     ) -> np.ndarray:
         if amount == 0:
             self.elapsed_ms = 0.0
@@ -71,11 +57,11 @@ class VisionUpsampler:
             result = upscale_anime4k09(image, passes=passes, strength=0.5 * amount)
             self.elapsed_ms = (perf_counter() - started) * 1000
             return result
-        key = (model, model_path) if model == "tidy" else model
+        key = model
         if self.error and self._model == key:
             return image
         try:
-            self._load(model, model_path)
+            self._load(model)
             started = perf_counter()
             # Thermal intensity is enhanced before the selected display palette.
             # A hardware color preview uses enhanced luminance with resized chroma.
@@ -83,22 +69,18 @@ class VisionUpsampler:
             ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb) if color else None
             gray = ycrcb[..., 0] if color else image
             blob = np.ascontiguousarray(gray, dtype=np.float32)[None, None] / 255.0
-            if model == "tidy":
-                # TIDY expects RGB [0,1]; replicate thermal luminance, preserving
-                # palette chroma separately rather than denoising false colors.
-                blob = np.repeat(blob, 3, axis=1)
             self._net.setInput(blob)
             tensor = self._net.forward()
-            factor = 1 if model in DENOISING_MODELS else 2
+            factor = 2
             expected = (
                 1,
-                3 if model == "tidy" else 1,
+                1,
                 gray.shape[0] * factor,
                 gray.shape[1] * factor,
             )
             if tensor.shape != expected or not np.isfinite(tensor).all():
                 raise ValueError("Unexpected model output dimensions or non-finite values")
-            output = tensor[0].mean(axis=0) if model == "tidy" else tensor[0, 0]
+            output = tensor[0, 0]
             enhanced = np.clip(output * 255, 0, 255).round().astype(np.uint8)
             if amount != 1:
                 baseline = cv2.resize(
@@ -115,6 +97,6 @@ class VisionUpsampler:
             return enhanced
         except (ValueError, cv2.error) as exc:
             # Keep the live viewer usable and surface the failure in Camera status.
-            self.error = self.error or f"{MODEL_NAMES.get(model, 'ACNet')} unavailable: {exc}"
+            self.error = self.error or f"ACNet unavailable: {exc}"
             self.elapsed_ms = 0.0
             return image

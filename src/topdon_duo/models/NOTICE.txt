@@ -15,32 +15,3 @@ Each model is approximately 21 KB. No vendor binaries are included.
 ACNet display enhancement is separate from temperature measurements and is
 not a claim of recovered sensor resolution or identical phone TISR processing.
 The inspected regular Android TISR path selects rule-based Anime4K09 instead.
-
-Optional external TIDY model (not bundled)
-
-Upstream: https://github.com/williamrheeth/TIDY
-Integration checked against commit ebb20eaa615cc3ae3fbad6d25ee48de46e7034c0.
-Upstream code and weights license: Creative Commons Attribution-NonCommercial 4.0.
-Authors: Tai Hyoung Rhee, Dong-Guw Lee, Ayoung Kim.
-Input/output: float32 RGB NCHW [1,3,H,W], normalized to 0..1; output retains size.
-The viewer supplies replicated thermal luminance and blends the clamped output
-with the original luminance, preserving camera palette chroma where applicable.
-No upstream TIDY source or learned weights are included in this package.
-
-Bundled DnCNN grayscale blind denoiser
-
-Upstream: https://github.com/cszn/KAIR
-Architecture version: commit fc1732f4a4514e42ce15e5b3a1e18c828af47a1e,
-models/network_dncnn.py, DnCNN(nb=20, act_mode='R'), with merged batch normalization.
-Checkpoint: https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_gray_blind.pth
-Checkpoint SHA-256: cc2ac7fa2f248a7f7a3da414a848326634511ec8b5adb7799e857ed788067bfe
-License: MIT, copyright (c) 2019 Kai Zhang; full license in LICENSE-DNCNN.txt.
-Paper authors: Kai Zhang, Wangmeng Zuo, Yunjin Chen, Deyu Meng, Lei Zhang.
-
-Exported by tools/export_dncnn.py to dncnn-gray-blind.onnx (~2.5 MiB).
-Twenty zero-padded 3x3 convolutions, ReLU after the first nineteen, followed by
-input minus predicted noise. Input/output: float32 grayscale NCHW [1,1,H,W],
-normalized to 0..1. The graph outputs the clean image, not the predicted noise.
-The viewer clamps and blends the result, and preserves camera palette chroma.
-This is a Gaussian image denoiser, not a thermal-specific calibration or a
-claim of increased sensor resolution. No PyTorch is required at runtime.

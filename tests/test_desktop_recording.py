@@ -514,8 +514,20 @@ def test_show_graph_doubles_window_width_and_hides_back_to_original(viewer, monk
     def wait_key(_delay):
         nonlocal step
         step += 1
-        if step <= 2:
+        if step == 1:
             viewer.click_control("graph")
+            return -1
+        if step == 2:
+            toolbar = desktop.toolbar_layout(768)
+            layout = desktop.GraphWindowLayout.fit((768, 576 + toolbar.height), (1860, 710))
+            x0, y0, x1, y1 = toolbar.buttons["graph"]
+            viewer.set_mouse.call_args.args[1](
+                cv2.EVENT_LBUTTONUP,
+                round((x0 + x1) / 2 * layout.camera_size[0] / 768),
+                round((y0 + y1) / 2 * layout.camera_size[1] / (576 + toolbar.height)),
+                0,
+                None,
+            )
             return -1
         return ord("q")
 

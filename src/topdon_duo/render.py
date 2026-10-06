@@ -157,7 +157,7 @@ class ThermalRenderer:
 
     def set_view_setting(self, name: str, value: object) -> None:
         validate_view_setting(name, value)
-        if name in ("upsampling", "tidy_model_path") and value != getattr(self, name):
+        if name == "upsampling" and value != getattr(self, name):
             self.upsampler.reset()
         setattr(self, name, value)
 
@@ -168,7 +168,6 @@ class ThermalRenderer:
             self._enhancement_input(image, native_size),
             self.upsampling,
             amount=self.enhancement_amount,
-            model_path=self.tidy_model_path,
         )
         return image if self.upsampler.error else enhanced
 

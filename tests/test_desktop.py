@@ -58,7 +58,8 @@ def test_readout_preserves_entire_heatmap_and_top_row_sampling(rotation, unit, t
 
     layout = toolbar_layout(rendered.image.shape[1])
     display = draw_toolbar(rendered.image, 22.0, unit, stats=rendered.stats)
-    assert np.array_equal(display[layout.height - READOUT_HEIGHT :], annotated)
+    assert np.array_equal(display[layout.height :], rendered.image)
+    assert layout.height == max(box[3] for box in layout.buttons.values()) + 4
     for viewport_scale in (1, 0.5, 2):
         viewport = (
             round(display.shape[1] * viewport_scale),

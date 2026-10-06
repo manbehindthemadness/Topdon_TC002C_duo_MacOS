@@ -30,14 +30,32 @@ def test_invalid_preferences_preserve_independent_valid_fields(monkeypatch, tmp_
     }
 
 
+def test_retired_enhancements_fall_back_without_losing_other_settings(monkeypatch, tmp_path):
+    from topdon_duo.render import ThermalRenderer
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    for model in ("tidy", "dncnn-gray-blind"):
+        save_settings({"display": {
+            "upsampling": model,
+            "tidy_model_path": "/usr/src/models/retired.onnx",
+            "color_palette": "plasma",
+        }})
+        saved = load_settings()
+        assert saved["display"] == {"color_palette": "plasma"}
+        renderer = ThermalRenderer()
+        for name, value in saved["display"].items():
+            renderer.set_view_setting(name, value)
+        assert renderer.upsampling == "off"
+        assert renderer.color_palette == "plasma"
+
+
 def test_preferences_round_trip_without_temporary_file(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     saved = {
         "display": {
             "color_palette": "inferno",
             "enhancement_amount": 0.5,
-            "upsampling": "tidy",
-            "tidy_model_path": "/usr/src/models/tidy.onnx",
+            "upsampling": "acnet-legacy-hdn1",
         },
         "hardware": {"ambient": 27.5, "palette": 11, "detail_enabled": 0},
         "rotation": 270,

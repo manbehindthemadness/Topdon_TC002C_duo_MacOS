@@ -1,10 +1,7 @@
 import json
-import subprocess
-import sys
 from unittest.mock import Mock
 
 import pytest
-from test_capture_panel import popup_environment
 
 from topdon_duo.desktop import LinuxSaveDialog, MacSaveDialog
 from topdon_duo.dialog_preferences import load_dialog_directory, remember_dialog_directory
@@ -40,7 +37,7 @@ def test_save_dialog_remembers_accepted_directory_on_next_launch(
 
 def test_each_directory_is_independent_and_cancel_does_not_replace_it(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    for kind in ("image", "video", "timelapse", "temperatures", "tidy_model"):
+    for kind in ("image", "video", "timelapse", "temperatures"):
         directory = tmp_path / kind
         directory.mkdir()
         remember_dialog_directory(kind, directory / "selected.file")
@@ -51,7 +48,7 @@ def test_each_directory_is_independent_and_cancel_does_not_replace_it(monkeypatc
     dialog = LinuxSaveDialog()
     dialog.open()
     assert dialog.poll() == (True, None)
-    for kind in ("image", "video", "timelapse", "temperatures", "tidy_model"):
+    for kind in ("image", "video", "timelapse", "temperatures"):
         assert load_dialog_directory(kind) == tmp_path / kind
 
 
@@ -69,40 +66,3 @@ def test_invalid_missing_and_explicit_directories(monkeypatch, tmp_path):
         path.write_text(contents)
         assert load_dialog_directory("image") is None
     assert not list(path.parent.glob("*.tmp"))
-
-
-def test_model_dialog_remembers_directory_and_keeps_it_when_cancelled(monkeypatch, tmp_path):
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    directory = tmp_path / "models with spaces"
-    directory.mkdir()
-    script = f"""
-from PySide6.QtWidgets import QApplication, QFileDialog
-from topdon_duo.view_window import TidyModelControls
-from topdon_duo.dialog_preferences import load_dialog_directory
-app = QApplication([])
-messages, initial = [], []
-chosen = {str(directory / "tidy.onnx")!r}
-def select(*args):
-    initial.append(args[2])
-    return chosen, ""
-QFileDialog.getOpenFileName = select
-controls = TidyModelControls(messages.append)
-controls._browse()
-assert str(load_dialog_directory("tidy_model")) == {str(directory)!r}
-assert load_dialog_directory("image") is None
-chosen = ""
-reopened = TidyModelControls(messages.append)
-reopened._browse()
-assert initial[-1] == {str(directory)!r}
-assert str(load_dialog_directory("tidy_model")) == {str(directory)!r}
-assert len(messages) == 1
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        env=popup_environment(),
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
