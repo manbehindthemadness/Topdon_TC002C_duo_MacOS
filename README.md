@@ -316,6 +316,24 @@ camera to its original Balanced processing; quitting retains the saved selection
 The preset control is disabled while displaying raw thermal data, including
 when App colors makes Camera preview use the raw thermal source.
 
+**Camera gamma adjustment** changes preview midtones on a 0–100 scale; **50**
+is neutral and preserves the selected processing preset. **Camera tone boost**
+increases preview contrast. Both settings persist and are disabled for raw thermal
+viewing, logging, and calibration measurements. Gamma uploads gradually with a
+progress indicator and **Cancel tone update**, keeping preview and sampling active.
+Use neutral gamma and turn boost off before enabling Fixed mode. These controls
+change display processing; they do not freeze automatic contrast or change
+radiometric calibration. Restore camera settings returns gamma to neutral and
+turns boost off; quitting retains the saved selection for the next launch.
+
+Controls follow the active image source: camera brightness, contrast, gamma,
+boost, noise reduction, detail, overlay and Fixed mode are disabled while viewing
+raw thermal data, including preview fallback to raw. Raw thermal rendering uses
+the app palette; Camera colors uses the camera palette. Color source selection
+is disabled when Raw thermal image is selected. Measurement and calibration
+controls stay available in both views, as do filters, enhancement and mirroring.
+Switching views retains the saved values of disabled controls.
+
 **Camera → Enhancement algorithm** offers **Anime4K09 2×** (the algorithm selected
 by the inspected Android phone app), plus **ACNet 2×** with no, light, medium,
 or strong denoising.

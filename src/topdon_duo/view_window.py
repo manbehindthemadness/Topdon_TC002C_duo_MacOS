@@ -189,6 +189,8 @@ class ControlRow(QWidget):
                 self.slider.setValue(position)
 
     def _set_enabled(self, enabled):
+        if not enabled:
+            self.timer.stop()
         self.input.setEnabled(enabled)
         if self.slider is not None:
             self.slider.setEnabled(enabled)
@@ -596,6 +598,24 @@ class ViewWindow(QWidget):
             "Adjust controls directly. Use Restore camera settings to return to the "
             "original values. Camera overrides are also restored on exit."
         )
+        self.camera_gamma = ControlRow(
+            "Camera gamma adjustment",
+            lambda value: self._send({"action": "tone", "gamma": int(value)}),
+            minimum=0, maximum=100, step=1,
+        )
+        self.camera_gamma.setToolTip(
+            "Adjust camera preview midtones. 50 is neutral and preserves the processing preset. "
+            "Updates take several seconds; the image and temperature sampling continue."
+        )
+        self.camera_boost = ControlRow(
+            "Camera tone boost",
+            lambda value: self._send({"action": "tone", "boost": bool(value)}),
+            options=((0, "Off"), (1, "On")),
+        )
+        self.camera_boost.setToolTip("Increase camera preview contrast without changing temperature calibration.")
+        self.tone_status = QLabel()
+        self.cancel_tone = QPushButton("Cancel tone update")
+        self.cancel_tone.clicked.connect(lambda: self._send({"action": "cancel_tone"}))
         description.setWordWrap(True)
         layout.addWidget(description)
         self.advanced_auto = NoWheelCheckBox("Advanced / Auto")
@@ -736,10 +756,15 @@ class ViewWindow(QWidget):
                     switch_count += 1
                 else:
                     rows.addWidget(row)
+                if name == "brightness":
+                    rows.addWidget(self.camera_gamma)
+                    rows.addWidget(self.tone_status)
+                    rows.addWidget(self.cancel_tone)
                 if name == "detail_enabled":
                     switches.addWidget(self.fixed_range, switch_count // 2, switch_count % 2)
                     switch_count += 1
             if switches is not None:
+                switches.addWidget(self.camera_boost, switch_count // 2, switch_count % 2)
                 switches.setHorizontalSpacing(24)
                 switches.setVerticalSpacing(16)
                 switches.setColumnStretch(0, 1)
@@ -796,13 +821,23 @@ class ViewWindow(QWidget):
         self._send({"action": "restore_hardware"})
 
     def update_state(self, state: dict) -> None:
-        self._settings_locked = bool(state.get("settings_locked", False))
+        tone_busy = bool(state.get("tone_busy", False))
+        selected_source = state.get("image_source", VIEW_DEFAULTS["image_source"])
+        actual_source = state.get("actual_image_source", selected_source)
+        preview_view = selected_source == "preview" and actual_source == "preview"
+        settings_locked = bool(state.get("settings_locked", False)) or tone_busy
+        if settings_locked and not self._settings_locked:
+            focused = QApplication.focusWidget()
+            if focused is not None and self.isAncestorOf(focused):
+                # Disabling a focused input advances Qt's focus chain into the
+                # calibration controls, which scrolls the menu to the bottom.
+                self.setFocus(Qt.OtherFocusReason)
+        self._settings_locked = settings_locked
         preset_available = (
             not self._settings_locked
             and state.get("processing_preset_available", False)
             and not state.get("fixed_range", False)
-            and state.get("image_source", VIEW_DEFAULTS["image_source"]) == "preview"
-            and state.get("actual_image_source", "preview") == "preview"
+            and preview_view
         )
         if not preset_available:
             self.processing_preset.timer.stop()
@@ -810,6 +845,15 @@ class ViewWindow(QWidget):
             state.get("processing_preset", "balanced"),
             preset_available,
         )
+        for row, value in ((self.camera_gamma, state.get("camera_gamma", 50)),
+                           (self.camera_boost, int(state.get("camera_boost", False)))):
+            if not preset_available:
+                row.timer.stop()
+            row.update_state(value, preset_available)
+        self.tone_status.setVisible(tone_busy)
+        self.tone_status.setText(f"Updating camera gamma… {state.get('tone_progress', 0)}%")
+        self.cancel_tone.setVisible(tone_busy)
+        self.cancel_tone.setEnabled(tone_busy and not state.get("settings_locked", False))
         if self._settings_locked:
             for row in (*self.rows.values(), *self.hardware_rows.values()):
                 row.timer.stop()
@@ -817,9 +861,11 @@ class ViewWindow(QWidget):
         self.auto_calibrate.setEnabled(not self._settings_locked)
         detail = state.get("hardware", {}).get("detail_enabled", {})
         self.fixed_range.setEnabled(
-            not self._settings_locked and detail.get("available", True)
+            preview_view and not self._settings_locked and detail.get("available", True)
             and (detail.get("value", 0) == 1 or state.get("fixed_range", False))
             and state.get("processing_preset", "balanced") == "balanced"
+            and state.get("camera_gamma", 50) == 50
+            and not state.get("camera_boost", False)
         )
         with QSignalBlocker(self.fixed_range):
             self.fixed_range.setChecked(state.get("fixed_range", False))
@@ -832,17 +878,14 @@ class ViewWindow(QWidget):
         camera_palette_selected = (
             state.get("palette_source", VIEW_DEFAULTS["palette_source"]) == "camera"
         )
-        inactive_palette = (
-            self.rows["color_palette"] if camera_palette_selected else self.hardware_rows["palette"]
-        )
-        inactive_palette.timer.stop()
-        camera_colors = state.get("color_source") == "camera"
-        raw_view = state.get("image_source", VIEW_DEFAULTS["image_source"]) == "raw"
+        camera_colors = preview_view and camera_palette_selected
+        raw_view = not preview_view
         for name, row in self.rows.items():
             row.update_state(
                 state.get(name, VIEW_DEFAULTS[name]),
                 not self._settings_locked
-                and not (name == "color_palette" and camera_palette_selected),
+                and not (name == "color_palette" and camera_colors)
+                and not (name == "palette_source" and selected_source == "raw"),
             )
         for name, row in self.hardware_rows.items():
             row.set_display_unit(state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]))
@@ -851,6 +894,8 @@ class ViewWindow(QWidget):
                 setting.get("value", HARDWARE_CONTROLS[name].minimum),
                 setting.get("available", True)
                 and not self._settings_locked
+                and not ((HARDWARE_CONTROLS[name].selector == 2 or name == "center_overlay")
+                         and not preview_view)
                 and not (state.get("fixed_range", False) and HARDWARE_CONTROLS[name].selector == 2
                          and name not in ("detail_enabled", "detail"))
                 and not (name == "palette" and not camera_palette_selected),

@@ -116,3 +116,14 @@ def test_processing_preset_preferences(monkeypatch, tmp_path):
     for invalid in (None, 0, True, [], "manual", "Shadow"):
         save_settings({"processing_preset": invalid})
         assert "processing_preset" not in load_settings()
+
+
+def test_tone_preferences_roundtrip_and_reject_invalid_values(monkeypatch, tmp_path):
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    save_settings({'camera_gamma': 25, 'camera_boost': True})
+    assert load_settings()['camera_gamma'] == 25
+    assert load_settings()['camera_boost'] is True
+    for invalid in (-1, 101, True, 25.5, '25'):
+        save_settings({'camera_gamma': invalid, 'camera_boost': 'yes'})
+        assert 'camera_gamma' not in load_settings()
+        assert 'camera_boost' not in load_settings()

@@ -72,6 +72,11 @@ def load_settings() -> dict:
     preset = saved.get("processing_preset")
     if isinstance(preset, str) and preset in PROCESSING_PRESETS:
         result["processing_preset"] = preset
+    gamma = saved.get("camera_gamma")
+    if type(gamma) is int and 0 <= gamma <= 100:
+        result["camera_gamma"] = gamma
+    if type(saved.get("camera_boost")) is bool:
+        result["camera_boost"] = saved["camera_boost"]
     try:
         result["graph_interval"] = validate_graph_interval(saved.get("graph_interval"))
     except (TypeError, ValueError):

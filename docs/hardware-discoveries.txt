@@ -113,6 +113,29 @@ Preview preset state routing           Legacy modes 0/1/2 select banks 3/1/2 or
                                       Stream stays live, saved originals restored.
                                       No controlled AGC hold yet established.
 
+Tone-curve gamma route                 FE f109 builds a256-entry206114 LUT;
+                                      replay25 darkens and75 brightens midtones,
+                                      50 is identity. Distinct from cached gamma
+                                      feeding206110. No trustworthy active LUT
+                                      getter or fresh live test established.
+Image-boost mode route                 Class78/sub31 recognizes four states for two
+                                      flags. Rebuild precedes new RAM staging,
+                                      delaying curve changes by one apply.
+                                      Offline double-apply and double-restore
+                                      verified; getter is constant success.
+Composite tone-curve controls          Independent contrast/gamma/boost branches
+                                      verified offline. Cached flags/strengths
+                                      matter; direct physical writes do not
+                                      change the cache used in a rebuild.
+Isotherm compatibility fields          SDK packet offsets49..58 and saved values
+                                      0/1800/1600/1 identified. Normal preview
+                                      apply does not consume those fields.
+                                      No working isotherm route established.
+AGC background-stage live result       User saw identical automatic/candidate
+                                      output. Original controls/stored ISP
+                                      restored. No successful hold observed;
+                                      interrupted live phase lost local rows.
+
 Evidence locations (under this repository; diagnostics are gitignored)
 --------------------------------------------------------------------
   diagnostics/telemetry-research/             Initial controls / SDK / phone audit.
@@ -124,3 +147,26 @@ Track facts separately from hypotheses: recovering contrast does not establish
 an AGC lock; a success reply does not establish a feature applied; a stored
 export does not establish active FPGA state. Preserve failed probes and side
 leads, their exact payloads, and the original configuration used in each run.
+
+Gamma / boost live follow-up (2026-10-06)
+----------------------------------------
+Dedicated FEf109 gamma25/75 acknowledged but showed no expected preview effect.
+Writing its native curves to the main206110 composite LUT DOES change preview
+midtones strongly; neutral rebuilt through the normal path.257 volatile commands
+per update need rendering-safe scheduling and preservation of other curve stages
+before product integration. Camera settings/stored ISP restored; no AGC freeze.
+Boost route is class78/sub31 (correction to the earlier legacy label). Setter
+emits success THEN fall-through error, and stages AFTER rebuilding. Consume both
+responses, apply twice. Four-state and on/off trials completed with restoration,
+but scene perturbations/drift prevent a reliable claimed visible boost effect.
+
+Static repeat and Camera-menu integration (2026-10-06)
+A later stationary-scene repeat152507 resolves the earlier confound: boost3 adds
+about9 levels (5%) to preview p99-p1 span on both repeats; cleanup exact.
+Camera gamma adjustment (50 neutral) and tone boost now have production controls.
+Gamma targets the main206110 LUT, preserves preset/contrast/boost stages, and
+uploads incrementally with progress/cancel. Boost is checkbox0/3 with double
+apply and both replies consumed. Neither is an automatic contrast freeze.
+Actual production API trial153423 changed settled preview meanY from63 to43
+(gamma25) and126 (gamma75), with257 frames during each11s upload. All SDK blocks
+and stored ISP verified after cleanup; saved selection reloads next startup.

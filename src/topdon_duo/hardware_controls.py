@@ -16,6 +16,7 @@ from uuid import uuid4
 import usb.core
 
 from .camera import CameraError
+from .tone_curves import composite_curve
 
 LOG = logging.getLogger(__name__)
 
@@ -130,6 +131,106 @@ class HardwareControls:
         self._fixed_range_bounds: tuple[int, int] | None = None
         self.processing_preset = "balanced"
         self._processing_preset_owned = False
+        self.gamma = 50
+        self.boost = False
+        self._tone_owned = False
+        self._tone_queue: list[int] = []
+        self._tone_sent = 0
+
+    @property
+    def tone_busy(self) -> bool:
+        return bool(self._tone_queue)
+
+    def _tone_command(self, body: bytes, replies: tuple[bytes, ...]) -> None:
+        packet = bytes((0xF0, len(body))) + body + bytes((sum(body) & 255, 0xFF))
+        try:
+            device = self.camera.device
+            if device.ctrl_transfer(0x41, 1, 0, 0x0A00, packet, timeout=1000) != len(packet):
+                raise CameraError("Incomplete camera tone command")
+            for expected in replies:
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    length = bytes(device.ctrl_transfer(0xC1, 0x85, 0, 0x0A00, 4, timeout=1000))
+                    size = int.from_bytes(length, "little")
+                    if len(length) not in (2, 4) or size > 128:
+                        raise CameraError("Invalid camera tone mailbox")
+                    if size:
+                        reply = bytes(device.ctrl_transfer(0xC1, 0x81, 0, 0x0A00, size, timeout=1000))
+                        if reply != expected:
+                            raise CameraError("Unexpected camera tone reply")
+                        break
+                    time.sleep(0.005)
+                else:
+                    raise CameraError("Camera tone command timed out")
+        except (usb.core.USBError, AttributeError) as exc:
+            raise CameraError(f"Camera tone transfer failed: {exc}") from exc
+
+    def _apply_boost(self, enabled: bool) -> None:
+        # This handler rebuilds before staging and emits success THEN a known
+        # fall-through error. Consume both replies for EACH of the two applies.
+        for _ in range(2):
+            self._tone_command(
+                bytes((0x36, 0x78, 0x31, 0, 3 if enabled else 0)),
+                (bytes.fromhex("f0053678310301e3ff"), bytes.fromhex("f0053678310400e3ff")),
+            )
+
+    def set_tone(self, gamma: int, boost: bool) -> None:
+        if type(gamma) is not int or not 0 <= gamma <= 100 or type(boost) is not bool:
+            raise ValueError("Gamma needs an integer 0..100 and boost needs a boolean")
+        if self._fixed_range_owned:
+            raise CameraError("Turn off Fixed mode before changing gamma or boost")
+        if gamma == 50 and not boost:
+            self.restore_tone()
+            return
+        self.load()
+        if not self._tone_owned:
+            self._fixed_range_baseline()  # Only the exact audited factory ISP.
+            if self.original[2, 5][23] != 1:
+                raise CameraError("Camera tone controls require the tested ISP baseline")
+        self._tone_owned = True  # Retain cleanup responsibility after failure.
+        try:
+            if gamma == 50 or boost != self.boost or not self._tone_queue:
+                self._apply_boost(boost)
+            self.gamma, self.boost = gamma, boost
+            self._tone_sent = 0
+            if gamma == 50:
+                self._tone_queue = []  # Native boost refresh already composes this.
+            else:
+                contrast = round(self.state()["contrast"]["value"])
+                curve = composite_curve(gamma, boost, contrast, self.processing_preset)
+                self._tone_queue = [0x80000000 | (value << 16) | i for i, value in enumerate(curve)] + [0]
+        except CameraError:
+            self.restore_tone()
+            raise
+
+    def advance_tone(self) -> bool:
+        """One LUT entry per viewer iteration; keep rendering and sampling alive."""
+        if not self._tone_queue:
+            return False
+        try:
+            value = self._tone_queue[0]
+            self._tone_command(
+                bytes.fromhex("36741300") + struct.pack(">II", 0x206110, value),
+                (bytes.fromhex("f0053674130301c1ff"),),
+            )
+            self._tone_queue.pop(0)
+            self._tone_sent += 1
+            if not self._tone_queue:
+                # Direct2090a4 is rejected; normal brightness refresh preserves
+                # the uploaded composite and the current brightness setting.
+                self.write((2, 1), self.read(2, 1))
+                return True
+        except CameraError:
+            self.restore_tone()
+            raise
+        return False
+
+    def restore_tone(self) -> None:
+        self._tone_queue = []
+        if self._tone_owned:
+            self._apply_boost(False)  # Native builder, not a guessed LUT backup.
+            self._tone_owned = False
+        self.gamma, self.boost = 50, False
 
     def _processing_command(self, mode: int | None = None) -> int:
         body = bytes((0x36, 0x23, 1 if mode is None else 0))
@@ -194,12 +295,17 @@ class HardwareControls:
             self.restore_processing_preset()
             raise
         self.processing_preset = preset
+        if self._tone_owned:
+            self.set_tone(self.gamma, self.boost)
 
     def restore_processing_preset(self) -> None:
         if self._processing_preset_owned:
             self._apply_processing_preset("balanced")
             self._processing_preset_owned = False
         self.processing_preset = "balanced"
+
+        if self._tone_owned:
+            self.set_tone(self.gamma, self.boost)
 
     def _fixed_range_baseline(self) -> tuple[int, int]:
         """Only enable the experimental path with the exact tested ISP preset."""
@@ -266,6 +372,8 @@ class HardwareControls:
         self.load()
         if self.processing_preset != "balanced":
             raise CameraError("Select the Balanced processing preset before enabling fixed mode")
+        if self._tone_owned:
+            raise CameraError("Set gamma to 50 and turn boost off before enabling Fixed mode")
         if self.state()["detail_enabled"]["value"] != 1:
             raise CameraError("Enable detail enhancement before enabling fixed mode")
         self._fixed_range_baseline()
@@ -439,8 +547,11 @@ class HardwareControls:
         self.values = values
         if resume_fixed:
             self.set_fixed_range(True)
+        if spec.selector == 2 and self._tone_owned:
+            self.set_tone(self.gamma, self.boost)
 
     def restore(self) -> None:
+        self.restore_tone()
         self.restore_fixed_range()
         self.restore_processing_preset()
         for name in tuple(self.enabled):
@@ -472,6 +583,6 @@ class HardwareControls:
 
     @property
     def preview_active(self) -> bool:
-        return self._processing_preset_owned or any(
+        return self._tone_owned or self._processing_preset_owned or any(
             HARDWARE_CONTROLS[name].selector == 2 for name in self.enabled
         )

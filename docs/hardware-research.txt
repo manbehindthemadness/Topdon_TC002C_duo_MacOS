@@ -2273,3 +2273,235 @@ normal contrast write (bank2 confirmed), selected Soft, then Balanced and restor
 All four hardware control blocks matched originals and final bank was1; streaming
 continued (~52 observed frames per2s sample), no reported errors. This is control/
 restoration verification, not evidence of AGC freeze. Comparison opened for review.
+
+AGC background-stage direct binary probe (2026-10-06)
+----------------------------------------------------
+After committing/pushing presets as ad3c931, expanded the AGC_BACK lead. Its
+getter uses cached 2060d0 (2002561c -> 2001f66c), not physical FPGA readback.
+The named open path restores cached low-byte d0/d4 and therefore does not force
+an enable state under original cached 0/1. The named close explicitly writes
+2060d0=0,2060d4=1, cache d0=0, and refresh2090a4=1. Avoid inferring active state
+from an unchanged cache getter after a direct volatile write.
+
+Offline verify_agc_background_stage.py replayed both exact generic setters for
+2060d0=0/1 down to a single whitelisted MMIO store (F88060D0), no cache changes.
+It also replayed the exact legacy 0x19 close packet f004361900004fff: the known
+0/1 pair and refresh, preserving original cached values. Existing expanded
+Balanced apply replay writes no 2060d0. Direct stage1 is an experiment with the
+binary value recognized by the cache getter's enable comparison; FPGA semantics
+and support remain unestablished. No d4 value outside original1 was tested.
+
+Live agc-background-stage-trial-20261006-144556 verified fresh original controls,
+factory stored ISP and bank1, then established the known close baseline and
+turned detail off. Tested direct d0=1, then normal Balanced processing refresh
+with the same candidate. Restore used named close plus original detail/control
+restoration. Settled meanY baseline76.079, direct1=70.354, refreshed1=80.057,
+restored0=78.777; broad useful shading and changing raw/image hashes survived.
+Modest static-scene appearance differences cannot establish an AGC hold or even
+isolate an effect from scene/temperature drift. No working hold is claimed.
+All four control blocks and complete stored ISP export matched originals, no
+errors. Saved executed source/hash, binaries, summary/tail analysis and actual
+YUY2 comparison, opened in ImageMagick. Next discriminator is a synchronized
+scene perturbation with live controls and unchanged background tracking.
+
+Background-stage interactive result (2026-10-06)
+-----------------------------------------------
+User tested the live automatic/candidate preview and reported identical output.
+agc-background-stage-live-trial-20261006-144828/summary.json verifies all four
+control blocks restored, complete stored ISP unchanged, and no restoration
+error. No successful AGC hold was observed. The interactive sampler lost its
+local per-frame rows when window closure raised KeyboardInterrupt before the
+phase append; do not claim a saved quantitative hand-in/hand-out comparison.
+Switch snapshots, earlier phases and restoration metadata survive. Future
+interactive samplers must append incremental rows or flush them in finally.
+
+Tone-curve and isotherm focused audit (2026-10-06)
+-----------------------------------------------
+Paused other AGC leads to inspect the debug strings requested by the user.
+New ignored evidence: firmware-offline/verify_tone_controls.py and
+tone-controls-replay.json; tone-overlay-refresh-excerpt.txt. No live camera
+commands were sent in this focused audit. These are bounded instruction
+replays with explicitly mocked FPGA/cache/transports, not FPGA simulation or
+proof of visible effect on this device. Model user staging starts at contrast50
+and boost0; those are declared assumptions, not fresh live RAM readbacks.
+
+Factory stored ISP values: ContrastEn206018=1, GammaEn206014=1,
+ContrastPercent206118=50, GammaPercent20611c=50 in Balanced bank1,
+boost-related physical flags206148/206150=0/0, BoostContrastPercent206174=60.
+Shadow banks2/5 instead contain GammaPercent25. This is an additional CPU-side
+explanation for Shadow's darker rendering, not proof of which FPGA stages are
+active in each live mode.
+
+Gamma has an explicit command route: extended FE operation0 command0000f109
+(dispatcher2003c4b0 compares f1/09), with a four-byte argument whose low byte
+is used at packet offset12. It invokes200253f0 ->20024c5c ->200249b4 and
+constructs256 table entries at206114, followed by refresh2090a4=1. The mapped
+0..100 domain uses105006/7/8 limits; factory limits0/50/100. No cached20611c
+update occurs in this setter. Consequently it is a distinct route from editing
+the cached gamma percentage used by the composite builder at206110. Neutral50
+reconstructs identity exactly; replay50->25->75->50 restores the same table.
+For input128, the generated outputs are128/96/177/128 respectively. The mapping
+blends compiled curves; it is not a numerical gamma exponent or temperature.
+No matching trustworthy current-table getter has been established, so stored
+GammaPercent must not be presented as readback of the active206114 table.
+
+Class78/subcommand31 setter2003dcc0 accepts a mode byte at offset6. The explicit20025c3c
+branches recognize0/1/2/3 and write206150/206148 respectively0/0,1/0,0/1,1/1,
+then refresh the composite curve through20025260. Only AFTER that refresh does
+the handler call20021218 to stage its new ImageBoostEn value in user RAM
+(200f2dc8+d4). Thus the builder uses PREVIOUS staging. Offline0->1->1->0->0
+proves delayed table activation and delayed restoration. Repeating the desired
+value rebuilds using the new stage; double0 reproduces original composite table
+under the declared model. Every nonzero staged mode enables the boost curve,
+while the two physical flags distinguish1/2/3. This is not safely described as
+one simple boolean with fully known FPGA semantics. Getter operation1 returns
+constant success1 rather than current mode, so it cannot establish originals.
+
+Composite builder20024cac reads cached ContrastEn/GammaEn, staged boost flag,
+and their strengths, then composes a256-entry output at206110. Offline varied
+strengths contrast75/gamma25/boost60 yield five distinct tables for enabled
+contrast+gamma, gamma only, contrast only, neither, and all three. Neither
+enabled gives identity. This confirms independent CPU curve branches. A direct
+physical enable/strength write does NOT update the cache this builder reads;
+ordinary refresh can rebuild from unchanged cached values. No cache-aware,
+reversible live command for these enable/strength fields has yet been verified.
+Do not equate tone-curve bypass with an upstream AGC freeze.
+
+Isotherm wire layout is concretely identified in the79-byte normal enhancement
+block: enable49, upperLE32 at50, lowerLE32 at54, type58. Both the saved legacy
+audit and product-preset original blocks contain0/1800/1600/1. Firmware defaults
+20036b34..20036b6c initialize the same thresholds. Generic SDK documentation
+uses(T+100)*10, which would interpret1800/1600 as80/60C; this interpretation is
+not a verified working isotherm threshold on this module.
+
+The setter20046214 parses/logs these fields but calls only noise, palette,
+detail and ISP-mode validators, then normal apply20038ee0. Its four per-control
+apply routines consume noise bytes1..4, detail6..7, palette-related5/17..19,
+and mode23; none consumes isotherm49..58. The wrapper's additional54f2c helper
+is gated on stream mode11 and its inspected branch does not load the isotherm
+configuration fields either. Getter2004c698 prints the fields again. No actual
+isotherm programming route was established in this normal preview path; logging,
+default values, and generic SDK definitions are not proof of working controls.
+Do not call isotherm supported or send a whole-block trial based only on logs.
+
+Practical outcome: existing contrast remains live-verified. Gamma and boost
+have explicit, now-understood CPU command paths and are useful candidates for
+further live testing once active originals/restoration are established. The
+other tone fields have real CPU composition semantics but not yet a verified
+external cache-aware setter. Isotherm remains a weaker compatibility-field
+lead. No new UI controls or claim of automatic brightness/contrast freeze.
+
+Gamma / boost live command and composite-table experiments (2026-10-06)
+---------------------------------------------------------------------
+Stopped read-only boost logger before taking sole camera ownership. Logger
+boost-log-20261006-150735 recorded preview/temperature samples and diagnostic
+snapshots, NOT an active boost value: no trustworthy getter exists. Configuration
+RAM remained unchanged during sampled hand perturbation. This does not establish
+that an unread active boost value stayed constant.
+
+Protocol correction before first live boost command:2003e048 dispatcher routes
+class78 to2003dcc0. The audited boost handler is class78/sub31, NOT standalone
+legacy31. Exact set0 packet f0053678310000dfff. Full-packet replay now exercises
+real FE gamma dispatch and class78 boost handler offsets; the earlier helper
+replay established CPU math but did not correctly label the boost wire class.
+No incorrect standalone31 live setter was sent.
+
+Boost setter sends success3/1 BEFORE applying and then falls through to an
+error4/0 response after staging, as static branches2003def0..2003dd60 predict.
+Exact replies f0053678310301e3ff, then f0053678310400e3ff. Each request must consume
+BOTH; otherwise the next request encounters the leftover error. Initial trial
+151337 hit this trap. Its cleanup encountered the same reply issue; originals
+and stored ISP still matched, and gamma50/boost0 commands had been issued. This
+is not a clean initially successful restoration verification. Trial151442
+consumed both per boost request and completed25/75/50 gamma plus boost0/1/2/3/0
+(double apply each). All four SDK blocks and stored ISP matched originals;
+no trial/restoration error. Keep both failed and successful protocol evidence.
+
+Gamma f109 exact50 request f00b36fe000000f1090000003260ff; reply
+f00736fe030000000138ff. Steady-scene trial151442 settled preview means79.05 at
+reference50,79.11 at25,77.99 at75,77.55 at50. No expected gamma response observed.
+The dedicated command writes206114; this stage appears ineffective in the
+current mode8 preview. Moderate boost differences in that first sequence do
+not isolate a repeatable effect from scene drift. Actual YUY2 comparisons saved
+and opened in ImageMagick.
+
+New offline verify_composite_gamma_upload.py verifies771 exact generic setter
+packets (three curves,256 encoded entries plus commit0 each). Every accepted
+packet reaches ONLY F8806110, same volatile MMIO as native2001c2f8 table writer;
+FPGA behavior remains outside the CPU model. Entries encode80000000 | output<<16
+| index. No cache, NVM, firmware or calibration-table write occurs. Curves are
+native firmware gamma25/75/50 tables obtained by bounded instruction replay.
+
+First composite trial151758 uploaded257 entries successfully but tried direct
+2090a4 refresh through the generic command; the address validator rejects this
+address class. This was not included in the LUT packet audit. Aborted on the
+unexpected reply, then native gamma50/boost0 double-apply rebuilt the original
+composite and verified SDK originals/ISP equality; no restoration error. Do not
+claim any active effect from this incomplete phase. Refresh must use a verified
+native route; avoid treating arbitrary register setter ACK shape as universally
+accepted. Subsequent experiment uses unchanged brightness50 through normal SDK
+mapping, which refreshes without rebuilding206110.
+
+Composite-gamma-trial-20261006-151916 completed: verified original brightness/
+contrast50, original enhancement/bank1 and factory stored ISP. Established native
+boost0 composite, uploaded gamma25/75/50 to206110, each followed by native
+brightness50 refresh. Settled meanY native reference59.123, gamma25=49.799,
+gamma75=131.556, gamma50=70.459. Example final-frame means62.03/43.58/136.99/62.49.
+Median raw-derived scene temperature approximately20.1..20.4C. Camera preview
+responds strongly at the main composite LUT, while the dedicated206114 command
+showed no corresponding effect. Scene drift prevents claiming exact per-pixel
+radiometric invariance or matched neutral-frame identity; this is an established
+working image tone-curve route, NOT automatic contrast freeze or temperature
+calibration. Actual comparison opened in ImageMagick. Native boost0 double-apply
+and SDK restore rebuild the normal curve; all four original SDK blocks and
+stored ISP unchanged, no errors. Active gamma114 table cannot be independently
+read; restore50 is a neutral reference, not an exact unseen-original claim.
+
+Boost repeat trial152114: detail temporarily off, mode0/3/0/3/0 with double-apply
+and both replies consumed each. A moving hot object appears in early saved
+frames, invalidating the intended fixed-scene comparison. Later settled meanY
+65.39 off,65.99 on,71.23 off does not isolate a useful repeatable boost effect
+from drift. All originals and stored ISP restored, no errors. Retain captures
+and analysis; do not describe this as a controlled positive/negative boost test.
+Requested a fresh still-scene comparison from the user.
+
+Product integration constraints from the working gamma route:257 USB commands
+per LUT adjustment are much slower than a scalar setter. UI needs coalescing,
+progress/cancellation and rendering-safe scheduling; a synchronous slider handler
+would stall the display. Preserve/recompose camera contrast, preset gamma and
+boost when changing a single stage, and reapply after native SDK refreshes which
+can rebuild the composite. Restoration must invoke the native builder with its
+original staging/preset; a saved SDK payload alone does not capture the LUT.
+No new production controls added during these research experiments.
+
+Static boost repeat and production integration follow-up (2026-10-06)
+Boost-repeat-trial-20261006-152507 held the circuit-board scene static; detail was
+briefly off and restored. Double applies 0/3/0/3/0, both replies consumed each:
+meanY 64.946/60.719/63.955/60.666/62.269; p99-p1 spans
+190.780/199.391/190.332/199.216/189.529. On minus neighboring off averages:
++8.835 and +9.285 luminance levels (approximately5% increased span). Paired raw
+median drift+0.0105C/+0.2492C; this does not prove per-pixel invariance. Geometry
+is stationary in the saved comparison. SDK originals and stored ISP matched on
+cleanup. This supersedes the inconclusive moving-scene boost trial, retained above.
+
+Production Camera controls now expose gamma adjustment0..100 (50 neutral) and
+boost checkbox (class78/sub31 value0 off /3 on). Gamma recomposes the existing
+boost stage, selected preset gamma and camera contrast using native integer LUT
+arithmetic, then uploads main206110 incrementally, one entry per desktop iteration.
+Last entry commit0 is followed by an unchanged SDK brightness read/write refresh.
+The dedicated FEf109 route is not used for production gamma. Pending uploads lock
+other settings/logging start; progress/cancel are provided. Cancel rebuilds the
+native curve with boost off, clears pending entries and resets adjustment50.
+Native SDK/preset changes recompose an owned tone curve. Preferences persist;
+raw view, fixed mode and logging/calibration locks apply. Boost sits with the
+other display checkboxes. Fixed mode requires neutral gamma and boost off.
+
+Product-tone-trial-20261006-153423 used actual HardwareControls.set_tone and
+advance_tone with continuous CameraFramePump streaming. Both257-command uploads
+received257 frames over10.81/10.83s; no full-upload UI blocking path is used.
+Settled final30 meanY: reference62.997, gamma25=42.607, gamma75=125.669,
+boost-on56.369, neutral60.264. Corresponding scene medians21.616/21.666/21.432/
+21.345/21.458C show ordinary drift; no calibration write or AGC lock claimed.
+All four SDK blocks exact on restore, factory ISP hash unchanged. Comparison
+opened in ImageMagick. Active boost/LUT originals remain unreadable; neutral native
+rebuild is the audited reference, not a claimed backup of unknown FPGA contents.

@@ -285,8 +285,40 @@ assert not window.processing_preset.input.isEnabled()
 window.update_state({"processing_preset": "soft", "processing_preset_available": True, "hardware": {"detail_enabled": {"value": 1}}})
 assert window.processing_preset.input.isEnabled() and not window.fixed_range.isEnabled()
 window.update_state({"processing_preset": "balanced", "processing_preset_available": True})
+# Tone controls follow preview, logging, upload and fixed-mode locks.
+for extra in ({"image_source": "raw"}, {"actual_image_source": "raw"},
+              {"settings_locked": True}, {"fixed_range": True}, {"tone_busy": True}):
+    window.update_state({"processing_preset_available": True, **extra})
+    assert not window.camera_gamma.input.isEnabled()
+    assert not window.camera_boost.input.isEnabled()
+window.update_state({"processing_preset_available": True, "tone_busy": True, "tone_progress": 40})
+assert window.cancel_tone.isEnabled() and "40%" in window.tone_status.text()
+window.cancel_tone.click()
+assert messages.pop() == {"action": "cancel_tone"}
+window.update_state({"processing_preset_available": True, "camera_gamma": 25,
+                     "camera_boost": True, "hardware": {"detail_enabled": {"value": 1}}})
+assert window.camera_gamma.input.isEnabled() and window.camera_gamma.value() == 25
+assert window.camera_boost.input.isChecked() and not window.fixed_range.isEnabled()
+assert messages == []
+window.update_state({"processing_preset_available": True})
+# Locking the focused gamma input must not scroll to calibration controls.
+scroll = window.findChild(QScrollArea)
+for control in (window.camera_gamma.input, window.camera_gamma.slider):
+    window.update_state({"processing_preset_available": True})
+    control.setFocus()
+    app.processEvents()
+    position = scroll.verticalScrollBar().value()
+    for progress in (0, 40, 99):
+        window.update_state({"processing_preset_available": True,
+                             "tone_busy": True, "tone_progress": progress})
+        app.processEvents()
+        assert scroll.verticalScrollBar().value() == position
+    window.update_state({"processing_preset_available": True})
+    app.processEvents()
+    assert scroll.verticalScrollBar().value() == position
+assert messages == []
 # Wheel events cannot edit dropdowns, numeric inputs or sliders, even with focus.
-for control_row in (window.processing_preset, *window.rows.values(), *window.hardware_rows.values()):
+for control_row in (window.processing_preset, window.camera_gamma, window.camera_boost, *window.rows.values(), *window.hardware_rows.values()):
     for control in (control_row.input, control_row.slider):
         if control is None:
             continue
@@ -316,7 +348,7 @@ scroll.verticalScrollBar().setValue(0)
 
 switches = [row.input for row in (*window.rows.values(), *window.hardware_rows.values()) if row.is_switch]
 assert all(isinstance(control, QCheckBox) for control in switches)
-assert set(window.findChildren(QCheckBox)) == set(switches + [window.auto_calibrate, window.fixed_range, window.advanced_auto])
+assert set(window.findChildren(QCheckBox)) == set(switches + [window.auto_calibrate, window.fixed_range, window.advanced_auto, window.camera_boost.input])
 assert not hasattr(window, "fixed_lower") and not hasattr(window, "fixed_bounds_apply")
 window.update_state({"hardware": {"detail_enabled": {"value": 0, "available": True}}})
 assert not window.fixed_range.isEnabled()
@@ -393,10 +425,10 @@ assert not window.hardware_rows["palette"].input.isEnabled()
 window.controls["palette_source"].setCurrentIndex(window.controls["palette_source"].findData("camera"))
 window.rows["palette_source"]._emit()
 assert messages[-1] == {"action": "setting", "name": "palette_source", "value": "camera"}
-# Availability follows the selected source, even when actual output falls back.
+# Raw thermal rendering uses app colors even with a saved camera color preference.
 window.update_state({**VIEW_DEFAULTS, "palette_source": "camera", "image_source": "raw", "color_source": "app"})
-assert window.hardware_rows["palette"].input.isEnabled()
-assert not window.controls["color_palette"].isEnabled()
+assert not window.hardware_rows["palette"].input.isEnabled()
+assert window.controls["color_palette"].isEnabled()
 window.update_state({**VIEW_DEFAULTS, "palette_source": "app", "color_source": "camera"})
 assert window.controls["color_palette"].isEnabled()
 assert not window.hardware_rows["palette"].input.isEnabled()
@@ -459,6 +491,37 @@ row._emit()
 assert messages[-1]["value"] == 27.5
 window.update_state({**state, "temperature_unit": "C"})
 assert row.input.value() == 30
+
+# Check both sources and preview-to-raw fallback, including pending edits.
+shared = ("ambient", "reflected", "distance", "emissivity", "transmission", "humidity")
+preview_only = [name for name, spec in HARDWARE_CONTROLS.items()
+                if spec.selector == 2 or name == "center_overlay"]
+for extra in ({"image_source": "raw"},
+              {"image_source": "preview", "actual_image_source": "raw"}):
+    window.update_state({**VIEW_DEFAULTS, "processing_preset_available": True})
+    for name in preview_only:
+        window.hardware_rows[name].timer.start()
+    window.update_state({**VIEW_DEFAULTS, "processing_preset_available": True,
+                         "hardware": {"detail_enabled": {"value": 1}}, **extra})
+    for name in preview_only:
+        control = window.hardware_rows[name]
+        assert not control.input.isEnabled() and not control.timer.isActive()
+        if control.slider is not None:
+            assert not control.slider.isEnabled()
+    assert not window.fixed_range.isEnabled()
+    assert not window.camera_gamma.input.isEnabled()
+    assert not window.camera_boost.input.isEnabled()
+    assert not window.processing_preset.input.isEnabled()
+    assert window.controls["color_palette"].isEnabled()
+    assert window.controls["palette_source"].isEnabled() == (extra["image_source"] == "preview")
+    assert all(window.hardware_rows[name].input.isEnabled() for name in shared)
+    assert all(window.controls[name].isEnabled() for name in
+               ("image_source", "image_filter", "upsampling", "mirror_horizontal", "antialiasing"))
+window.update_state({**VIEW_DEFAULTS, "processing_preset_available": True,
+                     "hardware": {"detail_enabled": {"value": 1}}})
+assert all(window.hardware_rows[name].input.isEnabled() for name in preview_only)
+assert window.camera_gamma.input.isEnabled() and window.camera_boost.input.isEnabled()
+assert window.fixed_range.isEnabled() and not window.controls["color_palette"].isEnabled()
 
 # Ambient typing retains the requested Fahrenheit value; the owner rounds the USB write.
 window.update_state(state)
@@ -644,7 +707,7 @@ assert switches.columnCount() == 2
 assert headings["Display controls"] < body_layout.indexOf(switches) < headings["AI enhancement"]
 expected = [row for row in (*window.rows.values(), *window.hardware_rows.values())
             if row.is_switch]
-assert switches.count() == len(expected) + 1
+assert switches.count() == len(expected) + 2
 for index, control in enumerate(expected):
     assert switches.itemAtPosition(index // 2, index % 2).widget() is control
     assert control.slider is None
@@ -935,3 +998,36 @@ def test_processing_preset_command_is_locked_during_logging(viewer, monkeypatch)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set_processing_preset.assert_called_once_with("balanced")
+
+
+def test_tone_selection_reloads_after_hardware_and_presets_and_persists(viewer, monkeypatch):
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    save_settings({'hardware': {'contrast': 70}, 'processing_preset': 'shadow',
+                   'camera_gamma': 25, 'camera_boost': True})
+    panel = Mock()
+    panel.poll.return_value = [{'action': 'tone', 'gamma': 75}]
+    monkeypatch.setattr(desktop, 'ViewPanel', lambda: panel)
+    monkeypatch.setattr(desktop.cv2, 'waitKey', lambda _: ord('q'))
+
+    def apply(gamma, boost):
+        viewer.hardware.gamma, viewer.hardware.boost = gamma, boost
+
+    viewer.hardware.set_tone.side_effect = apply
+    assert desktop.main([]) == 0
+    assert [call.args for call in viewer.hardware.set_tone.call_args_list] == [(25, True), (75, True)]
+    calls = viewer.hardware.mock_calls
+    assert calls.index(next(c for c in calls if c[0] == 'set_processing_preset')) < calls.index(
+        next(c for c in calls if c[0] == 'set_tone'))
+    assert load_settings()['camera_gamma'] == 75 and load_settings()['camera_boost'] is True
+
+
+def test_tone_commands_are_locked_during_logging(viewer, monkeypatch):
+    viewer.graphs.logging = True
+    panel = Mock()
+    panel.poll.return_value = [{'action': 'tone', 'gamma': 25}, {'action': 'cancel_tone'}]
+    monkeypatch.setattr(desktop, 'ViewPanel', lambda: panel)
+    monkeypatch.setattr(desktop.cv2, 'waitKey', lambda _: ord('q'))
+    assert desktop.main([]) == 0
+    viewer.hardware.set_tone.assert_not_called()
+    viewer.hardware.restore_tone.assert_not_called()

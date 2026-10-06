@@ -15,6 +15,10 @@ def viewer(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     hardware = Mock(original={"loaded": True}, enabled=set(), error="", preview_active=False)
     hardware.processing_preset = "balanced"
+    hardware.gamma = 50
+    hardware.boost = False
+    hardware.tone_busy = False
+    hardware._tone_sent = 0
     hardware.state.return_value = {"ambient": {"value": 30.0, "available": True}}
     monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
     graphs = Mock(logging=False)

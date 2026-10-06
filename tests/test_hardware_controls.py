@@ -469,3 +469,63 @@ def test_busy_calibration_command_has_bounded_timeout(monkeypatch):
     control = HardwareControls(SimpleNamespace(device=device))
     with pytest.raises(CameraError, match="timed out"):
         control.calibrate_now()
+
+
+def prepare_tone_controls(controls):
+    original = bytearray(controls.original[2, 5])
+    original[23] = 1
+    controls.original[2, 5] = bytes(original)
+    controls._fixed_range_baseline = Mock(return_value=(1000, 2800))
+    controls._apply_boost = Mock()
+    controls._tone_command = Mock()
+    return controls
+
+
+def test_tone_upload_is_incremental_and_preserves_brightness(controls):
+    controls = prepare_tone_controls(controls)
+    brightness = controls.read(2, 1)
+    controls.set_tone(25, False)
+    assert controls.tone_busy and len(controls._tone_queue) == 257
+    assert not controls.advance_tone()
+    assert controls._tone_command.call_count == 1
+    body, replies = controls._tone_command.call_args.args
+    assert body[:8] == bytes.fromhex('3674130000206110')
+    assert replies == (bytes.fromhex('f0053674130301c1ff'),)
+    for _ in range(255):
+        assert not controls.advance_tone()
+    assert controls.advance_tone()
+    assert not controls.tone_busy
+    assert controls._tone_command.call_args.args[0][-4:] == bytes(4)
+    assert controls.read(2, 1) == brightness
+    controls.restore_tone()
+    assert (controls.gamma, controls.boost, controls._tone_owned) == (50, False, False)
+
+
+def test_neutral_gamma_rebuilds_native_curve_during_pending_upload(controls):
+    controls = prepare_tone_controls(controls)
+    controls.set_tone(25, True)
+    controls.advance_tone()
+    controls._apply_boost.reset_mock()
+    controls.set_tone(50, True)
+    controls._apply_boost.assert_called_once_with(True)
+    assert not controls.tone_busy and controls.boost
+
+
+def test_tone_upload_failure_restores_native_processing(controls):
+    controls = prepare_tone_controls(controls)
+    controls.set_tone(75, True)
+    controls._tone_command.side_effect = CameraError('upload failed')
+    with pytest.raises(CameraError, match='upload failed'):
+        controls.advance_tone()
+    assert not controls.tone_busy and not controls._tone_owned
+    controls._apply_boost.assert_called_with(False)
+
+
+def test_boost_applies_twice_and_consumes_both_firmware_replies(controls):
+    controls._tone_command = Mock()
+    controls._apply_boost(True)
+    assert controls._tone_command.call_count == 2
+    for call in controls._tone_command.call_args_list:
+        assert call.args == (bytes.fromhex('3678310003'),
+                             (bytes.fromhex('f0053678310301e3ff'),
+                              bytes.fromhex('f0053678310400e3ff')))

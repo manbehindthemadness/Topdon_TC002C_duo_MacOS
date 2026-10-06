@@ -1118,6 +1118,8 @@ def main(argv: list[str] | None = None) -> int:
     auto_calibrate = saved_settings.get("auto_calibrate", False)
     remembered_fixed_range = saved_settings.get("fixed_range", False)
     remembered_processing_preset = saved_settings.get("processing_preset", "balanced")
+    remembered_gamma = saved_settings.get("camera_gamma", 50)
+    remembered_boost = saved_settings.get("camera_boost", False)
     calibration_available = False
     startup_calibration_pending = True
     show_graph = saved_settings.get("show_graph", False)
@@ -1212,6 +1214,8 @@ def main(argv: list[str] | None = None) -> int:
                     "auto_calibrate": auto_calibrate,
                     "fixed_range": remembered_fixed_range,
                     "processing_preset": remembered_processing_preset,
+                    "camera_gamma": remembered_gamma,
+                    "camera_boost": remembered_boost,
                     "show_graph": show_graph,
                     "graph_interval": graph_interval,
                     "graph_settings": graph_settings,
@@ -1466,6 +1470,10 @@ def main(argv: list[str] | None = None) -> int:
             "fixed_range": hardware.fixed_range,
             "processing_preset": hardware.processing_preset,
             "processing_preset_available": bool(hardware.original),
+            "camera_gamma": hardware.gamma,
+            "camera_boost": hardware.boost,
+            "tone_busy": hardware.tone_busy,
+            "tone_progress": round(hardware._tone_sent * 100 / 257),
             "actual_image_source": actual_image_source,
             "settings_locked": graphs.logging
             or emissivity_calibration.running
@@ -1551,6 +1559,12 @@ def main(argv: list[str] | None = None) -> int:
                 remembered_fixed_range = False
                 hardware.error = f"Could not restore fixed mode: {exc}"
                 LOG.warning("%s", hardware.error)
+        if remembered_gamma != 50 or remembered_boost:
+            try:
+                hardware.set_tone(remembered_gamma, remembered_boost)
+            except (CameraError, ValueError) as exc:
+                hardware.error = f"Could not restore gamma/boost: {exc}"
+                LOG.warning("%s", hardware.error)
         return True
 
     try:
@@ -1577,6 +1591,14 @@ def main(argv: list[str] | None = None) -> int:
         last_frame = None
         last_frame_at = None
         for frame in diagnostics.frames(frame_pump):
+            if hardware.tone_busy:
+                try:
+                    if hardware.advance_tone():
+                        notify("Camera tone update complete")
+                except CameraError as exc:
+                    remembered_gamma, remembered_boost = hardware.gamma, hardware.boost
+                    hardware.error = str(exc)
+                    persist_settings()
             fresh_frame = frame is not None
             if fresh_frame:
                 last_frame = frame
@@ -1675,6 +1697,8 @@ def main(argv: list[str] | None = None) -> int:
                     "auto_calibrate",
                     "fixed_range",
                     "processing_preset",
+                    "tone",
+                    "cancel_tone",
                     "restore_hardware",
                     "reset",
                     "distance_calibration",
@@ -1695,8 +1719,21 @@ def main(argv: list[str] | None = None) -> int:
                         "reset",
                     ):
                         reflected_calibration.cancel()
+                    if hardware.tone_busy and command.get("action") not in ("tone", "cancel_tone", "restore_hardware"):
+                        raise ValueError("Wait for the camera tone update, or cancel it")
                     if command.get("action") == "setting":
                         set_view_setting(command["name"], command["value"])
+                    elif command.get("action") == "tone":
+                        if renderer.image_source != "preview" or actual_image_source != "preview":
+                            raise ValueError("Gamma and boost require Camera preview")
+                        hardware.set_tone(command.get("gamma", hardware.gamma), command.get("boost", hardware.boost))
+                        remembered_gamma, remembered_boost = hardware.gamma, hardware.boost
+                        persist_settings()
+                        hardware.error = ""
+                    elif command.get("action") == "cancel_tone":
+                        hardware.restore_tone()
+                        remembered_gamma, remembered_boost = 50, False
+                        persist_settings()
                     elif command.get("action") == "processing_preset":
                         if renderer.image_source != "preview" or actual_image_source != "preview":
                             raise ValueError("Camera processing presets require Camera preview")
@@ -1859,6 +1896,7 @@ def main(argv: list[str] | None = None) -> int:
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
                         hardware.restore()
+                        remembered_gamma, remembered_boost = 50, False
                         remembered_processing_preset = hardware.processing_preset
                         remembered_fixed_range = False
                         remembered_hardware.clear()
@@ -2050,6 +2088,8 @@ def main(argv: list[str] | None = None) -> int:
                 if save_path is not None:
                     try:
                         if kind == "graph_log":
+                            if hardware.tone_busy:
+                                raise ValueError("Wait for the camera tone update before starting logging")
                             emissivity_calibration.cancel()
                             path = graphs.start_logging(save_path)
                             spot_drag.cancel()
