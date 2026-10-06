@@ -513,3 +513,101 @@ and do not use the unavailable mailbox getter as verification. Exit re-enables
 automatic operation, including after an uncertain failed auto-switch write;
 the saved user preference remains unchanged. Numeric hardware restore and
 display reset preserve the switch choice and saved calibration references.
+
+Intermittent short/corrupt frames: evidence and research (2026-10-05)
+-----------------------------------------------------------------
+This failure differs from the previously captured shutter event. USB reads
+continue, but complete mode-8 frames stop arriving for tens of seconds or
+minutes. The capture thread keeps the GUI responsive and rejects these frames;
+it has not eliminated the underlying stream problem. Focus and resize tests
+held 25 complete frames/s in each 15-second phase; this does not establish that
+longer focus/resize interactions cannot contribute. No edits or tests were
+running during subsequent failures.
+
+Saved evidence:
+  diagnostics/viewer-rejected-capture-20261005-232214.rejected-01.bin
+  diagnostics/viewer-rejected-capture-20261005-232214.rejected-02.bin
+  diagnostics/rejected-telemetry-analysis.json
+The first rejected frame has 390,432 bytes, versus 496,160 expected. Its
+temperature plane appears plausible, but its preview is incomplete. The second
+has 493,274 bytes and contains preview-like high values in the first six rows
+of its temperature plane. Do not salvage short frames based on plausible
+temperature values or absence of endpoint counts alone.
+
+Telemetry comparison, offsets in bytes from frame start:
+  0       Magic remains 0x70827773.
+  4       Header length remains 4636, excluding the magic DWORD.
+  20..32  Supplementary block remains [1,1,0,0]; frozen-data flag is clear.
+  40,84   Matching counters advance from 218600 to 220048 across 30.018 s.
+          Related SDK calls these frame sequence numbers, commonly step 2.
+  48..63  Date/time block advances about 30 s; repeated at 104..119.
+  64,68   Temperature dimensions remain 256 by 192.
+  72,96   Length fields remain 98308 and 98304. No changed-length indication.
+  128     Correction floats remain [100,1200,80,30]; second is still unknown.
+  144     Header min/max/average for second capture: 20.1/52.1/27.1 C.
+          Actual damaged plane decodes to 20.016/614.406/41.453 C using /64-50.
+          Header summaries can provide an independent consistency check, but
+          previously observed summary lag/zero startup values require care.
+  156..168 Values change in the area corresponding to scene point coordinates;
+          they are not established as error codes.
+  4632    Changing DWORD precedes the end marker. Related SDK structures have
+          dwCrcVal, but this camera's field and algorithm are NOT verified.
+          Standard zlib CRC32 variants, DWORD sum, and XOR did not match the
+          tested candidate header ranges. A header-only checksum would not
+          necessarily detect corruption in the following pixel planes.
+  4636    End marker remains 0xAABBCCDD.
+Between the two rejected headers, differences are confined to counters,
+timestamps, scene summaries/coordinates, and the candidate checksum. No
+additional stream-fault flag has been identified. This comparison does not
+prove that an undiscovered status field never changes during other failures.
+
+Separate command status: related HCUSBSDK USB_COMMAND_STATE documents 0x0C
+as USB_ERROR_BULK_DATA_EXCEPTION, plus 0x0A internal execution and 0x0B protocol
+exceptions. These are control responses, not established telemetry fields.
+Whether selector 6 reports unsolicited ongoing capture failures is unverified;
+future probing must use the existing USB owner without concurrent claiming.
+
+Public primary-source findings:
+1. TOPDON's manual documents normal shutter clicks and reconnecting an
+   unresponsive device; it does not describe this short-frame/corruption case.
+   https://web-file.topdon.com/topdon-web/information_download/TC002C-Duo-User-Manual-EN.pdf
+2. Another TC002C Duo Linux implementation reports desynchronized/tiled frames,
+   rejects them, and reopens its stream after consecutive unusable frames.
+   Its OpenCV/V4L2 acquisition path differs from our direct USB path. Its
+   reported fixes are useful leads, not a validated diagnosis for this viewer.
+   https://github.com/leswright1977/PyThermalCamera/pull/29
+3. Teledyne's USB 3.1 camera engineering note describes camera-buffer overflow
+   partially overwriting images when host requests fall behind. Our camera
+   uses USB 2.0, so this is a related mechanism, not model-specific proof.
+   https://www.teledynevisionsolutions.com/support/support-center/whitepaper/iis/enhancing-usb-3.1-cameras-reliability-with-frame-buffer/
+4. libuvc queues asynchronous bulk transfers and explicitly documents using
+   many buffers to avoid missed transfers from scheduling delays. Its current
+   default is 100 buffers on non-Apple platforms, 20 on Apple. Our dedicated
+   capture thread still submits one synchronous USB read at a time.
+   https://github.com/libuvc/libuvc/blob/master/src/stream.c
+   https://github.com/libuvc/libuvc/blob/master/include/libuvc/libuvc_internal.h
+5. libusb documents short successful transfers and partial data on timeout.
+   PyUSB accepts partial-timeout data internally. The measured reads during
+   this failure were roughly 20-30 ms, versus the configured 2 s timeout,
+   so hidden partial timeouts do not explain these particular captures.
+   https://libusb.sourceforge.io/api-1.0/group__libusb__syncio.html
+
+Next distinguishing experiments: compare queued asynchronous capture with
+single synchronous reads under the same GUI workload; compare temperature-only
+mode 2 with composite mode 8 to reduce bandwidth; test bounded stream reopening
+as recovery while preserving hardware settings and marking gaps explicitly.
+These are proposed experiments, not completed fixes. Continue rejecting
+corrupted frames and retain the saved originals for offline comparison.
+
+Queued capture validation (2026-10-05 local / 2026-10-06 UTC):
+The Linux desktop kept 32 asynchronous bulk reads submitted on the existing
+libusb connection. The first trial ran 21.5 minutes with 32,230 valid frames,
+no additional size rejections after startup, and no USB timeouts. Clean shutdown
+cancelled the pending transfers and released the viewer, watcher, and awake
+helper. A repeat passed 42 minutes with 63,481 valid frames at approximately
+25 fps, no new rejections after startup, and no USB timeouts; the UI heartbeat
+remained healthy. The user reported sustained stability and accepted the fix.
+This supports queued acquisition as the practical fix; it does not establish
+the camera firmware's precise failure mechanism. The Linux desktop now defaults
+to depth 32, with --usb-queue-depth 0 retaining the synchronous fallback. macOS
+and the generic camera API retain their synchronous defaults pending validation.

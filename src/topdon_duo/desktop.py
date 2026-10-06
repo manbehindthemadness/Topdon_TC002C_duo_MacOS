@@ -1120,6 +1120,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--diagnostics", type=Path, help="Write UI timings and stall thread stacks")
+    parser.add_argument(
+        "--usb-queue-depth", type=int, choices=(0, *range(2, 129)),
+        default=32 if sys.platform.startswith("linux") else 0,
+        help="Queued USB requests (2-128; 0: synchronous; default: 32 on Linux, 0 elsewhere)",
+    )
     args = parser.parse_args(argv)
     if args.timelapse_fpm is not None and not 1 <= args.timelapse_fpm <= TIMELAPSE_MAX_FPM:
         parser.error(f"--timelapse-fpm must be between 1 and {TIMELAPSE_MAX_FPM}")
@@ -1159,6 +1164,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.ambient is not None:
         LOG.warning("--ambient is ignored; set hardware ambient temperature in Camera.")
     camera = TC002CDuoCamera()
+    camera.usb_queue_depth = args.usb_queue_depth
     display_awake = DisplayAwake()
     picker = MousePicker()
     spots = SampleSpots()
@@ -1558,6 +1564,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         diagnostics.stage("camera_open")
         camera.stream_observer = diagnostics.stream if args.diagnostics else None
+        camera.rejected_frame_observer = diagnostics.rejected_frame if args.diagnostics else None
         camera.open()
         diagnostics.stage("hardware_setup")
         display_awake.start()

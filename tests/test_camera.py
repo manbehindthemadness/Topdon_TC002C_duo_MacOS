@@ -104,6 +104,15 @@ def test_linux_rejects_stale_midframe_data_even_when_size_matches():
     assert assembler.feed(bytes([2, 0x83]) + make_frame()) == make_frame()
 
 
+def test_rejected_frame_observer_sees_buffer_before_it_is_cleared():
+    assembler = LinuxFrameAssembler()
+    captures = []
+    assembler.rejected_frame_observer = lambda frame: captures.append(bytes(frame))
+    assert assembler.feed(b"\x02\x82short") is None
+    assert captures == [b"short"]
+    assert assembler._data == b""
+
+
 def test_assembler_diagnostics_distinguish_header_error_size_and_magic():
     assembler = LinuxFrameAssembler()
     assert assembler.feed(b"\x01") is None
@@ -122,6 +131,8 @@ def test_stream_diagnostics_distinguish_timeouts_from_rejected_frames(monkeypatc
     monkeypatch.setattr(camera_module.sys, "platform", "linux")
     clock = iter((0.0, 2.0, 4.0))
     monkeypatch.setattr(camera_module.time, "monotonic", lambda: next(clock))
+    read_clock = iter((0.0, 2.0, 2.25, 2.26, 2.27, 2.28))
+    monkeypatch.setattr(camera_module.time, "perf_counter", lambda: next(read_clock))
     camera = TC002CDuoCamera()
     camera.mode = NegotiatedMode(1, 10, 400_000, FRAME_BYTES, 5020)
     camera.device = Mock()
@@ -140,11 +151,18 @@ def test_stream_diagnostics_distinguish_timeouts_from_rejected_frames(monkeypatc
         frames.close()
     assert events[0]["timeouts"] == 1
     assert events[0]["packets"] == 0
+    assert events[0]["longest_read_seconds"] == 2.0
+    assert events[0]["packet_lengths"] == {}
     assert events[1]["packets"] == 1
     assert events[1]["rejected"]["magic_mismatch"] == 1
+    assert events[1]["longest_host_gap_seconds"] == 0.25
+    assert events[1]["longest_read_seconds"] == 0.01
+    assert events[1]["packet_lengths"] == {str(FRAME_BYTES + 2): 1}
+    assert events[1]["packet_headers"] == {"0282": 1}
     assert events[2]["packets"] == 2
     assert events[2]["frames"] == 1
     assert events[2]["bytes"] == (FRAME_BYTES + 2) * 2
+    assert events[2]["packet_headers"] == {"0283": 1}
 
 
 @pytest.mark.parametrize("platform", ["linux", "darwin"])

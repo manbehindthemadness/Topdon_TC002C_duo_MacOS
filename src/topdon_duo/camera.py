@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Self
 
@@ -15,6 +16,8 @@ import libusb_package
 import numpy as np
 import usb.core
 import usb.util
+
+from .queued_usb import QueuedBulkReader
 
 LOG = logging.getLogger(__name__)
 
@@ -80,6 +83,7 @@ class FrameAssembler:
         self._data = bytearray()
         self.last_rejected_size = None
         self.last_rejected_prefix = None
+        self.rejected_frame_observer = None
         self.rejected = {
             "invalid_header": 0,
             "uvc_error": 0,
@@ -137,6 +141,9 @@ class LinuxFrameAssembler(FrameAssembler):
             self.last_rejected_size = len(self._data)
             self.last_rejected_prefix = self._data[:16].hex()
             self.rejected["size_mismatch"] += 1
+            if self.rejected_frame_observer is not None:
+                # The observer must consume this buffer synchronously; it is cleared below.
+                self.rejected_frame_observer(self._data)
             self._data.clear()
             return None
         if not self._data.startswith(struct.pack("<I", FRAME_MAGIC)):
@@ -243,6 +250,8 @@ class TC002CDuoCamera:
         self._detached: list[int] = []
         self._running = threading.Event()
         self.stream_observer = None
+        self.rejected_frame_observer = None
+        self.usb_queue_depth = 0
 
     @staticmethod
     def find():
@@ -395,13 +404,18 @@ class TC002CDuoCamera:
             assembler = LinuxFrameAssembler(self.mode.max_frame_size)
         else:
             assembler = FrameAssembler()
+        assembler.rejected_frame_observer = self.rejected_frame_observer
         read_size = max(16_384, self.mode.max_payload_size)
         observer = self.stream_observer
         totals = {"packets": 0, "bytes": 0, "timeouts": 0, "frames": 0}
         next_report = 0.0
+        packet_lengths = {}
+        packet_headers = {}
+        longest_read = longest_gap = 0.0
+        last_read_finished = None
 
         def report():
-            nonlocal next_report
+            nonlocal next_report, longest_read, longest_gap
             now = time.monotonic()
             if now >= next_report:
                 observer(
@@ -412,30 +426,62 @@ class TC002CDuoCamera:
                         "buffered_bytes": len(assembler._data),
                         "last_rejected_size": assembler.last_rejected_size,
                         "last_rejected_prefix": assembler.last_rejected_prefix,
+                        "packet_lengths": packet_lengths.copy(),
+                        "packet_headers": packet_headers.copy(),
+                        "longest_read_seconds": round(longest_read, 6),
+                        "longest_host_gap_seconds": round(longest_gap, 6),
+                        "usb_queue_depth": self.usb_queue_depth,
+                        "transfer_statuses": dict(reader.statuses) if reader else {},
                     }
                 )
                 next_report = now + 1
+                packet_lengths.clear()
+                packet_headers.clear()
+                longest_read = longest_gap = 0.0
 
-        while self._running.is_set():
-            try:
-                packet = bytes(self.device.read(BULK_ENDPOINT, read_size, timeout=self.timeout_ms))
-            except usb.core.USBTimeoutError:
+        transport = (
+            QueuedBulkReader(
+                self.device, BULK_ENDPOINT, read_size, self.timeout_ms, self.usb_queue_depth
+            )
+            if self.usb_queue_depth else nullcontext(None)
+        )
+        with transport as reader:
+            while self._running.is_set():
                 if observer is not None:
-                    totals["timeouts"] += 1
+                    read_started = time.perf_counter()
+                    if last_read_finished is not None:
+                        longest_gap = max(longest_gap, read_started - last_read_finished)
+                try:
+                    packet = (
+                        reader.read() if reader is not None
+                        else bytes(self.device.read(BULK_ENDPOINT, read_size, timeout=self.timeout_ms))
+                    )
+                except usb.core.USBTimeoutError:
+                    if observer is not None:
+                        last_read_finished = time.perf_counter()
+                        longest_read = max(longest_read, last_read_finished - read_started)
+                        totals["timeouts"] += 1
+                        report()
+                    continue
+                except usb.core.USBError as exc:
+                    if not self._running.is_set():
+                        break
+                    raise CameraError(f"USB stream read failed: {exc}") from exc
+                if observer is not None:
+                    last_read_finished = time.perf_counter()
+                    longest_read = max(longest_read, last_read_finished - read_started)
+                    length = str(len(packet))
+                    header = packet[:2].hex()
+                    packet_lengths[length] = packet_lengths.get(length, 0) + 1
+                    packet_headers[header] = packet_headers.get(header, 0) + 1
+                frame = assembler.feed(packet)
+                if observer is not None:
+                    totals["packets"] += 1
+                    totals["bytes"] += len(packet)
+                    totals["frames"] += int(frame is not None)
                     report()
-                continue
-            except usb.core.USBError as exc:
-                if not self._running.is_set():
-                    break
-                raise CameraError(f"USB stream read failed: {exc}") from exc
-            frame = assembler.feed(packet)
-            if observer is not None:
-                totals["packets"] += 1
-                totals["bytes"] += len(packet)
-                totals["frames"] += int(frame is not None)
-                report()
-            if frame is not None:
-                yield frame
+                if frame is not None:
+                    yield frame
 
     def close(self) -> None:
         self._running.clear()

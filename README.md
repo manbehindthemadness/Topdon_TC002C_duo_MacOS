@@ -690,6 +690,12 @@ build a queue of old images. If no new frame arrives for half a second, the imag
 and readouts are held while graphs mark measurements invalid and CSV logging
 skips them. Window events remain responsive while capture waits for the camera.
 
+On Linux, the desktop viewer keeps 32 asynchronous USB reads queued so host
+scheduling delays do not interrupt capture requests. Completed reads are
+resubmitted before their packets are processed. Use `--usb-queue-depth 0` for
+synchronous capture, or choose a depth from 2 to 128. Other platforms retain
+synchronous capture by default; queued capture has been validated on Linux.
+
 ## Development
 
 To investigate a Linux viewer stall without reopening its camera, monitor the

@@ -25,6 +25,15 @@ from topdon_duo.desktop import (
 from topdon_duo.render import READOUT_HEIGHT, ThermalRenderer, draw_temperature_readout
 
 
+@pytest.mark.parametrize("platform,expected", [("linux", 32), ("darwin", 0)])
+def test_usb_queue_default_and_synchronous_override(monkeypatch, platform, expected):
+    from topdon_duo import desktop
+
+    monkeypatch.setattr(desktop.sys, "platform", platform)
+    assert desktop.parse_args([]).usb_queue_depth == expected
+    assert desktop.parse_args(["--usb-queue-depth", "0"]).usb_queue_depth == 0
+
+
 def test_detailed_render_keeps_oriented_radiometric_arrays():
     rendered = ThermalRenderer(rotation=90).render_detailed(make_frame())
     assert rendered.temperatures_celsius.shape == (256, 192)

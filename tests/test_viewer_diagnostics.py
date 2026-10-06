@@ -59,3 +59,26 @@ def test_disabled_diagnostics_passes_frames_through_without_files():
     assert list(diagnostics.frames([b"frame"])) == [b"frame"]
     diagnostics.close()
     assert diagnostics._thread is None
+
+
+def test_rejected_frame_capture_is_bounded_and_preserves_bytes(tmp_path, monkeypatch):
+    monkeypatch.setattr(viewer_diagnostics.threading, "Thread", lambda **_kwargs: Mock())
+    clock = [0.0]
+    monkeypatch.setattr(viewer_diagnostics.time, "monotonic", lambda: clock[0])
+    path = tmp_path / "ui.jsonl"
+    diagnostics = viewer_diagnostics.ViewerDiagnostics(path)
+    frame = bytearray(viewer_diagnostics.FRAME_MAGIC.to_bytes(4, "little"))
+    frame.extend(bytes(viewer_diagnostics.FRAME_BYTES))
+    try:
+        diagnostics.rejected_frame(b"short")
+        diagnostics.rejected_frame(bytes(len(frame)))
+        for _ in range(6):
+            diagnostics.rejected_frame(frame)
+            diagnostics.rejected_frame(frame)
+            clock[0] += 31
+    finally:
+        diagnostics.close()
+    captures = list(tmp_path.glob("*.bin"))
+    assert len(captures) == 4
+    assert all(p.read_bytes() == bytes(frame) for p in captures)
+    assert len([r for r in records(path) if r["event"] == "rejected_frame_capture"]) == 4

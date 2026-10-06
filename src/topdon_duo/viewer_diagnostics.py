@@ -9,6 +9,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .camera import FRAME_BYTES, FRAME_MAGIC
+
 
 class ViewerDiagnostics:
     def __init__(self, path: Path | None):
@@ -22,6 +24,9 @@ class ViewerDiagnostics:
         self._sequence = 0
         self._frames = 0
         self._status = None
+        self._path = path
+        self._rejected_captures = 0
+        self._last_rejected_capture = float("-inf")
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
             self._output = path.open("a", buffering=1)
@@ -77,6 +82,29 @@ class ViewerDiagnostics:
         if self._output is not None:
             with self._lock:
                 self._write("usb_stream", **counters)
+
+    def rejected_frame(self, frame):
+        """Save a bounded sample of long rejected frames for offline inspection."""
+        if (
+            self._output is None
+            or self._rejected_captures >= 4
+            or len(frame) < FRAME_BYTES
+            or frame[:4] != FRAME_MAGIC.to_bytes(4, "little")
+        ):
+            return
+        now = time.monotonic()
+        if now - self._last_rejected_capture < 30:
+            return
+        with self._lock:
+            self._rejected_captures += 1
+            self._last_rejected_capture = now
+            path = self._path.with_suffix(f".rejected-{self._rejected_captures:02d}.bin")
+            try:
+                path.write_bytes(frame)
+            except OSError as exc:
+                self._write("rejected_frame_capture_error", error=str(exc))
+            else:
+                self._write("rejected_frame_capture", path=str(path), bytes=len(frame))
 
     def _watch(self):
         reported = None
