@@ -2561,3 +2561,286 @@ Saved camera_boost values are now integers; old false/true migrate to0/3.
 Raw/fallback view, fixed mode, logging/calibration and upload locks still apply.
 Cancel/restore uses0. Preference, wire-mode, gamma-retention, invalid-value and
 popup tests cover integration; no extra live camera commands were required.
+
+Brightness metering ROI packet/geometry/restore audit (2026-10-06)
+----------------------------------------------------------------
+After pushing boost selector1378c7f, expanded legacy24 handler2003addc and
+ROI helper20023ffc through bounded offline instruction replay. No live camera
+commands sent during this investigation. New evidence:
+  firmware-offline/verify_metering_roi.py, metering-roi-replay.json
+  firmware-offline/verify_metering_roi_restore.py, metering-roi-restore-replay.json
+Hardware/transport/gain/floating conversion helpers are explicitly mocked.
+The second replay expands native selected-bank apply, cache getter, tone/noise
+rebuild and disable routing. It models bank8 as ZERO-FILLED, not as a live RAM
+read or an independently proven startup state. This limit is important.
+
+Wire body:36 24 operation type enable + four BE16 coordinates, ordered
+x_start,x_end,y_start,y_end. Complete center-box example (250,750,250,750),
+type0, enable1: f00d362400000100fa02ee00fa02ee2fff.
+Coordinates are PER-MILLE (0..1000), not pixels or temperatures. The divisor
+1000.0 is the literal double at20070e10. Inclusive end coordinates clamp when
+the converted end equals the native width/height. Width/height come from RAM
+200f5630/200f562c; their current live values have not been established here.
+Do not equate the captured512x384 preview size with this internal statistics
+plane. Geometry tests declare width512/height384; these are model inputs.
+
+Model center250..750 => X128..384,Y96..288. Physical scalar writes:
+206020=enable;20602c=Y_start,206030=Y_end,206034=X_start,206038=X_end.
+Histogram-related206088/08c/090/094 are scaled by inclusive rectangle area
+(257*193)/(512*384). With audited bank1 values, center test produces504/504/
+3100/123. Type is checked <=9 and logged; the expanded helper does not use it
+to choose a different hardware rectangle. Do not invent ten supported styles.
+Gain nonzero or private fixed-mode flag nonzero rejects hardware changes.
+The command handler nevertheless returns constant success1; ACK is not proof
+that a metering region applied. Seven parser/geometry/gating cases asserted.
+
+Getter trap confirmed: operation1 parses/stores coordinates at200f9354/356/358/
+35a BEFORE operation dispatch, then returns constant acknowledgement1, not the
+active enable, type or rectangle. No physical geometry write in this branch,
+but it is not a safe backup query. Malformed short packets can therefore feed
+unrelated bytes into cached coordinates. No getter packet sent to the device.
+
+First enable0->1 writes206020=1, applies42 slots of bank8, selects bank8,
+rebuilds processing, then programs rectangle and scaled thresholds. Stored
+factory export has only banks1..7. Current bank8 initialization/content remains
+unverified. Cache reads of missing bank parameters return10000000 sentinel,
+not valid setting values. Native primitive2001c0b0 ignores address0 without MMIO,
+so zero slots in the declared empty-bank model do NOT write to arbitrary MMIO0.
+This does not prove that live bank8 is empty or safely populated.
+
+Disable clears ROI flag, computes rectangle and then calls24850, which selects
+normal staged-mode/gain bank, reapplies it, and rebuilds processing. Model full
+frame disable restores selected bank1 and ROI0. Expanded enable/disable replay
+reconstructs the same492 scalar/table output keys as full-frame baseline. This
+supports restoration routing under the declared cache/user-overlay/staging
+assumptions, NOT a complete live safety proof. User overlay was disabled in the
+model; bank8 contents and current statistics-plane geometry remain unresolved.
+
+Stored public ROI defaults are enable0,Y1..146,X170..190; these are dormant
+coordinates, not a full-frame active metering region. Threshold fields are banked,
+so do not look them up in the public section alone or use untrustworthy physical
+zero getters as original values. Recorded evidence distinguishes inactive stored
+coordinates from active coordinate readback (not established).
+
+Outcome: a genuine hardware histogram/region-statistics path with known packet
+layout and geometry arithmetic. No proof yet that it excludes warm objects from
+preview AGC on this module. Resolve bank8 initialization/live geometry before a
+native live experiment; no product metering control or experimental ROI write
+added based on CPU replay alone.
+
+Metering ROI documentation cross-check (2026-10-06)
+--------------------------------------------------
+Checked the local HCUsbSDK header, related Tiny1C command header, official
+HIKMICRO cube manual/common-device-command reference, and public TOPDON
+TC002C Duo user manual. No bank8 layout, initialization contract, or verified
+AGC-metering ROI readback was found in these references.
+
+HCUsbSDK defines USB_GET/SET_THERMOMETRY_REGIONS (+34/+35), expert regions,
+and USB_GET_ROI_MAX_TEMPERATURE_SEARCH (+47), with normalized0..1000 region
+coordinates. Those structures describe thermometry/search regions; their
+existence does not establish readback of the legacy0x24 AGC histogram region.
+The header also exposes USB_GET_SYSTEM_ISP_BIN_FILE (+66), already audited as
+a stored configuration export rather than a complete active-bank8 RAM backup.
+Its generic AGC mode fields are not proof of acceptance on this module.
+
+The common-device-command reference documents console getisp/setisp with
+command-number/parameter arguments, but supplies no relevant numeric opcode
+or bank8 schema. This network/shell console is not the camera's binary USB
+serial mailbox. Tiny1C's AGC switch belongs to a different protocol family.
+TOPDON's public manual is an operator guide and delegates detailed app usage
+to Topinfrared/TopView manuals; it supplies no low-level ROI/bank description.
+Public manual checked:
+https://web-file.topdon.com/topdon-web/information_download/TC002C-Duo_User_Manual.pdf
+
+Result: documentation supplies related leads, not a trustworthy current ROI
+backup. Keep stored defaults distinct from active settings; next useful work
+is tracing bank8 initialization and accessible runtime export producers.
+No live camera commands were sent for this documentation check.
+
+Bank8 initialization and rollback follow-up (2026-10-06)
+-----------------------------------------------------
+No live commands sent. Added bounded offline native-loader audit and restoration
+matrix under firmware-offline/:
+  verify_metering_bank_initialization.py / metering-bank-initialization-replay.json
+  verify_metering_restore_matrix.py / metering-restore-matrix.json
+
+Startup20000040..5c clears BSS[2009122c,200facf0), including the whole eighth
+512-byte bank at200ee3b0. ISP initialization20034cc8 ->2001ff14 ->2001e9d0
+reads/validates the stored configuration and calls cache loader2001f9fc.
+Replayed that real loader with the preserved device ISP export (four-byte USB
+length prefix removed):197 public pairs,42 entries per bank,7 supplied banks.
+All parsed public and bank1..7 pairs match the independently decoded export;
+loader makes ZERO writes into bank8 and leaves all512 bytes zero from startup.
+Logging/FPGA writes/special parameter application are hooked; this is not a
+full boot or hardware simulation. It proves loader output under audited boot
+state, not an exhaustive guarantee that no subsequent command/DMA changed RAM.
+Generic bank-tagged cache setter2001f1a0 can populate other banks at runtime;
+there is still no verified live bank8 snapshot. Do not claim live emptiness.
+
+IMPORTANT: zero-filled bank8 is not a valid copied bank1. Native cache getter
+returns0x10000000 for missing bank8-only parameters. ROI enable switches to8,
+then consumes those sentinel values as histogram thresholds in20024098..c0.
+Center-box replay at512x384 writes1365 to EACH of206088/08c/090/094, instead
+of normal-bank values504/504/3100/123. This follows RV32 32-bit multiply wrap
+and integer division, not a legitimate configured ROI histogram profile.
+This strengthens the conclusion that the legacy metering route is incomplete
+or unsupported with this stored configuration. It does not establish a brick
+mechanism or prove what the FPGA does with those thresholds.
+
+24 restoration cases used actual-loader-derived cache: three staged presets
+0/1/2, boost0/3, geometry256x192/512x384, user overlay off/on. Enabled overlay
+is explicitly one2061c4 pair per normal bank, not every live user setting.
+Each case compares full-frame disabled baseline ->center enable ->wider enabled
+rectangle ->full-frame disable; all reproduced identical scalar/table output
+maps, returned to normal preset bank, and cleared the ROI flag. Prior baseline
+has492 output keys. Geometry remains declared, not read from the live camera.
+The inspected modeled path does not invoke NVM/flash/factory programming.
+Native address0 primitive exits without MMIO, so empty bank slots are skipped.
+
+Limits: this rollback rebuilds native processing; it is not an exact snapshot
+of active hardware, app-uploaded gamma LUTs, other user overlays, or dormant
+original rectangle coordinates. Gain/fixed-mode changes can block the ROI
+helper including disable; those controls must stay unchanged during any future
+trial. Restoring stored defaults alone is therefore not enough to call the
+legacy command safe/usable. Do not enable native bank8 ROI in the product or
+send live trials based solely on these offline results. A future metering route
+should avoid the missing bank8 profile or first establish an independently
+verified valid runtime profile and full restoration contract.
+
+Direct metering route and native dimensions (2026-10-06)
+------------------------------------------------------
+Offline verify_direct_metering.py / direct-metering-replay.json trace27 exact
+family74/subcommand13/op0 packets (three profiles x nine addresses) through
+native handler40e3c ->25aac ->203ec ->1c0b0 down to actual MMIO-store
+instructions. Every packet makes one4-byte store to its whitelisted F880xxxx
+address, returns status1, and leaves modeled ISP cache, selected bank and CPU
+ROI flag untouched. Unknown stores/callees fail closed; no legacy24, cache
+setter, bank selection, flash or table rebuild is invoked on these addresses.
+
+New native geometry evidence:365d0..36630 serializes width/height directly from
+200f5630/562c into current configuration RAM200f572a/572e. Diagnostic5705c
+copies configuration base200f5650 into exported offset1b62, placing those
+fields at1c3c/1c40 (fps at1c44). Preserved live diagnostic values256/192/25.
+These are internal native dimensions, distinct from512x384 streamed preview.
+This corrects the previously declared512x384 model geometry for this camera;
+old replay results remain explicitly declared model examples.
+
+Known stored-default nine-register baseline:206020=0, Y1..146, X170..190,
+thresholds206088/08c/090/094=2000/2000/12288/491 (Balanced bank1).
+Full-frame enabled profile: X0..255,Y0..191, same four thresholds.
+Center250..750 per-mille profile: X64..192,Y48..144, thresholds509/509/3128/124.
+Write order: disable206020 first, geometry/four thresholds, enable last;
+restore disables first and restores all eight original values, remaining off.
+Offline ordered-state comparison restores exactly those nine known defaults.
+This is a known stored baseline, NOT independently read active FPGA originals.
+Physical getters returning0 are not used as originals. Hardware latch timing
+and whether FPGA actually obeys the metering registers require live evidence.
+An expanded native processing rebuild24808 replay writes none of these nine
+metering addresses; a known brightness refresh is therefore a possible latch
+follow-up, not an assumed requirement or proof of ROI support.
+
+Prepared bounded direct_metering_trial.py: fresh SDK blocks, unchanged stored
+ISP export, selected bank1 and current diagnostic256/192/25 gates before any
+write. Uses only exact profiles audited above and restores every known default
+independently even if an earlier cleanup command fails. No private ROI flag or
+fixed/gain settings are changed. Completed trials must report ACKs separately
+from image effects and retain the baseline/readback limitation.
+
+Direct metering live trial (2026-10-06,192539 local)
+------------------------------------------------
+Evidence: deep-audit/direct-metering-trial-20261006-192539/summary.json,
+analysis.json, initial/final-diagnostic.bin, original SDK blocks, phase frame
+captures and comparison.png. Trial completed120-second interactive center
+preview after normal/full/center phases. User reported: "Wow, you got it!"
+Comparison captures opened using ImageMagick display as requested.
+
+38 exact whitelisted volatile-register writes received expected ACKs: initial
+known-default baseline9, full-frame10, center10, final known-default restore9.
+Live diagnostic confirmed native256x192/25fps and selected bank1 before writes.
+Final bank remained1; all four SDK control blocks unchanged; stored ISP export
+byte-for-byte unchanged; no trial or restoration errors. No legacy ROI setter,
+private ROI flag change, bank switch, NVM/factory/firmware operation or magic
+refresh was used. Restore used the explicitly declared known stored defaults,
+not zero-return physical getters or a claimed full active-hardware snapshot.
+
+Valid static-phase mean preview Y: untouched64.225, normalized default65.477,
+full-frame64.437, center62.708;2978 valid interactive center frames mean63.092.
+Operator observation supports a useful candidate, but interactive mode stayed
+center throughout (no A/C switches recorded). Thus this capture does NOT prove
+quantified metering improvement under matched hand-in/hand-out conditions, nor
+that automatic contrast is frozen. It is a center-weighted/region metering
+candidate pending repeatable comparison, not yet a production AGC lock feature.
+The restored-phase sample mode label remains center in this original script;
+that label is stale, not an indication cleanup failed (all9 restore ACKs logged).
+Production integration should describe metering, preserve normal bank, reapply
+on processing changes only after investigation, and retain fail-safe cleanup.
+
+Direct metering enable-bit toggle trial (2026-10-06,193048 local)
+--------------------------------------------------------------
+User requested on/off comparison. Added --toggle-only to bounded direct trial:
+E sets206020=1, D sets0, Space toggles, Esc restores. Center geometry and four
+scaled thresholds remain unchanged between toggles; no legacy ROI command or
+bank switch. Periodic native-preview snapshots now retained during live view.
+Evidence: direct-metering-toggle-trial-20261006-193048/summary.json,analysis.json,
+73 valid periodic captures and toggle-comparison.png. User made five switches
+0/1/0/1/0; all five isolated enable-bit writes got expected ACKs. Entire trial
+43/43 ACKs, no restore errors, four SDK blocks unchanged, stored ISP identical,
+final bank1. All nine known-default registers restored. Comparison opened in
+ImageMagick. Temperature/preview streams continued; no flash/NVM operations.
+
+73 captured valid preview frames include49 enabled and24 disabled samples.
+Center-luminance mean ranges32.17..152.91 enabled and34.17..158.46 disabled,
+with operator scene changes. These overlapping broad ranges do NOT establish
+an AGC freeze or quantitative stabilization. First enabled/disabled panels have
+similar static targets; wait for operator feedback and/or matched-scene temporal
+comparison before declaring the physical enable-bit semantics proven. ACKs
+establish accepted transactions, not independently readable active state.
+
+Operator follow-up: "On and off look identical." Isolated206020 enable-bit
+toggling has no confirmed visible effect. Earlier positive center-preview
+feedback must not be promoted to verified metering support or a working freeze.
+Remaining candidates are latch/processing refresh, region/threshold effects
+independent of206020, or inactive FPGA support. No further commands sent.
+
+Radiometric toggle follow-up: raw temperature plane checked separately. First
+four adjacent central13x13 patch median deltas were-0.094/0/-0.141/+0.141C
+using1/64C per count (offset cancels). Final patch jump+13.797C is visibly
+confounded by a warm finger entering and covering that point; before/after
+previews retained as last-toggle-motion-check.png. Global scene median deltas
+across five toggles were-0.094/0/0/+0.094/-0.125C. No systematic radiometric
+effect established; this is observed comparison, not proof of inert hardware.
+Evidence: temperature-toggle-analysis.json. No new camera commands sent.
+
+Software board-analysis follow-up (2026-10-07)
+Shifted from unverified camera AGC freeze to a fixed-range radiometric display.
+Analyze mode maps native counts with1/64C gain and50C offset to an explicit
+From/To range, without adaptive percentile colors. Separate measurements/CSV
+continue to use original radiometry. Defaults keep grayscale, no sharpening,
+and float-plane bicubic2x; optional display palettes apply afterward. Settings
+persist and controls hide while the toggle is off. Previous image source is
+retained. Anime4K09 passes1..5 and existing ACNet variants remain optional.
+
+Read-only stream capture retained32 valid frames of the stationary board in
+board-analysis-20261006-200511; comparisons use the same temporal mean. Temperature
+percentiles0/1/50/99/100 were18.144/18.587/22.287/47.514/53.935C. Compared15..45,
+18..55, and board-focused30..55 display ranges; clipping and narrower contrast
+must not be mistaken for better spatial resolution. Three strong Anime passes
+flatten small regions into rounded shapes. Experimental Gaussian-PSF iterative
+deblurring produces ringing/halos; its assumed blur kernel is not calibrated.
+No deblurring mode added. Native-pixel versus interpolation comparison retained.
+A100-frame full renderer benchmark at768x576 gave median2.07ms,p953.52ms,max4.21ms,
+excluding USB wait, GUI painting and capture encoding.
+
+Contour prototypes are local diagnostics only. Native Canny12/32 plus2x2 closing
+produced79 eligible contours at19.9ms; narrow edge loops often lack useful fill
+interiors. Connected temperature-band regions yielded181 regions at2C spacing
+and69 at4C spacing, ignoring regions under8 native pixels. Each retained region
+is filled from a single real pixel at its deepest interior, then outlined.
+Range18..55C; contours come from temperature data rather than enhanced/model
+pixels. Both closed-region variants took76.8ms in one run. A display-only
+contrast curve clip((intensity-128)*1.8+128,0,255) leaves segmentation and sample
+values unchanged; both boosted variants plus reference took69.5ms in one run.
+These timings are observed prototype runs, not full application timing guarantees.
+Contours indicate temperature boundaries, not verified physical component edges;
+region fills discard local temperature variation. Original counts remain saved.
+All finished comparisons opened in ImageMagick. No flash/NVM/register operations.

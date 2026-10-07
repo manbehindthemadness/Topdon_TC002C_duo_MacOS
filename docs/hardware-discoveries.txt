@@ -184,3 +184,81 @@ Boost mode selector follow-up (2026-10-06)
 All four audited modes now exposed on user request in Camera Display controls:
 Off/Mode1/Mode2/Mode3. Neutral names reflect the unresolved flag distinction.
 Saved legacy On migrates to3; selected mode persists through gamma adjustments.
+
+Metering ROI focused audit (2026-10-06)
+Legacy24 packet mapped: enable/type plus four BE16 per-mille coordinates0..1000.
+Geometry writes Y/X bounds and scales histogram thresholds by inclusive area.
+Gain/fixed-mode gating can reject changes while handler still returns success.
+Its apparent getter mutates cached coordinates and returns constant ACK; no
+trustworthy current-region backup. Offline full enable/disable replay restores
+492 output keys with a declared zero-filled bank8. Stored ISP has seven banks;
+live bank8 contents, statistics-plane size and user overlay remain unverified.
+No live ROI command sent or supported menu control added. Evidence retained in
+metering-roi-replay.json and metering-roi-restore-replay.json.
+
+2026-10-06: Brightness metering bank8 initialization audit (offline only)
+* Firmware startup clears bank8 RAM; replaying the actual cache loader with this
+  device's stored ISP file fills seven normal banks and leaves bank8 empty.
+  This establishes boot/loader behavior, not a current live RAM readback.
+* Missing bank8 histogram parameters return0x10000000 sentinel. Legacy ROI
+  enable calculates thresholds from that sentinel; modeled512x384 center
+  region gives1365/1365/1365/1365 rather than504/504/3100/123 from normal bank1.
+  Treat the native bank8 path as incomplete/unverified on this configuration.
+*24 offline native-loader restoration cases passed across preset, boost,
+  geometry and one-parameter overlay variants. Disable reconstructs normal
+  processing, but stored defaults are not a complete active hardware backup.
+*No live ROI commands sent. Full evidence and limits: hardware-research.txt,
+  Bank8 initialization and rollback follow-up. App gamma LUT restoration and
+  gain/fixed-mode gating remain relevant to any future metering experiment.
+
+2026-10-06: Direct metering route and native dimensions
+* Diagnostic exported offsets1c3c/1c40 contain native width256/height192,
+  serialized from the same geometry RAM the metering helper uses; preview is
+  separately512x384. Previous512x384 ROI calculations were declared models.
+*27 exact offline direct-register packet replays touched only nine audited
+  volatile metering addresses, preserving bank selection, CPU ROI flag/cache.
+  This bypasses the incomplete bank8 path; FPGA effect is a live-test question.
+*Full and center profiles use valid bank1 thresholds, not missing-bank sentinel
+  values. Cleanup restores all nine known stored defaults, not unverified
+  physical getter values. Details/evidence in hardware-research.txt.
+
+2026-10-06: Direct center metering live candidate
+*Normal/full/center volatile profiles tested with native256x192 geometry; user
+  reported successful visual behavior. No legacy ROI/bank8 route was used.
+*38 ACKs; all9 known defaults restored without errors; selected bank stayed1,
+  SDK blocks and stored ISP export unchanged. Captures opened in ImageMagick.
+*Live session stayed in center mode; matched warm-object A/B improvement was
+  not quantified. Name as region metering candidate, not proven AGC freeze.
+*Evidence: direct-metering-trial-20261006-192539, full notes hardware-research.txt.
+
+2026-10-06: Isolated metering enable/disable comparison
+*Five operator on/off switches changed only206020, keeping center geometry and
+  thresholds fixed. All five ACKs received; complete43-command trial restored
+  nine known defaults, retained bank1 and unchanged SDK/ISP configuration.
+*73 periodic captures saved; comparison opened in ImageMagick. Enabled/off
+  luminance ranges overlap during scene movement; ACKs alone do not prove an
+  AGC freeze. Operator visual feedback remains separate from protocol evidence.
+*Evidence: direct-metering-toggle-trial-20261006-193048, hardware-research.txt.
+
+Toggle follow-up: operator reports on/off identical. Direct center metering
+is NOT verified working; earlier positive feedback is inconclusive. No product
+control added on this evidence. Investigate refresh/latch or inactive support.
+
+2026-10-07: Fixed-range Analyze mode and board visualization trials
+* Analyze mode uses fixed Celsius bounds on the native radiometric plane; scene
+  content no longer drives display percentile scaling. Measurements stay separate.
+* Toggle hides its controls when off and retains the previous image source.
+  Defaults: 15..45C, White hot, sharpening off, float-plane bicubic 2x. Optional
+  palettes apply after grayscale enhancement; Anime4K09/ACNet remain selectable.
+* Same static board capture compared across upsamplers. Strong Anime passes
+  flatten small shapes; trial deconvolution produced edge halos. Neither proves
+  additional measured spatial detail. Native pixels retained for comparison.
+* Sensor interpolation renderer benchmark: median2.07ms, max4.21ms at768x576,
+  excluding USB wait, GUI painting, and encoding; comfortably below500ms.
+* Offline contour trials: one native sample fills each connected temperature
+  region, with outlines. Expanded18..55C, 2C/4C bands, optional fixed1.8x display
+  contrast. Both contrast variants plus reference took69.5ms in one run.
+  Thermal boundaries are not verified component edges; fills hide within-region
+  gradients. These are documented experiments, not camera settings or app modes.
+* Local evidence: diagnostics/board-analysis-20261006-200511. No new hardware
+  register writes during software visualization experiments. 528 tests passed.

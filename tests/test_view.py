@@ -388,13 +388,16 @@ window.auto_calibrate.click()
 assert messages.pop() == {"action": "auto_calibrate", "value": True}
 assert window.advanced_auto.text() == "Advanced / Auto"
 for row in (*window.rows.values(), *window.hardware_rows.values()):
-    assert row.input.isEnabled() == (row is not window.rows["color_palette"])
+    assert row.input.isEnabled() == (row is not window.rows["color_palette"]
+                                    and row not in [r for n, r in window.rows.items()
+                                                    if n.startswith("raw_")])
     assert (row.slider is None) == bool(row.options)
     if row.slider is not None:
-        assert row.slider.isEnabled()
+        assert row.slider.isEnabled() == row.input.isEnabled()
 window.advanced_auto.click()
 assert messages.pop() == {"action": "advanced_auto", "value": False}
-assert all(row.input.isEnabled() for name, row in window.rows.items() if name != "color_palette")
+assert all(row.input.isEnabled() for name, row in window.rows.items()
+           if name != "color_palette" and not name.startswith("raw_"))
 assert all(row.input.isEnabled() for row in window.hardware_rows.values())
 
 for name, value in [("image_source", "raw"), ("temperature_unit", "F"),
@@ -423,6 +426,30 @@ assert window.controls["image_source"].currentData() == "preview"
 assert not window.controls["mirror_horizontal"].isChecked()
 assert window.controls["mirror_horizontal"].isEnabled()
 assert window.status.text() == "Camera preview"
+assert all(widget.isHidden() for widget in window.analyze_widgets)
+window.controls["analyze_mode"].setChecked(True)
+window.rows["analyze_mode"]._emit()
+assert messages[-1] == {"action": "setting", "name": "analyze_mode", "value": True}
+window.update_state({**VIEW_DEFAULTS, "analyze_mode": True, "temperature_unit": "F"})
+assert all(not widget.isHidden() for widget in window.analyze_widgets)
+assert not window.controls["image_source"].isEnabled()
+assert window.controls["raw_temperature_low"].value() == 59
+assert window.controls["raw_temperature_high"].value() == 113
+assert all(row.input.isEnabled() for name, row in window.rows.items()
+           if name.startswith("raw_") and name != "raw_anime4k_passes")
+assert not window.controls["raw_anime4k_passes"].isEnabled()
+assert not window.controls["upsampling"].isEnabled()
+assert not window.controls["color_palette"].isEnabled()
+assert not window.controls["palette_source"].isEnabled()
+window.update_state({**VIEW_DEFAULTS, "analyze_mode": True, "raw_upsampling": "acnet-legacy-hdn0"})
+assert window.controls["raw_upsampling"].isEnabled()
+assert not window.controls["raw_anime4k_passes"].isEnabled()
+assert window.controls["raw_palette"].isEnabled()
+window.rows["raw_sharpen_amount"].timer.start()
+window.update_state({**VIEW_DEFAULTS, "analyze_mode": True, "settings_locked": True})
+assert not window.controls["raw_sharpen_amount"].isEnabled()
+assert not window.rows["raw_sharpen_amount"].timer.isActive()
+window.update_state(VIEW_DEFAULTS)
 assert set(window.hardware_rows) == set(HARDWARE_CONTROLS)
 window.update_state({**VIEW_DEFAULTS, "color_source": "camera"})
 assert not window.controls["color_palette"].isEnabled()
@@ -606,7 +633,8 @@ assert not window.fixed_range.isEnabled()  # No enabled detail setting in this s
 assert window.reset_button.isEnabled() and window.restore_button.isEnabled()
 assert all(control_row.input.isEnabled()
            for control_row in (*window.rows.values(), *window.hardware_rows.values())
-           if control_row is not window.rows["color_palette"])
+           if control_row is not window.rows["color_palette"]
+           and control_row not in [r for n, r in window.rows.items() if n.startswith("raw_")])
 # Unlocking must still respect controls that are unavailable on this camera.
 window.update_state({**state, "hardware": {"ambient": {"value": 30, "available": False}}})
 assert not row.input.isEnabled()
@@ -714,7 +742,7 @@ switches = window.display_switches
 assert switches.columnCount() == 2
 assert headings["Display controls"] < body_layout.indexOf(switches) < headings["AI enhancement"]
 expected = [row for row in (*window.rows.values(), *window.hardware_rows.values())
-            if row.is_switch]
+            if row.is_switch and row is not window.rows["analyze_mode"]]
 assert switches.count() == len(expected) + 1
 for index, control in enumerate(expected):
     assert switches.itemAtPosition(index // 2, index % 2).widget() is control

@@ -138,3 +138,33 @@ def test_boost_modes_persist_and_migrate_old_checkbox(monkeypatch, tmp_path):
     for invalid in (-1, 4, 1.0, "1", None):
         save_settings({"camera_boost": invalid})
         assert "camera_boost" not in load_settings()
+
+
+def test_analyze_preferences_round_trip_and_invalid_bounds_are_discarded(monkeypatch, tmp_path):
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    display = {'image_source': 'preview', 'analyze_mode': True, 'raw_temperature_low': 60,
+               'raw_temperature_high': 100, 'raw_palette': 'white_hot',
+               'raw_sharpen_amount': 0.3, 'raw_upsampling': 'anime4k09',
+               'raw_anime4k_passes': 3}
+    save_settings({'display': display})
+    assert load_settings()['display'] == display
+    display.update(raw_temperature_low=100, raw_temperature_high=60)
+    save_settings({'display': display})
+    loaded = load_settings()['display']
+    assert 'raw_temperature_low' not in loaded and 'raw_temperature_high' not in loaded
+    assert loaded['analyze_mode'] is True
+
+
+def test_earlier_analyze_source_migrates_to_toggle(monkeypatch, tmp_path):
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    save_settings({'display': {'image_source': 'analyze', 'raw_palette': 'inferno'}})
+    assert load_settings()['display'] == {
+        'image_source': 'raw', 'analyze_mode': True, 'raw_palette': 'inferno',
+    }
+
+
+def test_earlier_analyze_enhancement_checkbox_migrates(monkeypatch, tmp_path):
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    for enabled, mode in ((True, 'anime4k09'), (False, 'off')):
+        save_settings({'display': {'raw_anime4k': enabled}})
+        assert load_settings()['display'] == {'raw_upsampling': mode}

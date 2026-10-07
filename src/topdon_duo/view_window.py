@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from .capture_window import run_window
 from .hardware_controls import HARDWARE_CONTROLS
 from .view_settings import (
+    ANALYZE_UPSCALING_MODES,
     COLOR_PALETTES,
     DISTANCE_METERS_PER_UNIT,
     ENHANCEMENT_INPUTS,
@@ -637,7 +638,7 @@ class ViewWindow(QWidget):
         rows = QVBoxLayout(body)
         rows.setSpacing(16)
         display_options = {
-            "image_source": ("Image source", tuple(IMAGE_SOURCES.items())),
+            "image_source": ("Image source", tuple((key, label) for key, label in IMAGE_SOURCES.items() if key != "analyze")),
             "palette_source": ("Color source", tuple(PALETTE_SOURCES.items())),
             "temperature_unit": ("Measurement units", tuple(TEMPERATURE_UNITS.items())),
             "image_filter": ("Image filter", tuple(IMAGE_FILTERS.items())),
@@ -647,21 +648,51 @@ class ViewWindow(QWidget):
             "mirror_horizontal": ("Mirror left / right", ((False, "Off"), (True, "On"))),
             "mirror_vertical": ("Mirror top / bottom", ((False, "Off"), (True, "On"))),
             "antialiasing": ("Antialiasing", ((False, "Off"), (True, "On"))),
+            "analyze_mode": ("Analyze mode", ((False, "Off"), (True, "On"))),
+            "raw_palette": ("Analyze palette", tuple(COLOR_PALETTES.items())),
+            "raw_upsampling": ("Analyze upsampling", tuple(ANALYZE_UPSCALING_MODES.items())),
         }
         numeric_options = {
             "enhancement_amount": ("Enhancement amount", 0, 1, 0.01),
             "anime4k_passes": ("Anime4K09 passes", 1, 5, 1),
+            "raw_temperature_low": ("From temperature", -20, 550, 0.1),
+            "raw_temperature_high": ("To temperature", -20, 550, 0.1),
+            "raw_anime4k_passes": ("Analyze Anime4K09 passes", 1, 5, 1),
+            "raw_sharpen_amount": ("Analyze sharpening", 0, 1, 0.01),
         }
         hardware_switches = tuple(
             name
             for name, spec in HARDWARE_CONTROLS.items()
             if tuple(text for _, text in spec.options) == ("Off", "On")
         )
+        source_title, source_options = display_options["image_source"]
+        source_row = ControlRow(
+            source_title,
+            lambda value: self._send({"action": "setting", "name": "image_source", "value": value}),
+            options=source_options,
+        )
+        self.rows["image_source"] = source_row
+        self.controls["image_source"] = source_row.input
+        rows.addWidget(source_row)
+        toggle = ControlRow(
+            "Analyze mode",
+            lambda value: self._send({"action": "setting", "name": "analyze_mode", "value": value}),
+            options=display_options["analyze_mode"][1],
+        )
+        self.rows["analyze_mode"] = toggle
+        self.controls["analyze_mode"] = toggle.input
+        rows.addWidget(toggle)
+        self.analyze_widgets = []
         for title, display_names, hardware_names in (
+            (
+                "Analyze mode",
+                ("raw_temperature_low", "raw_temperature_high", "raw_palette",
+                 "raw_sharpen_amount", "raw_upsampling", "raw_anime4k_passes"),
+                (),
+            ),
             (
                 "Display controls",
                 (
-                    "image_source",
                     "temperature_unit",
                     "image_filter",
                     "palette_source",
@@ -695,6 +726,17 @@ class ViewWindow(QWidget):
             heading = QLabel(title)
             heading.setStyleSheet("font-size: 16px; font-weight: bold")
             rows.addWidget(heading)
+            if title == "Analyze mode":
+                self.analyze_widgets.append(heading)
+                description = QLabel(
+                    "For static objects and board analysis. "
+                    "Colors use a fixed temperature range with no automatic contrast. "
+                    "Enhancement operates in grayscale; optional color is applied afterward. "
+                    "Sharpening and upsampling affect only the image."
+                )
+                description.setWordWrap(True)
+                rows.addWidget(description)
+                self.analyze_widgets.append(description)
             if title == "Display controls":
                 rows.addWidget(self.processing_preset)
                 rows.addWidget(self.camera_boost)
@@ -704,6 +746,8 @@ class ViewWindow(QWidget):
                 if name in numeric_options:
                     row_title, minimum, maximum, step = numeric_options[name]
                     arguments = {"minimum": minimum, "maximum": maximum, "step": step}
+                    if name.startswith("raw_temperature_"):
+                        arguments.update(unit="°C", preserve_input=True)
                 else:
                     row_title, options = display_options[name]
                     arguments = {"options": options}
@@ -714,6 +758,8 @@ class ViewWindow(QWidget):
                     ),
                     **arguments,
                 )
+                if title == "Analyze mode":
+                    self.analyze_widgets.append(row)
                 self.rows[name] = row
                 self.controls[name] = row.input
                 if row.is_switch and switches is not None:
@@ -828,7 +874,10 @@ class ViewWindow(QWidget):
         tone_busy = bool(state.get("tone_busy", False))
         selected_source = state.get("image_source", VIEW_DEFAULTS["image_source"])
         actual_source = state.get("actual_image_source", selected_source)
-        preview_view = selected_source == "preview" and actual_source == "preview"
+        analyze = state.get("analyze_mode", False)
+        for widget in self.analyze_widgets:
+            widget.setVisible(analyze)
+        preview_view = selected_source == "preview" and actual_source == "preview" and not analyze
         settings_locked = bool(state.get("settings_locked", False)) or tone_busy
         if settings_locked and not self._settings_locked:
             focused = QApplication.focusWidget()
@@ -885,11 +934,20 @@ class ViewWindow(QWidget):
         camera_colors = preview_view and camera_palette_selected
         raw_view = not preview_view
         for name, row in self.rows.items():
+            row.set_display_unit(state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]))
             row.update_state(
                 state.get(name, VIEW_DEFAULTS[name]),
                 not self._settings_locked
                 and not (name == "color_palette" and camera_colors)
-                and not (name == "palette_source" and selected_source == "raw"),
+                and not (name == "palette_source" and (selected_source == "raw" or analyze))
+                and not (name == "image_source" and analyze)
+                and not (name.startswith("raw_") and not analyze)
+                and not (name == "raw_anime4k_passes" and state.get("raw_upsampling",
+                         VIEW_DEFAULTS["raw_upsampling"]) != "anime4k09")
+                and not (analyze and name in (
+                    "image_filter", "color_palette", "upsampling", "enhancement_input",
+                    "enhancement_amount", "anime4k_passes",
+                )),
             )
         for name, row in self.hardware_rows.items():
             row.set_display_unit(state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]))
@@ -904,7 +962,11 @@ class ViewWindow(QWidget):
                          and name not in ("detail_enabled", "detail"))
                 and not (name == "palette" and not camera_palette_selected),
             )
-        if camera_colors:
+        if analyze:
+            self.color_status.setText(
+                "Colors: Analyze palette with a fixed temperature range. Automatic contrast is off."
+            )
+        elif camera_colors:
             self.color_status.setText(
                 "Colors: Camera palette. Choose App colors under Color source to use the app palette."
             )

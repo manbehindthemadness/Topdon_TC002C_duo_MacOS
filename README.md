@@ -313,6 +313,31 @@ the verified factory ISP configuration. **Fixed mode** requires Balanced; turn
 Fixed mode off before choosing another preset. Presets are locked during logging
 and calibration measurements. Restore camera settings or quitting returns the
 camera to its original Balanced processing; quitting retains the saved selection.
+For static objects, enable the **Camera → Analyze mode** checkbox.
+Its controls appear only while enabled and provide From/To temperatures,
+an optional palette, sharpening amount, and a separate upsampler selection.
+Choose Sensor interpolation for a view without model enhancement,
+Anime4K09 (1–5 passes), ACNet with the desired denoising strength,
+or Off for ordinary display scaling. Enhancement operates on grayscale before
+the optional palette; White hot keeps the result black and white.
+Defaults are a fixed **15–45°C** range (59–113°F), White hot, sharpening off,
+and bicubic interpolation of the float temperature-display plane from native
+256×192 to 512×384 before conversion to display bytes, then
+scaling to the viewport with the image aspect preserved. Colors do not
+automatically stretch when hotter or colder objects enter the scene; values
+outside the selected range clip to the palette endpoints. Temperature inputs
+follow the selected units, and the mode and its settings persist across restarts.
+Enhancement changes only display pixels; spot measurements, charts, calibration,
+and CSV readings continue to use the separate temperature data. Preview filter,
+palette, and AI controls are disabled in Analyze mode; its own controls are
+hidden when off and disabled while logging or taking calibration measurements.
+Switching it off returns to the previously selected image source.
+The existing Raw thermal image view retains its automatic display scaling.
+Upsampling does not add measured sensor pixels. Anime4K09, ACNet, and sharpening
+can change small shapes; use Sensor interpolation with sharpening at zero when
+comparing subtle features, and use spot/CSV data for temperatures. Making a target
+occupy more native sensor pixels is needed to obtain finer measured spatial detail.
+
 The preset control is disabled while displaying raw thermal data, including
 when App colors makes Camera preview use the raw thermal source.
 

@@ -11,7 +11,7 @@ from .graphs import validate_graph_interval
 from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS, PROCESSING_PRESETS
 from .reflected_calibration import validate_reference as validate_reflected_reference
 from .spot_preferences import validate_spots
-from .view_settings import validate_view_setting
+from .view_settings import VIEW_DEFAULTS, validate_view_setting
 from .window_preferences import _path
 
 
@@ -37,6 +37,18 @@ def load_settings() -> dict:
             except (KeyError, TypeError, ValueError):
                 continue
             result[section][name] = value
+    display = result["display"]
+    if "raw_anime4k" in display:
+        enabled = display.pop("raw_anime4k")
+        display.setdefault("raw_upsampling", "anime4k09" if enabled else "off")
+    if display.get("image_source") == "analyze":
+        display["image_source"] = "raw"
+        display["analyze_mode"] = True
+    if display.get("raw_temperature_low", VIEW_DEFAULTS["raw_temperature_low"]) >= display.get(
+        "raw_temperature_high", VIEW_DEFAULTS["raw_temperature_high"]
+    ):
+        display.pop("raw_temperature_low", None)
+        display.pop("raw_temperature_high", None)
     ambient = saved.get("ambient_input_celsius")
     if (
         not isinstance(ambient, bool)

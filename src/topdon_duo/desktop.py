@@ -1081,7 +1081,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--scale", type=int, choices=range(1, 7), default=3)
     parser.add_argument(
         "--image-source",
-        choices=("preview", "raw"),
+        choices=("preview", "raw", "analyze"),
         default=None,
         help="camera preview (default, when available) or raw thermal visualization",
     )
@@ -1139,6 +1139,8 @@ def main(argv: list[str] | None = None) -> int:
         rotation=args.rotate if args.rotate is not None else saved_settings.get("rotation", 0),
         image_source=args.image_source or "preview",
     )
+    for name in ("raw_temperature_low", "raw_temperature_high"):
+        setattr(renderer, name, saved_settings.get("display", {}).get(name, VIEW_DEFAULTS[name]))
     for name, value in saved_settings.get("display", {}).items():
         renderer.set_view_setting(name, value)
     if args.image_source is not None:
@@ -1417,7 +1419,11 @@ def main(argv: list[str] | None = None) -> int:
 
     def view_state() -> dict:
         message = "Camera preview" if actual_image_source == "preview" else "Raw thermal image"
-        if renderer.image_source == "preview" and actual_image_source == "raw":
+        if renderer.analyze_mode:
+            low = renderer.display_temperature(renderer.raw_temperature_low)
+            high = renderer.display_temperature(renderer.raw_temperature_high)
+            message = f"Analyze mode · Fixed {low:.1f}–{high:.1f} °{renderer.temperature_unit}"
+        if not renderer.analyze_mode and renderer.image_source == "preview" and actual_image_source == "raw":
             message = (
                 "App colors from raw thermal data"
                 if renderer.palette_source == "app" and renderer.camera_color
@@ -1431,7 +1437,16 @@ def main(argv: list[str] | None = None) -> int:
             message += f" · {renderer.measurement_status}"
         if hardware.fixed_range:
             message += " · Fixed detail mode"
-        if renderer.upsampling != "off":
+        if renderer.analyze_mode and renderer.raw_upsampling == "bicubic":
+            message += " · Sensor interpolation 2×"
+        elif renderer.analyze_mode and renderer.raw_upsampling != "off":
+            if renderer.upsampler.error:
+                message += f" · {renderer.upsampler.error}; showing unenhanced image"
+            else:
+                algorithm = (f"Anime4K09 2×, {renderer.raw_anime4k_passes} passes"
+                             if renderer.raw_upsampling == "anime4k09" else "ACNet 2×")
+                message += f" · {algorithm} · {renderer.upsampler.elapsed_ms:.0f} ms"
+        elif not renderer.analyze_mode and renderer.upsampling != "off":
             if not renderer.enhancement_amount:
                 message += " · Enhancement amount 0 (original image)"
             elif renderer.upsampler.error:
@@ -1905,6 +1920,8 @@ def main(argv: list[str] | None = None) -> int:
                         hardware.error = ""
                         renderer._average_raw = None
                     elif command.get("action") == "reset":
+                        renderer.raw_temperature_low = VIEW_DEFAULTS["raw_temperature_low"]
+                        renderer.raw_temperature_high = VIEW_DEFAULTS["raw_temperature_high"]
                         for name, value in VIEW_DEFAULTS.items():
                             if name == "palette_source":
                                 renderer.set_view_setting(name, value)

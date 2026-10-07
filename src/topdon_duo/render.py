@@ -9,7 +9,7 @@ import numpy as np
 
 from .camera import IMAGE_OFFSET, decode_duo_frame, measurement_frame_status, raw_temperatures
 from .upsampling import VisionUpsampler
-from .view_settings import VIEW_DEFAULTS, validate_view_setting
+from .view_settings import IMAGE_SOURCES, VIEW_DEFAULTS, validate_view_setting
 
 READOUT_HEIGHT = 32
 
@@ -102,11 +102,12 @@ class ThermalRenderer:
             raise ValueError("rotation must be 0, 90, 180, or 270")
         if temperature_unit not in ("C", "F"):
             raise ValueError("temperature_unit must be C or F")
-        if image_source not in ("preview", "raw"):
-            raise ValueError("image_source must be preview or raw")
+        if image_source not in IMAGE_SOURCES:
+            raise ValueError("Unknown image source")
         for name, value in VIEW_DEFAULTS.items():
             setattr(self, name, value)
-        self.image_source = image_source
+        self.image_source = "raw" if image_source == "analyze" else image_source
+        self.analyze_mode = image_source == "analyze"
         self.scale = scale
         self.smoothing = smoothing
         self.ambient_celsius = ambient_celsius
@@ -157,7 +158,18 @@ class ThermalRenderer:
 
     def set_view_setting(self, name: str, value: object) -> None:
         validate_view_setting(name, value)
-        if name == "upsampling" and value != getattr(self, name):
+        if name == "image_source" and value == "analyze":
+            # Keep the earlier command-line spelling working with the toggle.
+            self.image_source = "raw"
+            self.analyze_mode = True
+            return
+        if name == "raw_anime4k":
+            name, value = "raw_upsampling", "anime4k09" if value else "off"
+        low = value if name == "raw_temperature_low" else self.raw_temperature_low
+        high = value if name == "raw_temperature_high" else self.raw_temperature_high
+        if low >= high:
+            raise ValueError("Raw thermal From temperature must be below To temperature")
+        if name in ("upsampling", "raw_upsampling") and value != getattr(self, name):
             self.upsampler.reset()
         setattr(self, name, value)
 
@@ -206,12 +218,37 @@ class ThermalRenderer:
             return cv2.addWeighted(gray, 1.7, blur, -0.7, 0)
         return gray
 
-    def _colorize(self, gray: np.ndarray) -> np.ndarray:
-        if self.color_palette in ("white_hot", "black_hot"):
-            if self.color_palette == "black_hot":
+    def _colorize(self, gray: np.ndarray, palette: str | None = None) -> np.ndarray:
+        palette = self.color_palette if palette is None else palette
+        if palette in ("white_hot", "black_hot"):
+            if palette == "black_hot":
                 gray = 255 - gray
             return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-        return cv2.applyColorMap(gray, getattr(cv2, f"COLORMAP_{self.color_palette.upper()}"))
+        return cv2.applyColorMap(gray, getattr(cv2, f"COLORMAP_{palette.upper()}"))
+
+    def _render_raw(self, counts: np.ndarray) -> np.ndarray:
+        # Fixed hardware conversion; never anchor display colors to scene statistics.
+        temperatures = raw_temperatures(counts, offset=50)
+        intensity = np.clip(
+            (temperatures - self.raw_temperature_low)
+            * (255.0 / (self.raw_temperature_high - self.raw_temperature_low)),
+            0, 255,
+        )
+        # Interpolate the fixed-range float plane before reducing to display bytes.
+        # This path preserves fine gradients without a learned/edge-push model.
+        if self.raw_upsampling == "bicubic":
+            intensity = cv2.resize(intensity, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        gray = np.clip(intensity, 0, 255).round().astype(np.uint8)
+        if self.raw_sharpen_amount:
+            blur = cv2.GaussianBlur(gray, (3, 3), 0.8)
+            gray = cv2.addWeighted(
+                gray, 1 + self.raw_sharpen_amount, blur, -self.raw_sharpen_amount, 0
+            )
+        # Enhance grayscale RGB first; palettes remain a display-only final mapping.
+        rgb = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        if self.raw_upsampling not in ("off", "bicubic"):
+            rgb = self.upsampler.apply(rgb, self.raw_upsampling, 1.0, self.raw_anime4k_passes)
+        return self._colorize(rgb[..., 0], self.raw_palette)
 
     def render_detailed(
         self, frame: bytes, *, update_measurements: bool = True
@@ -261,18 +298,20 @@ class ThermalRenderer:
         use_preview = (
             not (self.camera_color and self.palette_source == "app")
             and self.image_source == "preview"
+            and not self.analyze_mode
             and (self.camera_preview or bool(np.any(preview)))
         )
         image_plane = self._orient(preview) if use_preview else oriented_average
-        low, high = np.percentile(image_plane, (1.0, 99.0))
-        if high <= low:
-            normalized = np.zeros_like(image_plane, dtype=np.uint8)
-        else:
-            normalized = (
-                np.clip((image_plane.astype(np.float32) - low) * (255.0 / (high - low)), 0, 255)
-                .round()
-                .astype(np.uint8)
-            )
+        if not self.analyze_mode:
+            low, high = np.percentile(image_plane, (1.0, 99.0))
+            if high <= low:
+                normalized = np.zeros_like(image_plane, dtype=np.uint8)
+            else:
+                normalized = (
+                    np.clip((image_plane.astype(np.float32) - low) * (255.0 / (high - low)), 0, 255)
+                    .round()
+                    .astype(np.uint8)
+                )
         if use_preview and self.camera_preview:
             # Keep actual camera intensities so brightness/contrast remain visible.
             if self.camera_color:
@@ -287,11 +326,17 @@ class ThermalRenderer:
                 heatmap = self._colorize(
                     self._enhance_image(self._filter_image(image_plane), native_size)
                 )
+        elif use_preview:
+            heatmap = self._colorize(
+                self._enhance_image(self._filter_image(normalized), native_size)
+            )
+        elif self.analyze_mode:
+            heatmap = self._render_raw(oriented_average)
         else:
             heatmap = self._colorize(
                 self._enhance_image(self._filter_image(normalized), native_size)
             )
-        if self.upsampling == "anime4k09" and self.enhancement_amount:
+        if not self.analyze_mode and self.upsampling == "anime4k09" and self.enhancement_amount:
             # The phone processes palette-converted display pixels, not raw temperatures.
             heatmap = self.upsampler.apply(
                 self._enhancement_input(heatmap, native_size),
