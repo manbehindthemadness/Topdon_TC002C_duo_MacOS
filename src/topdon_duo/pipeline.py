@@ -11,8 +11,10 @@ from copy import deepcopy
 from dataclasses import dataclass
 from uuid import uuid4
 
+from .feature_processing import validate_feature
 from .hardware_controls import HARDWARE_CONTROLS
-from .view_settings import COLOR_PALETTES, IMAGE_FILTERS, VIEW_DEFAULTS
+from .image_filters import FILTER_MODES, KERNELS, validate_filter
+from .view_settings import COLOR_PALETTES, VIEW_DEFAULTS
 
 
 @dataclass(frozen=True)
@@ -62,8 +64,9 @@ def hardware_parameter(name):
 
 # Camera-style palettes are display approximations, never claimed to be the SDK LUTs.
 CAMERA_GRADIENTS = {
-    f"camera_{value}": f"{label} (camera-style approximation)"
+    f"camera_{value}": label
     for value, label in HARDWARE_CONTROLS["palette"].options
+    if value not in (1, 2)
 }
 PALETTES = {**COLOR_PALETTES, **CAMERA_GRADIENTS}
 HARDWARE_NODES = {
@@ -106,6 +109,40 @@ HARDWARE_NODES = {
     ),
     "humidity": ("Relative humidity", {"value": hardware_parameter("humidity")}),
 }
+
+
+def feature_parameters():
+    return {
+        "resolution": choice(
+            "Detection max dimension", 512, ((256, "256 px"), (512, "512 px"), (1024, "1024 px"))
+        ),
+        "blur": choice(
+            "Pre-detection smoothing", 3, ((0, "Off"), (3, "3 × 3"), (5, "5 × 5"), (7, "7 × 7"))
+        ),
+        "region": choice(
+            "Selection region", "full", (("full", "Full image"), ("center", "Centered region"))
+        ),
+        "region_size": Parameter("Centered region size", 75, 1, 100, 1, unit="%"),
+        "exclude_border": switch("Exclude features touching image border", True),
+        "max_count": Parameter("Maximum selected features", 100, 1, 256),
+        "color": choice(
+            "Feature color",
+            "cyan",
+            (
+                ("white", "White"),
+                ("cyan", "Cyan"),
+                ("yellow", "Yellow"),
+                ("red", "Red"),
+                ("black", "Black"),
+            ),
+        ),
+        "thickness": Parameter("Outline / edge thickness", 1, 1, 5),
+        "mix": Parameter("Blend amount", 1.0, 0, 1, 0.01),
+        "lower": Parameter("Canny lower threshold", 50, 0, 255),
+        "upper": Parameter("Canny upper threshold", 150, 0, 255),
+    }
+
+
 SOFTWARE_NODES = {
     "source": (
         "Image source",
@@ -202,10 +239,211 @@ SOFTWARE_NODES = {
     "contrast": ("Software contrast", {"amount": Parameter("Contrast", 1.0, 0, 3, 0.01)}),
     "gamma": ("Software gamma", {"amount": Parameter("Gamma", 1.0, 0.1, 3, 0.01)}),
     "colors": ("App colors", {"palette": choice("Palette", "inferno", tuple(PALETTES.items()))}),
+    "edges": (
+        "Edge features",
+        {
+            **feature_parameters(),
+            "method": choice(
+                "Edge detector",
+                "canny",
+                (("canny", "Canny"), ("sobel", "Sobel"), ("scharr", "Scharr")),
+            ),
+            "auto_threshold": switch("Automatic Canny thresholds", True),
+            "l2": switch("Accurate L2 gradient", True),
+            "strength": Parameter("Minimum gradient strength", 25, 0, 255),
+            "direction": choice(
+                "Edge direction",
+                "all",
+                (
+                    ("all", "All directions"),
+                    ("horizontal", "Horizontal edges"),
+                    ("vertical", "Vertical edges"),
+                ),
+            ),
+            "min_pixels": Parameter("Minimum connected edge pixels", 10, 1, 10000),
+            "rank": choice(
+                "Select by",
+                "longest",
+                (("longest", "Longest connected edges"), ("center", "Nearest image center")),
+            ),
+            "output": choice(
+                "Output",
+                "overlay",
+                (
+                    ("overlay", "Colored edges over input"),
+                    ("mask", "Binary edge mask"),
+                    ("cutout", "Input at selected edges"),
+                ),
+            ),
+        },
+    ),
+    "contours": (
+        "Contour regions",
+        {
+            **feature_parameters(),
+            "segmentation": choice(
+                "Region detection",
+                "otsu",
+                (
+                    ("otsu", "Otsu automatic threshold"),
+                    ("threshold", "Manual threshold"),
+                    ("adaptive", "Adaptive threshold"),
+                    ("canny", "Canny closed boundaries"),
+                ),
+            ),
+            "threshold": Parameter("Region threshold", 127, 0, 255),
+            "invert": switch("Select dark regions", False),
+            "block_size": choice(
+                "Adaptive block size",
+                11,
+                tuple((k, f"{k} × {k}") for k in (3, 5, 7, 9, 11, 15, 21, 31)),
+            ),
+            "adaptive_c": Parameter("Adaptive offset C", 0.0, -30, 30, 0.1),
+            "close_kernel": choice(
+                "Close gaps", 3, ((0, "Off"), (3, "3 × 3"), (5, "5 × 5"), (7, "7 × 7"))
+            ),
+            "min_area": Parameter("Minimum region area", 0.05, 0, 100, 0.01, unit="%"),
+            "max_area": Parameter("Maximum region area", 80.0, 0, 100, 0.01, unit="%"),
+            "shape": choice(
+                "Select shape",
+                "any",
+                (
+                    ("any", "Any region"),
+                    ("rectangle", "Rectangles / squares"),
+                    ("circle", "Round regions"),
+                    ("convex", "Convex regions"),
+                ),
+            ),
+            "min_aspect": Parameter("Minimum long / short side ratio", 1.0, 1, 50, 0.01),
+            "max_aspect": Parameter("Maximum long / short side ratio", 20.0, 1, 50, 0.01),
+            "solidity": Parameter("Minimum solidity", 0, 0, 1, 0.01),
+            "circularity": Parameter("Minimum circularity", 0, 0, 1, 0.01),
+            "simplify": Parameter("Polygon simplification", 2.0, 0.1, 10, 0.1, unit="%"),
+            "rank": choice(
+                "Select by",
+                "largest",
+                (
+                    ("largest", "Largest area"),
+                    ("smallest", "Smallest area"),
+                    ("brightest", "Brightest display region"),
+                    ("darkest", "Darkest display region"),
+                    ("center", "Nearest image center"),
+                ),
+            ),
+            "geometry": choice(
+                "Region geometry",
+                "contour",
+                (
+                    ("contour", "Original contour"),
+                    ("polygon", "Simplified polygon"),
+                    ("hull", "Convex hull"),
+                    ("box", "Rotated bounding box"),
+                ),
+            ),
+            "output": choice(
+                "Output",
+                "overlay",
+                (
+                    ("overlay", "Colored outlines over input"),
+                    ("fill", "Colored regions over input"),
+                    ("mask", "Binary region mask"),
+                    ("cutout", "Isolate selected regions"),
+                    ("mean", "Flatten regions to average color"),
+                ),
+            ),
+        },
+    ),
     "filter": (
         "Image filter",
         {
-            "filter": choice("Filter", "sharpen", tuple(IMAGE_FILTERS.items())),
+            "filter": choice("Filter", "sharpen", tuple(FILTER_MODES.items())),
+            "mix": Parameter("Blend amount", 1.0, 0, 1, 0.01),
+            "kernel": choice(
+                "Kernel size", 0, tuple((k, "Auto" if k == 0 else f"{k} × {k}") for k in KERNELS)
+            ),
+            "sigma": Parameter("Gaussian sigma", 0.8, 0.1, 10, 0.1),
+            "sigma_color": Parameter("Color sigma", 21.0, 0.1, 150, 0.1),
+            "sigma_space": Parameter("Spatial sigma", 3.0, 0.1, 10, 0.1),
+            "channels": choice(
+                "Channels",
+                "color",
+                (("color", "All color channels"), ("luminance", "Luminance only")),
+            ),
+            "border": choice(
+                "Border handling",
+                "reflect",
+                (("reflect", "Reflect"), ("replicate", "Replicate edge"), ("constant", "Constant")),
+            ),
+            "direction": choice(
+                "Edge direction",
+                "magnitude",
+                (
+                    ("magnitude", "Magnitude (both axes)"),
+                    ("x", "X derivative"),
+                    ("y", "Y derivative"),
+                ),
+            ),
+            "gain": Parameter("Response gain", 1.0, 0, 4, 0.01),
+            "edge_low": Parameter("Canny lower threshold", 50, 0, 255),
+            "edge_high": Parameter("Canny upper threshold", 150, 0, 255),
+            "l2_gradient": switch("Accurate L2 gradient"),
+            "clip_limit": Parameter("CLAHE clip limit", 2.0, 0.1, 40, 0.1),
+            "tile_size": Parameter("CLAHE tiles per axis", 8, 2, 32),
+            "threshold": Parameter("Threshold", 127, 0, 255),
+            "threshold_type": choice(
+                "Threshold method",
+                "binary",
+                (
+                    ("binary", "Binary"),
+                    ("binary_inv", "Binary inverted"),
+                    ("trunc", "Truncate"),
+                    ("tozero", "To zero"),
+                    ("tozero_inv", "To zero inverted"),
+                    ("otsu", "Otsu automatic"),
+                    ("otsu_inv", "Otsu inverted"),
+                ),
+            ),
+            "maximum": Parameter("Maximum output", 255, 1, 255),
+            "block_size": choice(
+                "Adaptive block size",
+                11,
+                tuple((k, f"{k} × {k}") for k in (3, 5, 7, 9, 11, 15, 21, 31)),
+            ),
+            "adaptive_method": choice(
+                "Adaptive method", "gaussian", (("mean", "Mean"), ("gaussian", "Gaussian"))
+            ),
+            "adaptive_c": Parameter("Adaptive offset C", 2.0, -30, 30, 0.1),
+            "invert": switch("Invert threshold"),
+            "morph_operation": choice(
+                "Morphology operation",
+                "open",
+                (
+                    ("erode", "Erode"),
+                    ("dilate", "Dilate"),
+                    ("open", "Open"),
+                    ("close", "Close"),
+                    ("gradient", "Gradient"),
+                    ("tophat", "Top hat"),
+                    ("blackhat", "Black hat"),
+                ),
+            ),
+            "shape": choice(
+                "Kernel shape",
+                "ellipse",
+                (("rectangle", "Rectangle"), ("ellipse", "Ellipse"), ("cross", "Cross")),
+            ),
+            "iterations": Parameter("Iterations", 1, 1, 5),
+            "emboss_direction": choice(
+                "Emboss direction",
+                "se",
+                (
+                    ("se", "Southeast"),
+                    ("ne", "Northeast"),
+                    ("nw", "Northwest"),
+                    ("sw", "Southwest"),
+                ),
+            ),
+            "offset": Parameter("Response offset", 128, 0, 255),
             "amount": Parameter("Amount", 0.7, 0, 3, 0.01),
         },
     ),
@@ -267,6 +505,13 @@ CATALOG = {"hardware": HARDWARE_NODES, "software": SOFTWARE_NODES}
 
 def node(stack, kind, **params):
     definitions = CATALOG[stack][kind][1]
+    if stack == "software" and kind == "filter" and "amount" in params:
+        if params.get("filter") == "gaussian" and "sigma" not in params:
+            params["sigma"] = max(0.1, params["amount"])
+            if not params["amount"]:
+                params.setdefault("mix", 0.0)
+        elif params.get("filter") == "bilateral" and "sigma_color" not in params:
+            params["sigma_color"] = 30 * params["amount"] if params["amount"] else 1.0
     return {
         "id": uuid4().hex,
         "type": kind,
@@ -279,7 +524,7 @@ def node(stack, kind, **params):
 def default_pipeline():
     # The legacy unconfigured preview uses Inferno and antialiased display scaling.
     return {
-        "version": 3,
+        "version": 4,
         "hardware": [],
         "software": [
             node("software", "source"),
@@ -297,14 +542,15 @@ def validate_pipeline(document):
         or set(document)
         != (
             {"version", "hardware", "software", "branches"}
-            if document.get("version") == 3
+            if document.get("version") in (3, 4)
             else {"version", "hardware", "software"}
         )
         or type(document["version"]) is not int
-        or document["version"] not in (1, 2, 3)
+        or document["version"] not in (1, 2, 3, 4)
     ):
         raise ValueError("Unsupported pipeline document/version")
     document = deepcopy(document)
+    legacy_filters = document["version"] < 4
     if document["version"] == 1:
         hardware, software = document["hardware"], document["software"]
         if (
@@ -324,6 +570,8 @@ def validate_pipeline(document):
         document["software"].append(node("software", "output"))
         document["branches"] = {t: [node("software", "source")] for t in "BCD"}
         document["version"] = 3
+    if document["version"] == 3:
+        document["version"] = 4
     if not isinstance(document["branches"], dict) or set(document["branches"]) != set("BCD"):
         raise ValueError("Pipelines must have tabs A, B, C and D")
     ids = set()
@@ -368,10 +616,29 @@ def validate_pipeline(document):
             if type(item["bypass"]) is not bool or type(item["expanded"]) is not bool:
                 raise ValueError("Invalid node state")
             definitions = catalog[kind][1]
+            if (
+                legacy_filters
+                and stack == "software"
+                and kind == "filter"
+                and isinstance(item["params"], dict)
+                and set(item["params"]) == {"filter", "amount"}
+            ):
+                old = item["params"]
+                item["params"] = node("software", "filter", **old)["params"]
+            if stack == "software" and kind == "colors" and isinstance(item["params"], dict):
+                # Preserve old saved/imported white/black-hot choices after deduplicating the menu.
+                aliases = {"camera_1": "white_hot", "camera_2": "black_hot"}
+                palette = item["params"].get("palette")
+                if isinstance(palette, str) and palette in aliases:
+                    item["params"]["palette"] = aliases[palette]
             if not isinstance(item["params"], dict) or set(item["params"]) != set(definitions):
                 raise ValueError("Unknown/missing node parameter")
             for key, spec in definitions.items():
                 spec.validate(item["params"][key])
+            if stack == "software" and kind == "filter":
+                validate_filter(item["params"])
+            if stack == "software" and kind in ("edges", "contours"):
+                validate_feature(kind, item["params"])
             if stack == "hardware":
                 fields = (
                     {"value": kind}
@@ -582,7 +849,7 @@ def migrate_pipeline(saved):
         palette = display["raw_palette"]
     else:
         if display["image_filter"] != "none":
-            software.append(node("software", "filter", filter=display["image_filter"]))
+            software.append(node("software", "filter", filter=display["image_filter"], amount=0.7))
         model = display["upsampling"]
         passes = display["anime4k_passes"]
         palette = (

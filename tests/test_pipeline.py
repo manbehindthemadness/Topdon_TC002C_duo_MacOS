@@ -55,7 +55,7 @@ def process(document, scale=1):
 @pytest.mark.parametrize(
     "mutation",
     [
-        lambda d: d.update(version=4),
+        lambda d: d.update(version=5),
         lambda d: d["software"].append(node("software", "source")),
         lambda d: d["software"].insert(0, node("software", "gamma")),
         lambda d: d["software"][0].update(bypass=True),
@@ -681,3 +681,24 @@ def test_version_one_source_migrates_to_first_software_node_with_identity_and_se
     save_settings({"pipeline": legacy})
     assert load_settings()["pipeline"]["software"][:-1] == current["software"][:-1]
     assert np.array_equal(process(upgraded), process(current))
+
+
+@pytest.mark.parametrize("legacy,canonical", [("camera_1", "white_hot"), ("camera_2", "black_hot")])
+def test_app_palette_cleanup_keeps_saved_choices_and_pixels(legacy, canonical):
+    from topdon_duo.pipeline import CAMERA_GRADIENTS, PALETTES
+    from topdon_duo.pipeline_processing import colorize
+
+    selected = node("software", "colors", palette=legacy)
+    saved = raw_pipeline(selected)
+    before = deepcopy(saved)
+    restored = validate_pipeline(saved)
+    assert saved == before
+    migrated = next(n for n in restored["software"] if n["id"] == selected["id"])
+    assert migrated["params"]["palette"] == canonical
+    assert legacy not in PALETTES
+    assert list(PALETTES)[-len(CAMERA_GRADIENTS) :] == list(CAMERA_GRADIENTS)
+    assert list(PALETTES.values()).count("White hot") == 1
+    assert list(PALETTES.values()).count("Black hot") == 1
+    assert all("approx" not in name for name in PALETTES.values())
+    gray = np.arange(256, dtype=np.float32).reshape(16, 16)
+    np.testing.assert_array_equal(colorize(gray, legacy), colorize(gray, canonical))

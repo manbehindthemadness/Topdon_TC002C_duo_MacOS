@@ -1523,6 +1523,7 @@ def main(argv: list[str] | None = None) -> int:
             "pipeline": pipeline,
             "pipeline_serial": pipeline_serial,
             "pipeline_previews": pipeline_worker.latest_previews(pipeline_revision) if pipeline_worker is not None else {},
+            "pipeline_preview_timings": pipeline_worker.latest_preview_timings(pipeline_revision) if pipeline_worker is not None else {},
             "pipeline_preview_errors": pipeline_worker.latest_preview_errors(pipeline_revision) if pipeline_worker is not None else {},
             "hardware": ui_hardware,
             "color_source": (

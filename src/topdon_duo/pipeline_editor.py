@@ -2,6 +2,7 @@
 
 import base64
 import json
+import math
 from copy import deepcopy
 from pathlib import Path
 
@@ -24,6 +25,8 @@ from PySide6.QtWidgets import (
 )
 
 from .dialog_preferences import load_dialog_directory, remember_dialog_directory
+from .feature_processing import feature_fields
+from .image_filters import allowed_kernels, filter_fields
 from .pipeline import (
     CATALOG,
     default_pipeline,
@@ -34,6 +37,7 @@ from .pipeline import (
     validate_pipeline,
 )
 from .pipeline_hardware import desired_hardware
+from .pipeline_titles import node_title
 
 
 class PipelinePreview(QLabel):
@@ -50,7 +54,8 @@ class PipelinePreview(QLabel):
         )
         self.image = QPixmap()
         self.payload = None
-        self.zoomed = False
+        self.zoomed = True
+        self.elapsed_ms = None
         self.pan = QPointF(0.5, 0.5)
         self.drag_anchor = None
         self.setToolTip("Right-click to toggle fit-width zoom. Drag to pan while zoomed.")
@@ -291,6 +296,7 @@ class PipelineEditor(QWidget):
         self.rebuilding = False
         self.widgets = {}
         self.preview_widgets = {}
+        self.preview_timing_widgets = {}
         self.preview_cache = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -368,6 +374,7 @@ class PipelineEditor(QWidget):
             return
         self.accepted_document = deepcopy(self.document)
         self.update_tab_status()
+        self.update_titles()
         self.edit_serial += 1
         desired = desired_hardware(self.document)
         hardware_operation = desired != self.last_desired
@@ -449,6 +456,12 @@ class PipelineEditor(QWidget):
         if self.locked:
             return
         item["params"][key] = value
+        if (
+            item["type"] == "filter"
+            and key == "filter"
+            and item["params"]["kernel"] not in allowed_kernels(value)
+        ):
+            item["params"]["kernel"] = 0
         if item["type"] == "detail" and key == "enabled" and not value:
             item["params"]["fixed"] = False
         self.publish()
@@ -459,7 +472,10 @@ class PipelineEditor(QWidget):
         item["expanded"] = not item["expanded"]
         title = self.widgets[item["id"]][3]
         stack = self.widgets[item["id"]][0]
-        title.setText(("▾ " if item["expanded"] else "▸ ") + CATALOG[stack][item["type"]][0])
+        title.setText(
+            ("▾ " if item["expanded"] else "▸ ")
+            + node_title(stack, item, getattr(self, "last_state", {}).get("temperature_unit", "C"))
+        )
         body.setVisible(item["expanded"])
         listing.fit_contents()
         self.publish()
@@ -471,6 +487,7 @@ class PipelineEditor(QWidget):
                     thumbnail.payload,
                     thumbnail.zoomed,
                     QPointF(thumbnail.pan),
+                    thumbnail.elapsed_ms,
                 )
         live_ids = {
             n["id"]
@@ -486,6 +503,7 @@ class PipelineEditor(QWidget):
         self.rebuilding = True
         self.widgets = {}
         self.preview_widgets = {}
+        self.preview_timing_widgets = {}
         for stack, listing in self.stacks.items():
             listing.clear()
             for item in self.nodes(stack):
@@ -523,7 +541,9 @@ class PipelineEditor(QWidget):
                 header.addWidget(grip)
                 title = QPushButton(
                     ("" if item["type"] == "output" else "▾ " if item["expanded"] else "▸ ")
-                    + CATALOG[stack][item["type"]][0]
+                    + node_title(
+                        stack, item, getattr(self, "last_state", {}).get("temperature_unit", "C")
+                    )
                 )
                 title.setStyleSheet("text-align: left; font-weight: bold")
                 title.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -533,6 +553,13 @@ class PipelineEditor(QWidget):
                     )
                 )
                 header.addWidget(title, 1)
+                if item["type"] == "preview":
+                    timing = QLabel("— ms")
+                    timing.setToolTip(
+                        "Cumulative processing time in this tab up to this preview; excludes thumbnail encoding, UI and waiting for other tabs."
+                    )
+                    header.addWidget(timing)
+                    self.preview_timing_widgets[item["id"]] = timing
                 from .view_window import NoWheelCheckBox
 
                 bypass = NoWheelCheckBox("Bypass")
@@ -560,12 +587,23 @@ class PipelineEditor(QWidget):
                     )
                     row.update_state(item["params"][key])
                     controls[key] = row
+                    if item["type"] == "filter":
+                        row.setVisible(key in filter_fields(item["params"]))
+                    elif item["type"] in ("edges", "contours"):
+                        row.setVisible(key in feature_fields(item["type"], item["params"]))
                     fields.addWidget(row)
                 if item["type"] == "preview":
                     thumbnail = PipelinePreview()
                     if item["id"] in self.preview_cache:
-                        payload, thumbnail.zoomed, thumbnail.pan = self.preview_cache[item["id"]]
+                        payload, thumbnail.zoomed, thumbnail.pan, thumbnail.elapsed_ms = (
+                            self.preview_cache[item["id"]]
+                        )
                         thumbnail.show_image(payload, "Waiting for pipeline image…")
+                    self.preview_timing_widgets[item["id"]].setText(
+                        f"{thumbnail.elapsed_ms:.1f} ms"
+                        if thumbnail.elapsed_ms is not None
+                        else "— ms"
+                    )
                     fields.addWidget(thumbnail)
                     self.preview_widgets[item["id"]] = thumbnail
                 body.setVisible(item["expanded"])
@@ -580,7 +618,17 @@ class PipelineEditor(QWidget):
                 self.widgets[item["id"]] = (stack, controls, bypass, title, badge)
             listing.fit_contents()
         self.update_tab_status()
+        self.update_titles()
         self.rebuilding = False
+
+    def update_titles(self):
+        unit = getattr(self, "last_state", {}).get("temperature_unit", "C")
+        for stack in ("hardware", "software"):
+            for item in self.nodes(stack):
+                title = self.widgets[item["id"]][3]
+                prefix = "" if item["type"] == "output" else "▾ " if item["expanded"] else "▸ "
+                title.setText(prefix + node_title(stack, item, unit))
+                title.setToolTip(node_title(stack, item, unit))
 
     def update_tab_status(self):
         try:
@@ -643,6 +691,7 @@ class PipelineEditor(QWidget):
                 self.accepted_document = deepcopy(self.document)
         self.last_desired = desired_hardware(self.document)
         self.update_tab_status()
+        self.update_titles()
         self.locked = locked
         current = state.get("pipeline_serial", 0) >= self.edit_serial
         for item in self.nodes("software"):
@@ -658,6 +707,18 @@ class PipelineEditor(QWidget):
                     else f"Preview failed: {state['pipeline_preview_errors'][item['id']]}"
                     if state.get("pipeline_preview_errors", {}).get(item["id"])
                     else "Waiting for pipeline image…",
+                )
+                elapsed = (
+                    state.get("pipeline_preview_timings", {}).get(item["id"]) if current else None
+                )
+                thumbnail.elapsed_ms = (
+                    float(elapsed)
+                    if not thumbnail.image.isNull()
+                    and isinstance(elapsed, (int, float))
+                    and not isinstance(elapsed, bool)
+                    and math.isfinite(elapsed)
+                    and elapsed >= 0
+                    else None
                 )
         thermal = not preview_required(self.document)
         for stack in ("hardware", "software"):
@@ -684,11 +745,30 @@ class PipelineEditor(QWidget):
                 bypass.blockSignals(False)
                 bypass.setEnabled(not locked and not unavailable)
                 title.setEnabled(not locked)
+                if item["type"] == "preview":
+                    elapsed = self.preview_widgets[item["id"]].elapsed_ms
+                    self.preview_timing_widgets[item["id"]].setText(
+                        f"{elapsed:.1f} ms" if elapsed is not None else "— ms"
+                    )
                 for key, row in controls.items():
                     row.set_display_unit(state.get("temperature_unit", "C"))
                     available = (
                         not locked and not inactive and not unavailable and not item["bypass"]
                     )
+                    if item["type"] == "filter":
+                        relevant = key in filter_fields(item["params"])
+                        row.setVisible(relevant)
+                        available &= relevant
+                        if key == "kernel":
+                            allowed = allowed_kernels(item["params"]["filter"])
+                            for index in range(row.input.count()):
+                                row.input.model().item(index).setEnabled(
+                                    row.input.itemData(index) in allowed
+                                )
+                    if item["type"] in ("edges", "contours"):
+                        relevant = key in feature_fields(item["type"], item["params"])
+                        row.setVisible(relevant)
+                        available &= relevant
                     if item["type"] == "combine":
                         mode = item["params"]["mode"]
                         has_mask = item["params"]["mask_source"] != "none"

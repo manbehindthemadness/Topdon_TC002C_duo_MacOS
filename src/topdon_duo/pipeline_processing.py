@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 
 from .camera import IMAGE_OFFSET, decode_duo_frame, raw_temperatures
+from .feature_processing import apply_features
+from .image_filters import apply_filter
 from .pipeline import (
     active_nodes,
     execution_dependencies,
@@ -165,6 +167,7 @@ class PipelineProcessor:
         self.executors = {}
         self.branches = {}
         self.last_previews = {}
+        self.last_preview_timings = {}
         self.collect_previews = False
         self.preview_active = False
         self.last_preview_errors = {}
@@ -176,9 +179,11 @@ class PipelineProcessor:
         self.branches.clear()
         self.models = {}
         self.last_previews = {}
+        self.last_preview_timings = {}
 
     def process(self, frame, averaged, document, scale=3, rotation=0, camera_palette=1):
         self.last_previews = {}
+        self.last_preview_timings = {}
         self.last_preview_errors = {}
         document = validate_pipeline(document)
         viewer_dependencies = execution_dependencies(document)
@@ -246,6 +251,12 @@ class PipelineProcessor:
             if outputs[tab][0] is not None
             for identity, payload in self.branches[tab].last_previews.items()
         }
+        self.last_preview_timings = {
+            identity: elapsed
+            for tab in dependencies
+            if outputs[tab][0] is not None
+            for identity, elapsed in self.branches[tab].last_preview_timings.items()
+        }
         self.last_preview_errors = {
             n["id"]: errors[tab]
             for tab in errors
@@ -275,6 +286,9 @@ class PipelineProcessor:
         inputs=None,
     ):
         self.last_previews = {}
+        self.last_preview_timings = {}
+        started = perf_counter()
+        preview_overhead = 0.0
         _, raw, preview = decode_duo_frame(frame)
         software = active_nodes(document, "software")
         ranges = [item for item in software if item["type"] == "range"]
@@ -347,7 +361,12 @@ class PipelineProcessor:
         for item in software:
             kind, p = item["type"], item["params"]
             if kind == "preview" and item["expanded"] and self.collect_previews:
+                sampled_at = perf_counter()
+                self.last_preview_timings[item["id"]] = max(
+                    0, (sampled_at - started - preview_overhead) * 1000
+                )
                 self.last_previews[item["id"]] = encode_thumbnail(image)
+                preview_overhead += perf_counter() - sampled_at
             elif kind == "combine":
                 incoming = resolve_input(p["tab"], p)
                 mask_source = p["mask_source"]
@@ -369,21 +388,10 @@ class PipelineProcessor:
                 )
             elif kind == "colors":
                 image = colorize(luminance(image), p["palette"]).astype(np.float32)
+            elif kind in ("edges", "contours"):
+                image = apply_features(image, kind, p)
             elif kind == "filter":
-                mode = p["filter"]
-                if mode == "bilateral":
-                    image = cv2.bilateralFilter(image.astype(np.float32), 5, 30 * p["amount"], 3)
-                elif mode == "median":
-                    image = cv2.medianBlur(bytes_image(image), 3).astype(np.float32)
-                elif mode in ("gaussian", "sharpen") and p["amount"]:
-                    blur = cv2.GaussianBlur(
-                        image, (0, 0), 0.8 if mode == "sharpen" else max(0.1, p["amount"])
-                    )
-                    image = (
-                        np.clip(image * (1 + p["amount"]) - blur * p["amount"], 0, 255)
-                        if mode == "sharpen"
-                        else blur
-                    )
+                image = apply_filter(image, p)
             elif kind == "antialiasing" and p["amount"]:
                 image = cv2.GaussianBlur(image, (0, 0), p["amount"])
             elif kind == "mirror":
@@ -452,6 +460,7 @@ class PipelineWorker:
         self.result = None
         self.preview_result = None
         self.preview_errors = {}
+        self.preview_timings = {}
         self.preview_enabled = False
         self.last_preview_at = 0.0
         self.closed = False
@@ -482,12 +491,21 @@ class PipelineWorker:
             if not enabled:
                 self.preview_result = None
                 self.preview_errors = {}
+                self.preview_timings = {}
 
     def latest_previews(self, revision):
         with self.condition:
             if self.preview_result is not None and self.preview_result[0] == revision:
                 return self.preview_result[1]
             return {}
+
+    def latest_preview_timings(self, revision):
+        with self.condition:
+            return (
+                self.preview_timings
+                if self.preview_result is not None and self.preview_result[0] == revision
+                else {}
+            )
 
     def latest_preview_errors(self, revision):
         with self.condition:
@@ -535,6 +553,9 @@ class PipelineWorker:
                 if previews is not None and self.preview_enabled:
                     self.preview_result = revision, previews
                     self.preview_errors = self.processor.last_preview_errors.copy()
+                    self.preview_timings = (
+                        self.processor.last_preview_timings.copy() if previews else {}
+                    )
                     self.last_preview_at = perf_counter()
 
     def close(self):
@@ -544,5 +565,6 @@ class PipelineWorker:
             self.pending = None
             self.preview_result = None
             self.preview_errors = {}
+            self.preview_timings = {}
             self.condition.notify()
         self.thread.join(timeout=1)

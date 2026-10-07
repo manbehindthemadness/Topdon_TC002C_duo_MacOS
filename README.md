@@ -267,6 +267,12 @@ restarts. The **Camera** popup also remembers its window size across closes and 
 and contains an expandable Camera hardware stack followed by software tabs A–D.
 Tab A feeds the viewer; Combine nodes activate and blend other tabs on independent
 threads. Combine inputs and optional masks can also use camera preview or raw thermal.
+Image filter nodes include configurable CPU blurs, sharpening, edge detection,
+CLAHE/equalization, thresholds, morphology, emboss and high-pass detail. Each
+filter exposes its relevant settings and blend amount; saved older filters
+retain their existing appearance. Edge features and Contour regions nodes add
+CPU feature selection by direction, size, shape, brightness or position, with
+overlay, isolation and mask outputs for selective Combine processing.
 [Pipeline controls and examples](docs/processing-pipelines.md) explain node ordering,
 static board imaging, persistence, and import/export.
 Display preferences, selected temperature unit, rotation, Auto calibrate, pipeline nodes and their expanded/bypassed states

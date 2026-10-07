@@ -2,7 +2,9 @@
 
 Camera settings has a hardware stack, a row of tabs A–D, and a software stack
 for the selected tab. Click a node header to expand its controls; drag the grip
-to reorder. Right-click empty space to add nodes or clear the current stack.
+to reorder. Node titles summarize their settings, such as **App colors: Inferno**
+or **Image filter: Sharpen · 0.7**, and update as you edit. Temperature range
+titles follow the selected measurement units. Right-click empty space to add nodes or clear the current stack.
 Clear all nodes clears hardware and all four software tabs. Right-click a node
 to insert above/below or remove it. Image source stays first in every tab and
 cannot be removed or bypassed. A also has a fixed Output → viewer node at the
@@ -23,7 +25,7 @@ sensor pixels through mirror changes and rotation.
 | Processing preset: Balanced, Shadow, Soft | Contrast: 0–3, neutral 1 |
 | Brightness and contrast: 0–100 | Gamma: 0.1–3, neutral 1 |
 | Gamma: 0–100, neutral 50 | App colors, including white/black hot |
-| Boost: Off, Mode 1, Mode 2, Mode 3 | None/bilateral/median/Gaussian/sharpen filter |
+| Boost: Off, Mode 1, Mode 2, Mode 3 | Configurable OpenCV image filters |
 | Detail enhancement, amount, Fixed detail checkbox | Horizontal and vertical mirror |
 | Camera colors and native palette | Adjustable antialiasing |
 | Noise reduction mode and levels | From/To temperature range |
@@ -32,6 +34,8 @@ sensor pixels through mirror changes and rotation.
 | | Combine: another tab, camera preview or raw thermal |
 | | Output → viewer (mandatory, last, tab A only) |
 | | Pipeline preview (repeatable, active only when expanded) |
+| | Edge features: selected connected edges, overlays and masks |
+| | Contour regions: selected shapes, outlines, fills and masks |
 
 Auto calibrate, camera measurement overlay, measurement units, ambient
 and reflected temperatures, optical transmission, distance, emissivity, and the calibration tools
@@ -99,9 +103,15 @@ Right-click the software stack and choose **Add node → Pipeline preview**.
 Place it anywhere after Image source and before A's Output. Its image shows
 exactly the processing stage at that position, before later nodes and the
 main-window rotation. Multiple preview nodes let you compare stages. Right-click
-the preview image to toggle fit-width zoom; click and drag to pan the zoomed
-image. Right-click again restores the full-image view. Zoom keeps the preview
-height fixed and crops vertically; panning stops at the image edges. Live updates
+the preview image to toggle fit-width zoom; previews start zoomed to fit width.
+Click and drag to pan the zoomed image. Right-click again restores the full-image view. Zoom keeps the preview
+height fixed and crops vertically; panning stops at the image edges. A header
+counter shows cumulative processing milliseconds in that tab from image decoding
+and source preparation through the nodes preceding the preview. Thumbnail
+encoding, UI updates, queue delays and waiting for other tabs are excluded;
+Combine blending itself is included, while the other tab has its own timing.
+The counter updates with the thumbnail and freezes with the image on bypass.
+Live updates
 retain your zoom and pan. The node header retains its normal context menu.
 
 Expanding a Preview node enables its live thumbnail; collapsing it disables
@@ -142,14 +152,138 @@ With Camera preview selected, adding a range uses the radiometric source with
 an approximation of the selected camera palette. This is **thermal recoloring**,
 not a freeze of the hardware preview. Preview hardware effects become inactive unless another connected branch or
 combine input/mask still uses the real preview.
-The camera-style software gradients are explicitly labeled approximations;
-they are not the manufacturer's exact lookup tables. Removing/bypassing all
+App colors lists its standard palettes first and the camera-style palettes last,
+using their friendly names. White hot and Black hot each appear once; saved
+duplicate selections migrate automatically. The camera-style gradients remain
+software approximations of the manufacturer's lookup tables. Removing/bypassing all
 range nodes returns to the camera preview.
 
 Brightness, contrast and gamma change luminance while retaining chroma.
 App color nodes recolor the previous image's luminance. Repeating filters and
 antialiasing adds processing at each location. Interpolation resizes the current
 image at its node; the final viewport resize preserves the sensor's aspect.
+
+## CPU image filters
+
+Add an **Image filter** node and choose its Filter. Only the relevant controls
+appear. Filter nodes repeat, run in stack order, and save/export their individual
+settings. **Blend amount** mixes the filtered image with the incoming image:
+0 keeps the original; 1 applies the full result. None passes the image through.
+These filters change display pixels, leaving sensor temperatures and CSV data intact.
+
+| Filter | Configuration |
+| --- | --- |
+| Box blur | Kernel size, border handling, color/luminance channels |
+| Edge-preserving denoise (bilateral) | Kernel, color sigma, spatial sigma, borders, channels |
+| Median denoise | Kernel, channels |
+| Smooth (Gaussian) | Kernel, Gaussian sigma, borders, channels |
+| Sharpen | Kernel, Gaussian sigma, sharpening amount, borders, channels |
+| Sobel edges | Kernel, X/Y/magnitude direction, response gain, borders |
+| Scharr edges | X/Y/magnitude direction, response gain, borders |
+| Laplacian edges | Kernel, response gain, borders |
+| Canny edges | Aperture/kernel, lower/upper thresholds, accurate L2 gradient |
+| Local contrast (CLAHE) | Clip limit, tiles per axis |
+| Histogram equalization | Blend amount |
+| Threshold / Otsu | Binary/inverted/truncate/to-zero/Otsu method, threshold when applicable, maximum output |
+| Adaptive threshold | Mean/Gaussian method, block size, offset C, invert, maximum output |
+| Morphology | Erode/dilate/open/close/gradient/top-hat/black-hat, kernel shape/size, iterations, borders, channels |
+| Emboss | Direction, response gain, neutral offset, borders |
+| High-pass detail | Kernel, Gaussian sigma, response gain, neutral offset, borders, channels |
+
+Auto kernel uses 3×3 for most filters and 5×5 for bilateral. Gaussian-based
+filters calculate their kernel from sigma when Auto is selected. Median and
+bilateral kernels are limited to 9×9; derivative/Canny kernels to 7×7; others
+allow up to 21×21. Unsupported kernel choices are disabled. Adaptive threshold
+has its own odd block size, up to 31×31. Morphology allows 1–5 iterations.
+Border choices are reflected pixels, repeated edge pixels, or constant zero.
+
+Edges, thresholds and emboss produce grayscale images, which can then feed
+App colors or a Combine mask. CLAHE and histogram equalization alter luminance
+while preserving chroma. Other filters offer all-channel or luminance-only
+processing. OpenCV's 8-bit operators round the incoming display values before
+processing; the radiometric sensor values remain separate.
+
+These use standard CPU OpenCV operations without extra models or contrib modules.
+Cost increases with image dimensions, kernel size, repeated nodes and active tabs;
+use denoising before upsampling when possible. See the official
+[filter reference](https://docs.opencv.org/4.x/d4/d86/group__imgproc__filter.html),
+[threshold reference](https://docs.opencv.org/4.x/d7/d1b/group__imgproc__misc.html),
+and [CLAHE reference](https://docs.opencv.org/4.x/d6/db6/classcv_1_1CLAHE.html).
+
+## Feature processors
+
+Right-click the software stack → **Add node → Edge features** or
+**Contour regions**. These are repeatable processors with their own controls,
+bypass states and saved/exported settings. Place a Preview node after them to
+inspect the selection. They work on the incoming displayed image in either
+camera-preview or raw-thermal pipelines, and never change temperatures or spots.
+
+**Edge features** detects Canny, Sobel or Scharr edges. Automatic Canny thresholds
+adapt to the smoothed image's nonzero gradient strengths; turn Auto off to set
+lower/upper thresholds. Sobel and Scharr expose a minimum gradient strength
+instead. Direction can select all edges, horizontal edges or vertical edges.
+Minimum connected edge pixels suppresses speckles; Select by keeps the longest
+connected components or those nearest the image center. Maximum selected features
+limits the retained components. A connected component may contain several joined
+edges; its pixel count measures its size rather than a geometric line length.
+Edge thickness dilates the selected mask at detection resolution.
+
+**Contour regions** segments with Otsu automatic threshold, a manual threshold,
+adaptive threshold, or Canny closed boundaries. Select dark regions reverses
+threshold-based segmentation. Adaptive block size and offset C control local
+thresholding; zero offset is the default. Close gaps optionally joins small breaks
+before detection. It detects external silhouettes, filling enclosed holes in
+mask/fill outputs. An open boundary might not yield a useful filled region.
+
+Filter regions by area as a percentage of the detection image, longest/shortest
+side aspect ratio, solidity (area divided by convex-hull area), and circularity
+(4π × area / perimeter²). Rectangle selection requires four approximately
+right-angle corners and a well-filled rotated bounding box; round regions require
+at least six polygon vertices, circularity ≥0.75 and side ratio ≤1.3. Convex
+selection checks the simplified polygon. These are geometric heuristics, not
+component recognition. Polygon simplification is a percentage of perimeter.
+Aspect ratios use a rotated bounding box so rotating a rectangular target does
+not make it appear square.
+
+Rank matching regions by largest, smallest, brightest, darkest, or closest to
+center, then keep up to Maximum selected features. Brightness uses the original
+incoming display colors, not temperature: put this node before App colors, using
+White hot raw input when you want hotter regions to look brighter. Rankings are
+recalculated each frame and do not track object identities. Original contour,
+simplified polygon, convex hull or rotated box chooses the rendered geometry;
+selection metrics always describe the detected contour.
+
+Both nodes offer a centered selection region and image-border exclusion. Edges
+can overlay a chosen color, emit a binary mask, or retain input pixels at selected
+edges against black. Contours can overlay outlines, tint filled regions, emit a
+binary region mask, isolate selected regions against black, or flatten each region
+to its average input color. Flattening uses color samples at detection resolution
+and retains the image outside selected regions. A mask needs Blend amount = 1
+for purely black/white output; smaller amounts blend in the original image.
+
+Detection keeps the input aspect ratio and uses at most 256, 512 (default), or
+1024 pixels along the longest side; smaller inputs stay native. Geometry and masks
+map back to the current pipeline image size. Smoothing, close-gap kernels and
+minimum connected edge pixels use detection pixels; area percentages remain
+relative to the full detection image even for a centered search. Downsampling
+can miss very small features. Selection is limited to 256 objects; contour metrics
+inspect at most the 2048 largest candidate contours to bound noisy-frame work.
+
+For board outlines, try Raw thermal → fixed Temperature range → light denoise →
+Edge features (Auto Canny, minimum 10 connected pixels) → Preview. For component
+regions, replace edges with Contour regions, select Rectangles / squares, then
+adjust area and aspect-ratio limits while inspecting the preview.
+
+For selective processing, build a contour pipeline in B with **Binary region
+mask** output and Blend amount 1. In A, add a Combine and choose **Tab B output**
+for Optional mix mask. White regions allow blending; black regions preserve A's
+current image. Keep the mask's orientation aligned with A and the blend input.
+A Preview in B lets you build the mask before connecting it; existing branch
+activation and Camera-close rules still apply.
+
+Implementation uses standard CPU OpenCV
+[contour and connected-component operations](https://docs.opencv.org/4.x/d3/dc0/group__imgproc__shape.html)
+and [Canny edge detection](https://docs.opencv.org/4.x/da/d22/tutorial_py_canny.html).
 
 ## Enhancement and performance
 
@@ -169,10 +303,12 @@ skipping a node. Enhancement changes display detail, not sensor resolution.
 
 ## Saving and sharing
 
-Version 1 and 2 pipeline files automatically migrate to version 3: their software
+Version 1–3 pipeline files automatically migrate to version 4. Version 1 and 2 migration keeps the existing tab layout: their software
 stack becomes A with its original node identities/settings and a fixed output;
 B–D start with an Image source each. Version 1 also moves Image source from the
-hardware stack to the first software position.
+hardware stack to the first software position. Version 4 adds filter parameters; older
+filters retain their kernel, strength and Gaussian/bilateral settings. No nodes
+are added to existing pipelines unless required by the older layout migration.
 Nodes, order, bypass, parameters and expanded states save with viewer preferences
 and reload on startup. Existing display preferences migrate once into a minimal
 pipeline, retaining configured hardware and enhancement choices. Existing Analyze

@@ -141,6 +141,9 @@ def test_worker_previews_are_revision_guarded_throttled_and_cleared_on_close(mon
         wait_result(1)
         assert set(worker.latest_previews(1)) == {before["id"], after["id"]}
         assert worker.latest_previews(2) == {}
+        assert set(worker.latest_preview_timings(1)) == {before["id"], after["id"]}
+        assert all(value >= 0 for value in worker.latest_preview_timings(1).values())
+        assert worker.latest_preview_timings(2) == {}
         with worker.condition:
             worker.last_preview_at = (
                 monotonic() + 60
@@ -160,6 +163,7 @@ def test_worker_previews_are_revision_guarded_throttled_and_cleared_on_close(mon
     finally:
         worker.close()
     assert worker.latest_previews(2) == {}
+    assert worker.latest_preview_timings(2) == {}
 
 
 def test_preview_node_ui_expands_collapses_and_shows_aspect_preserving_images(tmp_path):
@@ -188,7 +192,7 @@ buffer.open(QIODevice.WriteOnly)
 image.save(buffer, "PNG")
 payload = bytes(data.toBase64()).decode("ascii")
 state = {"pipeline": editor.document, "pipeline_serial": editor.edit_serial,
-         "pipeline_previews": {item["id"]: payload}, "processing_preset_available": True}
+         "pipeline_previews": {item["id"]: payload}, "pipeline_preview_timings": {item["id"]: 12.34}, "processing_preset_available": True}
 editor.update_state(state, False)
 app.processEvents()
 preview = editor.preview_widgets[item["id"]]
@@ -197,7 +201,8 @@ assert preview.height() == 200 and preview.isVisible()
 editor.resize(900, editor.height())
 app.processEvents()
 pixmap = preview.pixmap()
-assert abs(pixmap.width() / pixmap.height() - 4/3) < .02
+assert preview.zoomed and pixmap.width() == preview.contentsRect().width()
+assert editor.preview_timing_widgets[item["id"]].text() == "12.3 ms"
 editor.widgets[item["id"]][3].click()
 assert not item["expanded"] and not preview.isVisible()
 assert messages[-1]["document"]["software"][1]["expanded"] is False
@@ -215,10 +220,13 @@ preview = editor.preview_widgets[item["id"]]
 assert preview.image.toImage() == frozen
 editor.update_state(state, False)
 assert preview.image.toImage() == frozen
+assert preview.elapsed_ms == 12.34
+assert editor.preview_timing_widgets[item["id"]].text() == "12.3 ms"
 editor.bypass(item, False)
 state.update(pipeline_serial=editor.edit_serial, pipeline_previews={item["id"]: "invalid png"})
 editor.update_state(state, False)
 assert preview.image.isNull()
+assert editor.preview_timing_widgets[item["id"]].text() == "— ms"
 editor.update_state(state, True)
 assert not editor.widgets[item["id"]][3].isEnabled()
 window.grab().save(sys.argv[1] + "/preview-node.png")
@@ -406,6 +414,8 @@ image.save(buffer, "PNG")
 payload = bytes(array.toBase64()).decode("ascii")
 preview.show_image(payload, "waiting")
 app.processEvents()
+assert preview.zoomed and preview.pixmap().width() == preview.contentsRect().width()
+QTest.mouseClick(preview, Qt.RightButton)
 assert not preview.zoomed
 normal = preview.pixmap().size()
 assert abs(normal.width() / normal.height() - 4/3) < .02
@@ -450,3 +460,42 @@ preview.close()
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_preview_timings_measure_prefix_work_and_exclude_all_thumbnail_encoding(monkeypatch):
+    import topdon_duo.pipeline_processing as processing
+
+    clock = [0.0]
+    original_decode = processing.decode_duo_frame
+    original_brightness = processing.map_luminance
+    original_thumbnail = processing.encode_thumbnail
+
+    def decoding(*args, **kwargs):
+        clock[0] += 0.003
+        return original_decode(*args, **kwargs)
+
+    def brightness(*args, **kwargs):
+        clock[0] += 0.020
+        return original_brightness(*args, **kwargs)
+
+    def thumbnail(*args, **kwargs):
+        clock[0] += 0.200
+        return original_thumbnail(*args, **kwargs)
+
+    monkeypatch.setattr(processing, "perf_counter", lambda: clock[0])
+    monkeypatch.setattr(processing, "decode_duo_frame", decoding)
+    monkeypatch.setattr(processing, "map_luminance", brightness)
+    monkeypatch.setattr(processing, "encode_thumbnail", thumbnail)
+    document, before, after = preview_document()
+    frame, _ = frame_with_preview()
+    processor = PipelineProcessor()
+    processor.collect_previews = True
+    try:
+        processor.process(frame, None, document, scale=1)
+        np.testing.assert_allclose(processor.last_preview_timings[before["id"]], 3, atol=1e-6)
+        np.testing.assert_allclose(processor.last_preview_timings[after["id"]], 23, atol=1e-6)
+        processor.collect_previews = False
+        processor.process(frame, None, document, scale=1)
+        assert processor.last_preview_timings == {}
+    finally:
+        processor.close()
