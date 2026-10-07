@@ -46,9 +46,11 @@ from .graphs import (
 from .hardware_controls import HARDWARE_CONTROLS, HardwareControls, camera_operation_title
 from .pipeline import (
     default_pipeline,
+    execution_dependencies,
     geometry,
     migrate_pipeline,
     node,
+    software_tabs,
     thermal_source,
     validate_pipeline,
 )
@@ -1158,9 +1160,9 @@ def main(argv: list[str] | None = None) -> int:
         renderer.set_view_setting("image_source", args.image_source)
     pipeline = saved_settings.get("pipeline") or migrate_pipeline(saved_settings)
     if args.image_source is not None:
-        pipeline["hardware"][0]["params"]["source"] = "raw" if args.image_source == "analyze" else args.image_source
+        pipeline["software"][0]["params"]["source"] = "raw" if args.image_source == "analyze" else args.image_source
         if args.image_source == "analyze" and not any(n["type"] == "range" and not n["bypass"] for n in pipeline["software"]):
-            pipeline["software"].insert(0, node("software", "range", low=renderer.raw_temperature_low, high=renderer.raw_temperature_high))
+            pipeline["software"].insert(1, node("software", "range", low=renderer.raw_temperature_low, high=renderer.raw_temperature_high))
     renderer.set_pipeline(pipeline)
     pipeline_serial = 0
     pipeline_revision = 0
@@ -1399,13 +1401,13 @@ def main(argv: list[str] | None = None) -> int:
         if name in ("mirror_horizontal", "mirror_vertical", "image_filter", "image_source"):
             candidate = validate_pipeline(pipeline)
             if name == "image_source":
-                candidate["hardware"][0]["params"]["source"] = "raw" if value == "analyze" else value
+                candidate["software"][0]["params"]["source"] = "raw" if value == "analyze" else value
             else:
                 kind = "mirror" if name.startswith("mirror_") else "filter"
                 item = next((n for n in candidate["software"] if n["type"] == kind), None)
                 if item is None:
                     item = node("software", kind)
-                    candidate["software"].append(item)
+                    candidate["software"].insert(len(candidate["software"]) - 1, item)
                 key = name.removeprefix("mirror_") if kind == "mirror" else "filter"
                 if kind == "mirror" and renderer.rotation in (90, 270):
                     key = "vertical" if key == "horizontal" else "horizontal"
@@ -1446,9 +1448,13 @@ def main(argv: list[str] | None = None) -> int:
             picker.x = picker.y = None
             last_selected = None
         def signature(document):
-            return (document["hardware"][0]["params"],
-                    [(n["type"], n["params"], n["bypass"]) for n in document["software"]],
-                    sorted((n["type"], json.dumps(n["params"], sort_keys=True), n["bypass"]) for n in document["hardware"][1:]))
+            tabs = software_tabs(document)
+            return (
+                {tab: [(n["type"], n["params"], n["bypass"]) for n in tabs[tab]]
+                 for tab in execution_dependencies(document)},
+                sorted((n["type"], json.dumps(n["params"], sort_keys=True), n["bypass"])
+                       for n in document["hardware"]),
+            )
         changed_image = signature(candidate) != signature(pipeline)
         pipeline = candidate
         renderer.set_pipeline(pipeline)
@@ -1488,7 +1494,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def view_state() -> dict:
         message = "Camera preview" if actual_image_source == "preview" else "Raw thermal image"
-        if pipeline["hardware"][0]["params"]["source"] == "preview" and actual_image_source == "raw":
+        if pipeline["software"][0]["params"]["source"] == "preview" and actual_image_source == "raw":
             message += " · Camera-style thermal recoloring (approximate palette)"
         message += f" · Pipeline {pipeline_elapsed_ms:.0f} ms"
         if pipeline_elapsed_ms > 500:
@@ -1993,7 +1999,7 @@ def main(argv: list[str] | None = None) -> int:
                             emissivity_calibration.cancel()
                         hardware.restore()
                         pipeline_hardware._desired = None
-                        for item in pipeline["hardware"][1:]:
+                        for item in pipeline["hardware"]:
                             item["bypass"] = True
                         renderer.set_pipeline(pipeline)
                         pipeline_revision += 1

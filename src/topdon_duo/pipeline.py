@@ -67,16 +67,6 @@ CAMERA_GRADIENTS = {
 }
 PALETTES = {**COLOR_PALETTES, **CAMERA_GRADIENTS}
 HARDWARE_NODES = {
-    "source": (
-        "Image source",
-        {
-            "source": choice(
-                "Image source",
-                "preview",
-                (("preview", "Camera preview"), ("raw", "Raw thermal image")),
-            )
-        },
-    ),
     "preset": (
         "Camera processing preset",
         {
@@ -117,6 +107,93 @@ HARDWARE_NODES = {
     "humidity": ("Relative humidity", {"value": hardware_parameter("humidity")}),
 }
 SOFTWARE_NODES = {
+    "source": (
+        "Image source",
+        {
+            "source": choice(
+                "Image source",
+                "preview",
+                (("preview", "Camera preview"), ("raw", "Raw thermal image")),
+            )
+        },
+    ),
+    "output": ("Output → viewer", {}),
+    "combine": (
+        "Combine pipeline",
+        {
+            "tab": choice(
+                "Blend input",
+                "B",
+                (
+                    ("preview", "Camera preview"),
+                    ("raw", "Raw thermal"),
+                    *((t, f"Tab {t}") for t in "ABCD"),
+                ),
+            ),
+            "mode": choice(
+                "Blend mode",
+                "opacity",
+                tuple(
+                    (k, v)
+                    for k, v in (
+                        ("opacity", "Opacity"),
+                        ("weighted", "Weighted sum"),
+                        ("add", "Add"),
+                        ("subtract", "Subtract"),
+                        ("difference", "Difference"),
+                        ("multiply", "Multiply"),
+                        ("screen", "Screen"),
+                        ("overlay", "Overlay"),
+                        ("lighten", "Lighten (maximum)"),
+                        ("darken", "Darken (minimum)"),
+                        ("and", "Bitwise AND"),
+                        ("or", "Bitwise OR"),
+                        ("xor", "Bitwise XOR"),
+                        ("mask", "Luminance mask"),
+                    )
+                ),
+            ),
+            "opacity": Parameter("Opacity", 0.5, 0, 1, 0.01),
+            "mask_source": choice(
+                "Optional mix mask",
+                "none",
+                (
+                    ("none", "None"),
+                    ("input", "Blend input"),
+                    ("preview", "Camera preview"),
+                    ("raw", "Raw thermal"),
+                    *((t, f"Tab {t} output") for t in "ABCD"),
+                ),
+            ),
+            "mask_kind": choice(
+                "Mix mask type",
+                "luminance",
+                (
+                    ("luminance", "Luminance (soft mix)"),
+                    ("threshold", "Threshold (binary mask)"),
+                ),
+            ),
+            "mask_threshold": Parameter("Mix mask threshold", 127, 0, 255),
+            "mask_invert": switch("Invert mix mask"),
+            "raw_low": Parameter("Raw input / mask from", 15.0, -20, 550, 0.1, unit="°C"),
+            "raw_high": Parameter("Raw input / mask to", 45.0, -20, 550, 0.1, unit="°C"),
+            "base_weight": Parameter("Current image weight", 1.0, 0, 2, 0.01),
+            "input_weight": Parameter("Blend input weight", 1.0, 0, 2, 0.01),
+            "offset": Parameter("Brightness offset", 0, -255, 255, 0.1),
+            "threshold": Parameter("Mask threshold", 127, 0, 255),
+            "invert": switch("Invert mask"),
+            "interpolation": choice(
+                "Match input size",
+                "linear",
+                (
+                    ("nearest", "Nearest"),
+                    ("linear", "Linear"),
+                    ("bicubic", "Bicubic"),
+                    ("lanczos", "Lanczos"),
+                ),
+            ),
+        },
+    ),
     "brightness": (
         "Software brightness",
         {"amount": Parameter("Brightness", 0, -100, 100, 0.1, unit="%")},
@@ -201,22 +278,58 @@ def node(stack, kind, **params):
 def default_pipeline():
     # The legacy unconfigured preview uses Inferno and antialiased display scaling.
     return {
-        "version": 1,
-        "hardware": [node("hardware", "source")],
-        "software": [node("software", "colors"), node("software", "antialiasing")],
+        "version": 3,
+        "hardware": [],
+        "software": [
+            node("software", "source"),
+            node("software", "colors"),
+            node("software", "antialiasing"),
+            node("software", "output"),
+        ],
+        "branches": {t: [node("software", "source")] for t in "BCD"},
     }
 
 
 def validate_pipeline(document):
     if (
         not isinstance(document, dict)
-        or set(document) != {"version", "hardware", "software"}
+        or set(document)
+        != (
+            {"version", "hardware", "software", "branches"}
+            if document.get("version") == 3
+            else {"version", "hardware", "software"}
+        )
         or type(document["version"]) is not int
-        or document["version"] != 1
+        or document["version"] not in (1, 2, 3)
     ):
         raise ValueError("Unsupported pipeline document/version")
+    document = deepcopy(document)
+    if document["version"] == 1:
+        hardware, software = document["hardware"], document["software"]
+        if (
+            not isinstance(hardware, list)
+            or not hardware
+            or not isinstance(hardware[0], dict)
+            or hardware[0].get("type") != "source"
+            or not isinstance(software, list)
+        ):
+            raise ValueError("Image source must be first in the legacy camera stack")
+        document["software"] = [hardware[0], *software]
+        document["hardware"] = hardware[1:]
+        document["version"] = 2
+    if document["version"] == 2:
+        if not isinstance(document["software"], list):
+            raise ValueError("Invalid software stack")
+        document["software"].append(node("software", "output"))
+        document["branches"] = {t: [node("software", "source")] for t in "BCD"}
+        document["version"] = 3
+    if not isinstance(document["branches"], dict) or set(document["branches"]) != set("BCD"):
+        raise ValueError("Pipelines must have tabs A, B, C and D")
     ids = set()
-    for stack, catalog in CATALOG.items():
+    stacks = [("hardware", document["hardware"], HARDWARE_NODES)] + [
+        ("software", nodes, SOFTWARE_NODES) for nodes in software_tabs(document).values()
+    ]
+    for stack, nodes, catalog in stacks:
         if stack == "hardware":
             # Read older pipelines, but transmission is now a standalone control.
             catalog = {
@@ -226,7 +339,6 @@ def validate_pipeline(document):
                     {"value": hardware_parameter("transmission")},
                 ),
             }
-        nodes = document[stack]
         if not isinstance(nodes, list) or len(nodes) > 128:
             raise ValueError("Invalid pipeline stack")
         kinds = set()
@@ -249,7 +361,7 @@ def validate_pipeline(document):
             kind = item["type"]
             if not isinstance(kind, str) or kind not in catalog:
                 raise ValueError("Unknown pipeline node")
-            if stack == "hardware" and kind in kinds:
+            if (stack == "hardware" or kind in ("source", "output")) and kind in kinds:
                 raise ValueError("Camera controls may only be included once")
             kinds.add(kind)
             if type(item["bypass"]) is not bool or type(item["expanded"]) is not bool:
@@ -280,9 +392,19 @@ def validate_pipeline(document):
                 and item["params"]["low"] >= item["params"]["high"]
             ):
                 raise ValueError("From temperature must be below To temperature")
+            if kind == "combine" and item["params"]["raw_low"] >= item["params"]["raw_high"]:
+                raise ValueError("Raw input / mask From must be below To")
     hardware = document["hardware"]
-    if not hardware or hardware[0]["type"] != "source" or hardware[0]["bypass"]:
-        raise ValueError("Image source must be the first, enabled camera node")
+    for tab, software in software_tabs(document).items():
+        if not software or software[0]["type"] != "source" or software[0]["bypass"]:
+            raise ValueError(f"Tab {tab}: Image source must be first and enabled")
+        outputs = [n for n in software if n["type"] == "output"]
+        if tab == "A":
+            if len(outputs) != 1 or software[-1]["type"] != "output" or outputs[0]["bypass"]:
+                raise ValueError("Tab A must end with an enabled Output node")
+        elif outputs:
+            raise ValueError("Only tab A can contain the viewer Output node")
+    execution_dependencies(document, all_tabs=True)  # Also reject cycles in disconnected tabs.
     enabled = {n["type"]: n["params"] for n in hardware if not n["bypass"]}
     detail = enabled.get("detail", {})
     if detail.get("fixed") and (
@@ -312,6 +434,56 @@ def legacy_transmission_value(document):
     )
 
 
+def software_tabs(document):
+    return {"A": document["software"], **document.get("branches", {})}
+
+
+def execution_dependencies(document, all_tabs=False):
+    """Reachable DAG, with bypassed combines creating no connection."""
+    tabs = software_tabs(document)
+    dependencies = {}
+    visiting = set()
+
+    def visit(tab):
+        if tab in visiting:
+            raise ValueError("Combine connections cannot form a cycle")
+        if tab in dependencies:
+            return
+        if tab not in tabs:
+            raise ValueError("Unknown input tab")
+        visiting.add(tab)
+        targets = {
+            target
+            for n in tabs[tab]
+            if n["type"] == "combine" and not n["bypass"]
+            for target in (n["params"]["tab"], n["params"]["mask_source"])
+            if target in tabs
+        }
+        for target in sorted(targets):
+            visit(target)
+        visiting.remove(tab)
+        dependencies[tab] = targets
+
+    for tab in tabs if all_tabs else ("A",):
+        visit(tab)
+    return dependencies
+
+
+def preview_required(document):
+    tabs = software_tabs(document)
+    active = execution_dependencies(document)
+    return any(
+        not thermal_source({"software": tabs[t]})
+        or any(
+            n["type"] == "combine"
+            and not n["bypass"]
+            and (n["params"]["tab"] == "preview" or n["params"]["mask_source"] == "preview")
+            for n in tabs[t]
+        )
+        for t in active
+    )
+
+
 def active_nodes(document, stack):
     return [n for n in document[stack] if not n["bypass"]]
 
@@ -327,7 +499,7 @@ def geometry(document, rotation=0):
 
 
 def thermal_source(document):
-    return document["hardware"][0]["params"]["source"] == "raw" or any(
+    return document["software"][0]["params"]["source"] == "raw" or any(
         n["type"] == "range" for n in active_nodes(document, "software")
     )
 
@@ -335,10 +507,10 @@ def thermal_source(document):
 def migrate_pipeline(saved):
     document = default_pipeline()
     display = {**VIEW_DEFAULTS, **saved.get("display", {})}
-    document["hardware"][0]["params"]["source"] = display["image_source"]
+    document["software"][0]["params"]["source"] = display["image_source"]
     hardware = saved.get("hardware", {})
     if not display["analyze_mode"] and display["palette_source"] == "app" and "palette" in hardware:
-        document["hardware"][0]["params"]["source"] = "raw"
+        document["software"][0]["params"]["source"] = "raw"
     for kind, key in (
         ("brightness", "brightness"),
         ("contrast", "contrast"),
@@ -430,5 +602,5 @@ def migrate_pipeline(saved):
         software.append(node("software", "mirror", horizontal=horizontal, vertical=vertical))
     if display["antialiasing"]:
         software.append(node("software", "antialiasing"))
-    document["software"] = software
+    document["software"] = [document["software"][0], *software, document["software"][-1]]
     return validate_pipeline(document)

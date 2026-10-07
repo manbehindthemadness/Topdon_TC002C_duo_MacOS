@@ -264,7 +264,9 @@ dimensions with black borders, preserving its aspect ratio.
 
 The main thermal image window remembers its resized dimensions across viewer
 restarts. The **Camera** popup also remembers its window size across closes and viewer restarts,
-and contains expandable Camera hardware and Software processing stacks.
+and contains an expandable Camera hardware stack followed by software tabs A–D.
+Tab A feeds the viewer; Combine nodes activate and blend other tabs on independent
+threads. Combine inputs and optional masks can also use camera preview or raw thermal.
 [Pipeline controls and examples](docs/processing-pipelines.md) explain node ordering,
 static board imaging, persistence, and import/export.
 Display preferences, selected temperature unit, rotation, Auto calibrate, pipeline nodes and their expanded/bypassed states
@@ -307,7 +309,8 @@ steps accordingly. Distance sliders retain the camera's 1 cm precision, and
 pending edits survive unit changes. Hardware writes and saved hardware overrides
 remain in Celsius and meters, so switching units does not change calibration.
 Choice controls use dropdowns, and on/off settings use checkboxes. Numeric range
-controls have sliders. Image source is pinned first in the Camera hardware stack;
+controls have sliders. Image source is pinned first in each software tab, and
+tab A has a fixed Output node at the bottom;
 optional hardware nodes are singletons. Software processing nodes run top to bottom
 and can be repeated. Headers expand/collapse, grips drag, and right-click menus
 add, insert, remove, or clear nodes. All inputs ignore wheel edits.

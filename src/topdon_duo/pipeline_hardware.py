@@ -3,7 +3,7 @@
 from copy import deepcopy
 
 from .camera import CameraError
-from .pipeline import active_nodes, thermal_source, validate_pipeline
+from .pipeline import active_nodes, preview_required, validate_pipeline
 
 PIPELINE_FIELDS = {
     "brightness",
@@ -22,7 +22,7 @@ PIPELINE_FIELDS = {
 def desired_hardware(document):
     controls = {}
     preset, gamma, boost, fixed = "balanced", 50, 0, False
-    thermal = thermal_source(document)
+    thermal = not preview_required(document)
     for item in active_nodes(document, "hardware"):
         kind, p = item["type"], item["params"]
         if thermal and kind not in ("source", "humidity"):

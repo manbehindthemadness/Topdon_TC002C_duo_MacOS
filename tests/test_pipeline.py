@@ -29,8 +29,13 @@ viewer = viewer_fixture
 
 def raw_pipeline(*nodes):
     document = default_pipeline()
-    document["hardware"][0]["params"]["source"] = "raw"
-    document["software"] = [node("software", "range", low=10.0, high=60.0), *nodes]
+    document["software"][0]["params"]["source"] = "raw"
+    document["software"] = [
+        document["software"][0],
+        node("software", "range", low=10.0, high=60.0),
+        *nodes,
+        node("software", "output"),
+    ]
     return document
 
 
@@ -50,10 +55,10 @@ def process(document, scale=1):
 @pytest.mark.parametrize(
     "mutation",
     [
-        lambda d: d.update(version=2),
-        lambda d: d["hardware"].append(node("hardware", "source")),
-        lambda d: d["hardware"].insert(0, node("hardware", "gamma")),
-        lambda d: d["hardware"][0].update(bypass=True),
+        lambda d: d.update(version=4),
+        lambda d: d["software"].append(node("software", "source")),
+        lambda d: d["software"].insert(0, node("software", "gamma")),
+        lambda d: d["software"][0].update(bypass=True),
         lambda d: d["software"].append({**node("software", "gamma"), "type": "unknown"}),
         lambda d: d["software"].append(node("software", "gamma", amount=float("nan"))),
         lambda d: d["software"].append(node("software", "range", low=60.0, high=10.0)),
@@ -107,7 +112,7 @@ def test_range_after_processing_preserves_previous_operations():
     # First range defines the source normalization, even with a filter before it.
     before = raw_pipeline(node("software", "filter", filter="gaussian", amount=1.0))
     after = deepcopy(before)
-    after["software"].reverse()
+    after["software"][1:-1] = after["software"][1:-1][::-1]
     assert np.array_equal(process(before), process(after))
 
 
@@ -115,18 +120,20 @@ def test_camera_preview_range_recolors_thermal_and_keeps_previous_filters():
     document = default_pipeline()
     document["hardware"].append(node("hardware", "camera_colors", palette=11))
     document["software"] = [
+        document["software"][0],
         node("software", "brightness", amount=20.0),
         node("software", "range", low=10.0, high=60.0),
+        node("software", "output"),
     ]
     frame, _ = frame_with_preview()
     _, raw, _ = decode_duo_frame(frame)
     processor = PipelineProcessor()
     enhanced, source = processor.process(frame, raw.astype(np.float32), document, scale=1)
     assert source == "raw" and thermal_source(document)
-    document["software"] = document["software"][1:]
+    document["software"] = [document["software"][0], *document["software"][2:]]
     plain, _ = processor.process(frame, raw.astype(np.float32), document, scale=1)
     assert not np.array_equal(enhanced, plain)
-    document["software"] = []
+    document["software"] = [document["software"][0], document["software"][-1]]
     _, source = processor.process(frame, raw.astype(np.float32), document, scale=1)
     assert source == "preview"
 
@@ -137,10 +144,10 @@ def test_filters_interpolation_aa_are_real_cumulative_operations():
         node("software", "antialiasing", amount=1.0),
     )
     once = process(document, 3)
-    document["software"].append(node("software", "antialiasing", amount=1.0))
+    document["software"].insert(-1, node("software", "antialiasing", amount=1.0))
     twice = process(document, 3)
     assert not np.array_equal(once, twice)
-    document["software"][1]["params"]["method"] = "lanczos"
+    document["software"][2]["params"]["method"] = "lanczos"
     assert not np.array_equal(twice, process(document, 3))
 
 
@@ -154,7 +161,7 @@ def test_pipeline_mirrors_match_sensor_coordinates_after_final_rotation(rotation
     _, raw, _ = decode_duo_frame(frame)
     assert np.array_equal(rendered.raw_counts, np.rot90(np.fliplr(raw), -(rotation // 90)))
     assert (renderer.mirror_horizontal, renderer.mirror_vertical) == geometry(document, rotation)
-    document["software"].append(node("software", "mirror", horizontal=True))
+    document["software"].insert(-1, node("software", "mirror", horizontal=True))
     renderer.set_pipeline(document)
     assert np.array_equal(
         renderer.render_detailed(frame).raw_counts, np.rot90(raw, -(rotation // 90))
@@ -222,10 +229,10 @@ def test_hardware_reorder_makes_no_usb_writes_and_bypass_restores_only_owned_fie
     ]
     controller.apply(document)
     hw.reset_mock()
-    document["hardware"][1:] = document["hardware"][1:][::-1]
+    document["hardware"].reverse()
     controller.apply(document)
     assert not hw.mock_calls
-    document["hardware"][1]["bypass"] = True
+    document["hardware"][0]["bypass"] = True
     controller.apply(document)
     assert hw.set.call_args.args[0] == "contrast" and hw.set.call_args.args[2] is False
     assert hw.state.return_value["emissivity"]["value"] == 0.95
@@ -239,7 +246,7 @@ def test_hardware_failure_rolls_back_without_clearing_calibration_fields():
     document["hardware"].append(node("hardware", "brightness", value=60))
     controller.apply(document)
     candidate = deepcopy(document)
-    candidate["hardware"][1]["params"]["value"] = 80
+    candidate["hardware"][0]["params"]["value"] = 80
     original = hw.set.side_effect
 
     def fail(name, value, enabled):
@@ -264,12 +271,12 @@ def test_fixed_dependency_and_raw_preview_exclusion():
     controller = PipelineHardware(fake_hardware())
     controller.apply(document)
     assert controller.hardware.fixed_range
-    document["software"].append(node("software", "range"))
+    document["software"].insert(-1, node("software", "range"))
     controls, _, _, _, fixed = desired_hardware(document)
     assert not controls and not fixed
     controller.apply(document)
     assert not controller.hardware.fixed_range
-    document["software"] = []
+    document["software"] = [document["software"][0], document["software"][-1]]
     controller.apply(document)
     assert controller.hardware.fixed_range
     document["hardware"].append(node("hardware", "gamma", value=30))
@@ -296,12 +303,14 @@ def test_migration_retains_analyze_settings_and_old_mirror_geometry():
     assert geometry(document, 90) == (True, False)
     assert thermal_source(document)
     assert [n["type"] for n in document["software"]] == [
+        "source",
         "range",
         "filter",
         "enhance",
         "colors",
         "mirror",
         "antialiasing",
+        "output",
     ]
     assert not any(n["type"] in ("ambient", "emissivity") for n in document["hardware"])
     assert next(n for n in document["software"] if n["type"] == "range")["params"] == {
@@ -366,30 +375,30 @@ state = {"pipeline": default_pipeline(), "pipeline_serial": 12, "processing_pres
 window.update_state(state)
 assert messages == []
 editor.insert("hardware", "brightness", 0)
-assert editor.document["hardware"][0]["type"] == "source"
-assert editor.document["hardware"][1]["params"]["value"] == 57
+assert editor.document["software"][0]["type"] == "source"
+assert editor.document["hardware"][0]["params"]["value"] == 57
 assert messages[-1]["serial"] == 13
 count = len(messages)
 editor.insert("hardware", "brightness", 2)
 assert len(messages) == count
 # Metadata-only changes cannot be mistaken for camera writes.
-item = editor.document["hardware"][1]
+item = editor.document["hardware"][0]
 _, controls, bypass, title, badge = editor.widgets[item["id"]]
 title.click()
 assert not item["expanded"]
 assert messages[-1]["hardware_operation"] is False
 # A queued old state must not overwrite newer edits.
 window.update_state(state)
-assert editor.document["hardware"][1]["params"]["value"] == 57
+assert editor.document["hardware"][0]["params"]["value"] == 57
 editor.insert("software", "gamma", 0)
 editor.insert("software", "gamma", 1)
 assert sum(n["type"] == "gamma" for n in editor.document["software"]) == 2
 software = editor.stacks["software"]
-first_id = editor.document["software"][0]["id"]
+first_id = editor.document["software"][1]["id"]
 # Exercise the model move that drag/drop uses, including editor callbacks.
-assert software.model().moveRows(QModelIndex(), 0, 1, QModelIndex(), 2)
+assert software.model().moveRows(QModelIndex(), 1, 1, QModelIndex(), 3)
 app.processEvents()
-assert editor.document["software"][1]["id"] == first_id
+assert editor.document["software"][2]["id"] == first_id
 assert messages[-1]["hardware_operation"] is False
 menu = QMenu()
 editor.stacks["hardware"].add_menu(menu, "Add", 2)
@@ -405,11 +414,11 @@ destination = Path(sys.argv[1]) / "saved.pipeline.json"
 QFileDialog.getSaveFileName = lambda *_args: (str(destination), "")
 editor.export_file()
 exported = json.loads(destination.read_text())
-assert set(exported) == {"version", "hardware", "software"}
+assert set(exported) == {"version", "hardware", "software", "branches"}
 assert exported == editor.document
 QFileDialog.getOpenFileName = lambda *_args: (str(destination), "")
 editor.clear()
-assert len(editor.document["hardware"]) == 1 and not editor.document["software"]
+assert not editor.document["hardware"] and len(editor.document["software"]) == 2
 editor.import_file()
 assert editor.document == exported
 before = deepcopy(editor.document)
@@ -432,11 +441,61 @@ editor.remove("software", 0)
 assert editor.document == before and len(messages) == count
 editor.update_state({"pipeline_serial": editor.edit_serial, "pipeline": editor.document, "processing_preset_available": True}, False)
 editor.clear("software")
-assert not editor.document["software"] and len(editor.document["hardware"]) > 1
+assert len(editor.document["software"]) == 2 and len(editor.document["hardware"]) > 0
 editor.clear("hardware")
-assert len(editor.document["hardware"]) == 1
-editor.remove("hardware", 0)
-assert editor.document["hardware"][0]["type"] == "source"
+assert not editor.document["hardware"]
+editor.remove("software", 0)
+assert editor.document["software"][0]["type"] == "source"
+# Tabs edit independent stacks; A keeps its fixed output and clear honors tab scope.
+assert editor.tab_bar.count() == 4
+snapshot_a = deepcopy(editor.document["software"])
+editor.tab_bar.setCurrentIndex(1)
+assert editor.tab == "B" and len(editor.nodes("software")) == 1
+assert "idle" in editor.tab_status.text()
+editor.insert("software", "brightness", 1)
+assert editor.document["branches"]["B"][1]["type"] == "brightness"
+assert editor.document["software"] == snapshot_a
+brightness_b = editor.nodes("software")[1]
+brightness_row = editor.widgets[brightness_b["id"]][1]["amount"]
+brightness_row.input.setValue(12.3)
+assert brightness_row.timer.isActive()
+editor.tab_bar.setCurrentIndex(0)
+assert editor.document["branches"]["B"][1]["params"]["amount"] == 12.3
+editor.insert("software", "combine", 999)
+assert editor.document["software"][-2]["type"] == "combine"
+assert editor.document["software"][-1]["type"] == "output"
+output = editor.document["software"][-1]
+editor.bypass(output, True)
+editor.remove("software", len(editor.document["software"]) - 1)
+assert editor.document["software"][-1] == output and not output["bypass"]
+editor.tab_bar.setCurrentIndex(1)
+assert "connected" in editor.tab_status.text()
+editor.insert("software", "combine", 2)
+combine = editor.nodes("software")[-1]
+editor.change(combine, "tab", "A")
+assert "cycle" in warnings[-1][-1]
+assert editor.nodes("software")[-1]["params"]["tab"] == "C"
+editor.clear("software")
+assert len(editor.document["branches"]["B"]) == 1
+assert editor.document["software"][-2]["type"] == "combine"
+# Updates while B is visible must still update hidden A and C/D.
+incoming = deepcopy(editor.document)
+incoming["software"][-2]["params"]["opacity"] = 0.7
+incoming["branches"]["D"].append(node("software", "gamma"))
+editor.update_state({"pipeline": incoming, "pipeline_serial": editor.edit_serial + 1,
+                     "processing_preset_available": True}, False)
+assert editor.document == incoming
+editor.tab_bar.setCurrentIndex(3)
+assert editor.nodes("software")[1]["type"] == "gamma"
+editor.update_state({"pipeline": editor.document, "pipeline_serial": editor.edit_serial,
+                     "processing_preset_available": True}, True)
+locked_snapshot = deepcopy(editor.document)
+editor.insert("software", "filter", 1)
+editor.clear()
+assert editor.document == locked_snapshot
+editor.update_state({"pipeline": editor.document, "pipeline_serial": editor.edit_serial,
+                     "processing_preset_available": True}, False)
+editor.tab_bar.setCurrentIndex(0)
 window.grab().save(str(Path(sys.argv[1]) / "pipeline-editor.png"))
 window.close()
 """
@@ -475,7 +534,7 @@ def test_pipeline_fields_preserve_sdk_calibration_bytes_and_restore_original(tmp
     controller.apply(document)
     assert hw.read(3, 1) == calibration
     assert hw.state()["detail_enabled"]["value"] == 1
-    for item in document["hardware"][1:]:
+    for item in document["hardware"]:
         item["bypass"] = True
     controller.apply(document)
     assert hw.read(3, 1) == calibration
@@ -525,8 +584,8 @@ def test_software_pipeline_works_when_sdk_controls_are_unavailable():
     controller.apply(document)
     hw.load.assert_not_called()
     assert controller.document == document
-    document["hardware"][0]["params"]["source"] = "preview"
-    document["software"] = []
+    document["software"][0]["params"]["source"] = "preview"
+    document["software"] = [document["software"][0], document["software"][-1]]
     document["hardware"].append(node("hardware", "brightness", value=40))
     with pytest.raises(CameraError, match="Unsupported control layout"):
         controller.apply(document)
@@ -536,7 +595,11 @@ def test_preview_unknown_baseline_palette_reports_error_without_killing_worker()
     frame, _ = frame_with_preview()
     _, raw, _ = decode_duo_frame(frame)
     document = default_pipeline()
-    document["software"] = [node("software", "range", low=10.0, high=60.0)]
+    document["software"] = [
+        document["software"][0],
+        node("software", "range", low=10.0, high=60.0),
+        document["software"][-1],
+    ]
     worker = PipelineWorker()
     try:
         worker.submit(frame, raw.astype(np.float32), document, 1, 1, 0, 99)
@@ -585,7 +648,7 @@ def test_transmission_is_not_owned_or_restored_by_pipeline_nodes():
     document = default_pipeline()
     document["hardware"].append(node("hardware", "brightness", value=60))
     controller.apply(document)
-    document["hardware"] = document["hardware"][:1]
+    document["hardware"] = []
     controller.apply(document)
     assert hw.state.return_value["transmission"] == {
         "value": 95,
@@ -593,3 +656,28 @@ def test_transmission_is_not_owned_or_restored_by_pipeline_nodes():
         "available": True,
     }
     assert all(call.args[0] != "transmission" for call in hw.set.call_args_list)
+
+
+def test_version_one_source_migrates_to_first_software_node_with_identity_and_settings(
+    tmp_path, monkeypatch
+):
+    from topdon_duo.settings_preferences import load_settings, save_settings
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    current = raw_pipeline(node("software", "gamma", amount=2.0))
+    current["hardware"].append(node("hardware", "brightness", value=65))
+    source = current["software"][0]
+    source["expanded"] = True
+    legacy = deepcopy(current)
+    legacy["version"] = 1
+    legacy.pop("branches")
+    legacy["software"].pop()
+    legacy["hardware"].insert(0, legacy["software"].pop(0))
+    upgraded = validate_pipeline(legacy)
+    assert upgraded["hardware"] == current["hardware"]
+    assert upgraded["software"][:-1] == current["software"][:-1]
+    assert upgraded["software"][0] == source
+    assert legacy["version"] == 1  # validation doesn't mutate the input file
+    save_settings({"pipeline": legacy})
+    assert load_settings()["pipeline"]["software"][:-1] == current["software"][:-1]
+    assert np.array_equal(process(upgraded), process(current))

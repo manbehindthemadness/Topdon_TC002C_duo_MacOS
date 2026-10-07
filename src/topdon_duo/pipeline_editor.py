@@ -16,12 +16,21 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QTabBar,
     QVBoxLayout,
     QWidget,
 )
 
 from .dialog_preferences import load_dialog_directory, remember_dialog_directory
-from .pipeline import CATALOG, default_pipeline, node, thermal_source, validate_pipeline
+from .pipeline import (
+    CATALOG,
+    default_pipeline,
+    execution_dependencies,
+    node,
+    preview_required,
+    software_tabs,
+    validate_pipeline,
+)
 from .pipeline_hardware import desired_hardware
 
 
@@ -89,10 +98,13 @@ class StackList(QListWidget):
             return
         index = self.indexAt(event.position().toPoint()).row()
         current = self.currentItem()
-        if self.stack == "hardware" and (
+        if self.stack == "software" and (
             current is None
-            or current.data(Qt.UserRole) == self.editor.document["hardware"][0]["id"]
+            or current.data(Qt.UserRole) == self.editor.nodes("software")[0]["id"]
+            or current.data(Qt.UserRole) == self.editor.nodes("software")[-1]["id"]
+            and self.editor.nodes("software")[-1]["type"] == "output"
             or index == 0
+            or (self.editor.tab == "A" and index < 0)
         ):
             event.ignore()
             return
@@ -101,12 +113,16 @@ class StackList(QListWidget):
     def reordered(self):
         if self.editor.rebuilding:
             return
-        lookup = {n["id"]: n for n in self.editor.document[self.stack]}
+        lookup = {n["id"]: n for n in self.editor.nodes(self.stack)}
         ordered = [lookup[self.item(i).data(Qt.UserRole)] for i in range(self.count())]
-        if self.stack == "hardware" and ordered[0]["type"] != "source":
+        if self.stack == "software" and (
+            not ordered
+            or ordered[0]["type"] != "source"
+            or (self.editor.tab == "A" and ordered[-1]["type"] != "output")
+        ):
             self.editor.rebuild()
             return
-        self.editor.document[self.stack] = ordered
+        self.editor.set_nodes(self.stack, ordered)
         self.editor.publish()
 
     def context_menu(self, position):
@@ -115,22 +131,25 @@ class StackList(QListWidget):
         index = self.indexAt(position).row()
         menu = QMenu(self)
         if index < 0:
-            self.add_menu(menu, "Add node", len(self.editor.document[self.stack]))
+            self.add_menu(menu, "Add node", len(self.editor.nodes(self.stack)))
             menu.addAction("Clear current stack", lambda: self.editor.clear(self.stack))
             menu.addAction("Clear all nodes", lambda: self.editor.clear())
         else:
-            item = self.editor.document[self.stack][index]
-            if item["type"] != "source":
+            item = self.editor.nodes(self.stack)[index]
+            if item["type"] not in ("source", "output"):
                 self.add_menu(menu, "Insert node above", index)
                 menu.addAction("Clear node", lambda: self.editor.remove(self.stack, index))
-            self.add_menu(menu, "Insert node below", index + 1)
+            if item["type"] != "output":
+                self.add_menu(menu, "Insert node below", index + 1)
+            else:
+                self.add_menu(menu, "Insert node above", index)
         menu.exec(self.viewport().mapToGlobal(position))
 
     def add_menu(self, menu, title, position):
         add = menu.addMenu(title)
-        existing = {n["type"] for n in self.editor.document[self.stack]}
+        existing = {n["type"] for n in self.editor.nodes(self.stack)}
         for kind, (label, _) in CATALOG[self.stack].items():
-            if kind == "source":
+            if kind in ("source", "output"):
                 continue
             action = add.addAction(
                 label,
@@ -144,6 +163,8 @@ class PipelineEditor(QWidget):
         super().__init__()
         self.send, self.row_class = send, row_class
         self.document = default_pipeline()
+        self.accepted_document = deepcopy(self.document)
+        self.tab = "A"
         self.edit_serial = 0
         self.hardware_state = {}
         self.last_desired = desired_hardware(self.document)
@@ -162,6 +183,15 @@ class PipelineEditor(QWidget):
             ("hardware", "Camera hardware · order organizes controls"),
             ("software", "Software processing · runs from top to bottom"),
         ):
+            if stack == "software":
+                self.tab_bar = QTabBar()
+                for tab in "ABCD":
+                    self.tab_bar.addTab(tab)
+                self.tab_bar.currentChanged.connect(self.select_tab)
+                layout.addWidget(self.tab_bar)
+                self.tab_status = QLabel()
+                self.tab_status.setWordWrap(True)
+                layout.addWidget(self.tab_status)
             layout.addWidget(QLabel(title))
             listing = StackList(self, stack)
             self.stacks[stack] = listing
@@ -178,13 +208,45 @@ class PipelineEditor(QWidget):
         layout.addLayout(buttons)
         self.rebuild()
 
+    def nodes(self, stack, document=None):
+        document = self.document if document is None else document
+        return (
+            document[stack]
+            if stack == "hardware" or self.tab == "A"
+            else document["branches"][self.tab]
+        )
+
+    def set_nodes(self, stack, nodes):
+        if stack == "hardware" or self.tab == "A":
+            self.document[stack] = nodes
+        else:
+            self.document["branches"][self.tab] = nodes
+
+    def select_tab(self, index):
+        # Commit debounced inputs before their widgets are destroyed by tab switching.
+        if not self.locked:
+            for _, controls, *_ in list(self.widgets.values()):
+                for row in controls.values():
+                    if hasattr(row.input, "interpretText"):
+                        row.input.interpretText()
+                    if row.timer.isActive():
+                        row._emit()
+        self.tab = "ABCD"[index]
+        self.rebuild()
+        if hasattr(self, "last_state"):
+            self.update_state(self.last_state, self.locked)
+
     def publish(self):
         try:
             validate_pipeline(self.document)
         except ValueError as exc:
             QMessageBox.warning(self, "Pipeline rejected", str(exc))
+            self.document = deepcopy(self.accepted_document)
+            self.rebuild()
             self.send({"action": "pipeline_refresh"})
             return
+        self.accepted_document = deepcopy(self.document)
+        self.update_tab_status()
         self.edit_serial += 1
         desired = desired_hardware(self.document)
         hardware_operation = desired != self.last_desired
@@ -199,9 +261,9 @@ class PipelineEditor(QWidget):
         )
 
     def insert(self, stack, kind, position):
-        if self.locked:
+        if self.locked or kind in ("source", "output"):
             return
-        if stack == "hardware" and any(n["type"] == kind for n in self.document[stack]):
+        if stack == "hardware" and any(n["type"] == kind for n in self.nodes(stack)):
             return
         item = node(stack, kind)
         if stack == "hardware":
@@ -220,15 +282,19 @@ class PipelineEditor(QWidget):
                 value = self.hardware_state.get(field, {}).get("value")
                 if value is not None:
                     item["params"][parameter] = bool(value) if parameter == "enabled" else value
+        if kind == "combine":
+            item["params"]["tab"] = next(t for t in "BCD" if t != self.tab)
         item["expanded"] = True
-        self.document[stack].insert(max(1, position) if stack == "hardware" else position, item)
+        if stack == "software":
+            position = max(1, min(position, len(self.nodes(stack)) - (self.tab == "A")))
+        self.nodes(stack).insert(position, item)
         self.rebuild()
         self.publish()
 
     def remove(self, stack, position):
-        if self.locked or self.document[stack][position]["type"] == "source":
+        if self.locked or self.nodes(stack)[position]["type"] in ("source", "output"):
             return
-        del self.document[stack][position]
+        del self.nodes(stack)[position]
         self.rebuild()
         self.publish()
 
@@ -236,9 +302,19 @@ class PipelineEditor(QWidget):
         if self.locked:
             return
         if stack in (None, "hardware"):
-            self.document["hardware"] = self.document["hardware"][:1]
+            self.document["hardware"] = []
         if stack in (None, "software"):
-            self.document["software"] = []
+            tabs = (
+                software_tabs(self.document)
+                if stack is None
+                else {self.tab: self.nodes("software")}
+            )
+            for tab, nodes in tabs.items():
+                kept = [n for n in nodes if n["type"] in ("source", "output")]
+                if tab == "A":
+                    self.document["software"] = kept
+                else:
+                    self.document["branches"][tab] = kept
         self.rebuild()
         self.publish()
 
@@ -257,6 +333,8 @@ class PipelineEditor(QWidget):
         self.publish()
 
     def expand(self, item, body, listing, entry):
+        if item["type"] == "output":
+            return
         item["expanded"] = not item["expanded"]
         title = self.widgets[item["id"]][3]
         stack = self.widgets[item["id"]][0]
@@ -270,10 +348,10 @@ class PipelineEditor(QWidget):
         self.widgets = {}
         for stack, listing in self.stacks.items():
             listing.clear()
-            for item in self.document[stack]:
+            for item in self.nodes(stack):
                 entry = QListWidgetItem(listing)
                 entry.setData(Qt.UserRole, item["id"])
-                if item["type"] == "source":
+                if item["type"] in ("source", "output"):
                     entry.setFlags(entry.flags() & ~Qt.ItemIsDragEnabled)
                 container = QWidget()
                 container.setObjectName("pipelineNode")
@@ -301,9 +379,11 @@ class PipelineEditor(QWidget):
                 grip = QLabel("⠿")
                 grip.setAttribute(Qt.WA_TransparentForMouseEvents)
                 grip.setToolTip("Drag to rearrange")
+                grip.setVisible(item["type"] not in ("source", "output"))
                 header.addWidget(grip)
                 title = QPushButton(
-                    ("▾ " if item["expanded"] else "▸ ") + CATALOG[stack][item["type"]][0]
+                    ("" if item["type"] == "output" else "▾ " if item["expanded"] else "▸ ")
+                    + CATALOG[stack][item["type"]][0]
                 )
                 title.setStyleSheet("text-align: left; font-weight: bold")
                 title.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -317,7 +397,7 @@ class PipelineEditor(QWidget):
 
                 bypass = NoWheelCheckBox("Bypass")
                 bypass.setChecked(item["bypass"])
-                bypass.setVisible(item["type"] != "source")
+                bypass.setVisible(item["type"] not in ("source", "output"))
                 bypass.toggled.connect(lambda value, item=item: self.bypass(item, value))
                 header.addWidget(bypass)
                 layout.addLayout(header)
@@ -352,42 +432,69 @@ class PipelineEditor(QWidget):
                 entry.setSizeHint(container.sizeHint())
                 self.widgets[item["id"]] = (stack, controls, bypass, title, badge)
             listing.fit_contents()
+        self.update_tab_status()
         self.rebuilding = False
 
+    def update_tab_status(self):
+        try:
+            active = execution_dependencies(self.document)
+        except ValueError:
+            active = {}  # A rejected edit is rolled back by publish().
+        self.tab_status.setText(
+            "Tab A → viewer"
+            if self.tab == "A"
+            else f"Tab {self.tab} · connected to viewer"
+            if self.tab in active
+            else f"Tab {self.tab} · idle — add a Combine node in a connected tab to use this output"
+        )
+        for i, tab in enumerate("ABCD"):
+            self.tab_bar.setTabText(i, tab)
+            self.tab_bar.setTabToolTip(
+                i, "Viewer output" if tab == "A" else "Connected" if tab in active else "Idle"
+            )
+
     def bypass(self, item, value):
-        if not self.locked:
+        if not self.locked and item["type"] not in ("source", "output"):
             item["bypass"] = value
             self.publish()
 
     def update_state(self, state, locked):
+        self.last_state = state
         self.hardware_state = state.get("hardware", {})
         incoming = state.get("pipeline")
-        # Do not overwrite edits with IPC state queued before their command.
         if incoming is not None and state.get("pipeline_serial", 0) >= self.edit_serial:
             incoming = validate_pipeline(incoming)
             self.edit_serial = max(self.edit_serial, state.get("pipeline_serial", 0))
             if incoming != self.document:
-                # Reuse controls when possible so edits don't jump the scroll position.
                 old_structure = [
                     (n["id"], n["expanded"])
-                    for s in ("hardware", "software")
-                    for n in self.document[s]
+                    for stack in ("hardware", "software")
+                    for n in self.nodes(stack)
                 ]
                 new_structure = [
-                    (n["id"], n["expanded"]) for s in ("hardware", "software") for n in incoming[s]
+                    (n["id"], n["expanded"])
+                    for stack in ("hardware", "software")
+                    for n in self.nodes(stack, incoming)
                 ]
                 if old_structure != new_structure:
                     self.document = incoming
                     self.rebuild()
                 else:
                     for stack in ("hardware", "software"):
-                        for old, new in zip(self.document[stack], incoming[stack]):
+                        for old, new in zip(self.nodes(stack), self.nodes(stack, incoming)):
                             old.update(new)
+                    if self.tab != "A":
+                        self.document["software"] = incoming["software"]
+                    for tab in "BCD":
+                        if tab != self.tab:
+                            self.document["branches"][tab] = incoming["branches"][tab]
+                self.accepted_document = deepcopy(self.document)
         self.last_desired = desired_hardware(self.document)
+        self.update_tab_status()
         self.locked = locked
-        thermal = thermal_source(self.document) or state.get("actual_image_source") == "raw"
+        thermal = not preview_required(self.document)
         for stack in ("hardware", "software"):
-            for item in self.document[stack]:
+            for item in self.nodes(stack):
                 _, controls, bypass, title, badge = self.widgets[item["id"]]
                 inactive = (
                     stack == "hardware" and thermal and item["type"] not in ("source", "humidity")
@@ -415,6 +522,25 @@ class PipelineEditor(QWidget):
                     available = (
                         not locked and not inactive and not unavailable and not item["bypass"]
                     )
+                    if item["type"] == "combine":
+                        mode = item["params"]["mode"]
+                        has_mask = item["params"]["mask_source"] != "none"
+                        if key in ("mask_kind", "mask_invert"):
+                            available &= has_mask
+                        if key == "mask_threshold":
+                            available &= has_mask and item["params"]["mask_kind"] == "threshold"
+                        if key in ("raw_low", "raw_high"):
+                            available &= (
+                                item["params"]["tab"] == "raw"
+                                or item["params"]["mask_source"] == "raw"
+                                or item["params"]["mask_source"] == "input"
+                                and item["params"]["tab"] == "raw"
+                            )
+                        available &= (
+                            key not in ("base_weight", "input_weight", "offset")
+                            or mode == "weighted"
+                        )
+                        available &= key not in ("threshold", "invert") or mode == "mask"
                     if item["type"] == "enhance":
                         available &= key != "denoise" or item["params"]["model"] == "acnet"
                     row.update_state(item["params"][key], available)

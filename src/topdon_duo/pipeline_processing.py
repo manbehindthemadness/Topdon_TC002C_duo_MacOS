@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
 from threading import Condition, Thread
 from time import perf_counter
@@ -10,7 +11,13 @@ import cv2
 import numpy as np
 
 from .camera import IMAGE_OFFSET, decode_duo_frame, raw_temperatures
-from .pipeline import active_nodes, thermal_source
+from .pipeline import (
+    active_nodes,
+    execution_dependencies,
+    software_tabs,
+    thermal_source,
+    validate_pipeline,
+)
 from .upsampling import VisionUpsampler
 
 MAX_PIXELS = 4_000_000
@@ -77,11 +84,142 @@ def colorize(gray, palette):
     return cv2.applyColorMap(gray, getattr(cv2, f"COLORMAP_{palette.upper()}"))
 
 
+def combine_images(base, incoming, params, mask=None):
+    """Blend display pixels; the current node fixes size and coordinate orientation."""
+    if incoming.shape[:2] != base.shape[:2]:
+        incoming = resize(
+            incoming, (base.shape[1], base.shape[0]), INTERPOLATIONS[params["interpolation"]]
+        )
+    base, incoming = base.astype(np.float32), incoming.astype(np.float32)
+    mode = params["mode"]
+    if mode == "opacity":
+        result = incoming
+    elif mode == "weighted":
+        result = cv2.addWeighted(
+            base, params["base_weight"], incoming, params["input_weight"], params["offset"]
+        )
+    elif mode == "add":
+        result = cv2.add(base, incoming)
+    elif mode == "subtract":
+        result = cv2.subtract(base, incoming)
+    elif mode == "difference":
+        result = cv2.absdiff(base, incoming)
+    elif mode == "multiply":
+        result = cv2.multiply(base, incoming, scale=1 / 255)
+    elif mode == "screen":
+        result = 255 - cv2.multiply(255 - base, 255 - incoming, scale=1 / 255)
+    elif mode == "overlay":
+        result = np.where(
+            base <= 127.5,
+            2 * base * incoming / 255,
+            255 - 2 * (255 - base) * (255 - incoming) / 255,
+        )
+    elif mode == "lighten":
+        result = cv2.max(base, incoming)
+    elif mode == "darken":
+        result = cv2.min(base, incoming)
+    elif mode in ("and", "or", "xor"):
+        result = getattr(cv2, "bitwise_" + mode)(bytes_image(base), bytes_image(incoming))
+    elif mode == "mask":
+        binary = luminance(incoming) >= params["threshold"]
+        if params["invert"]:
+            binary = ~binary
+        result = base * binary[..., None]
+    else:
+        raise ValueError("Unknown combine mode")
+    result = np.clip(result, 0, 255).astype(np.float32)
+    if mask is None:
+        return np.clip(
+            cv2.addWeighted(base, 1 - params["opacity"], result, params["opacity"], 0), 0, 255
+        )
+    if mask.shape[:2] != base.shape[:2]:
+        mask = resize(mask, (base.shape[1], base.shape[0]), INTERPOLATIONS[params["interpolation"]])
+    gray = luminance(mask) if mask.ndim == 3 else mask.astype(np.float32)
+    if params["mask_kind"] == "threshold":
+        coverage = (gray >= params["mask_threshold"]).astype(np.float32)
+    else:
+        coverage = np.clip(gray / 255, 0, 1)
+    if params["mask_invert"]:
+        coverage = 1 - coverage
+    opacity = coverage[..., None] * params["opacity"]
+    return np.clip(base * (1 - opacity) + result * opacity, 0, 255)
+
+
 class PipelineProcessor:
     def __init__(self):
         self.models = {}
+        self.executors = {}
+        self.branches = {}
+
+    def close(self):
+        for executor in self.executors.values():
+            executor.shutdown(wait=False, cancel_futures=True)
+        self.executors.clear()
+        self.branches.clear()
+        self.models = {}
 
     def process(self, frame, averaged, document, scale=3, rotation=0, camera_palette=1):
+        document = validate_pipeline(document)
+        dependencies = execution_dependencies(document)
+        tabs = software_tabs(document)
+        # Stop idle branch threads and release their model caches after disconnection.
+        for tab in set(self.executors) - set(dependencies):
+            self.executors.pop(tab).shutdown(wait=True)
+            self.branches.pop(tab)
+        for tab in dependencies:
+            if tab not in self.executors:
+                self.executors[tab] = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix=f"pipeline-{tab}"
+                )
+                self.branches[tab] = PipelineProcessor()
+        outputs, pending, submitted = {}, {}, set()
+        try:
+            while len(outputs) < len(dependencies):
+                for tab, required in dependencies.items():
+                    if tab not in submitted and required <= outputs.keys():
+                        branch = {"hardware": document["hardware"], "software": tabs[tab]}
+                        inputs = {t: outputs[t][0] for t in required}
+                        future = self.executors[tab].submit(
+                            self.branches[tab]._process_single,
+                            frame,
+                            averaged,
+                            branch,
+                            camera_palette,
+                            inputs,
+                        )
+                        pending[future] = tab
+                        submitted.add(tab)
+                if not pending:
+                    raise ValueError("Unresolved combine connections")
+                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    outputs[pending.pop(future)] = future.result()
+        finally:
+            # Drain this frame before processing another; never mutate a branch model concurrently.
+            if pending:
+                wait(pending)
+        self.models = self.branches["A"].models
+        image, source = outputs["A"]
+        if rotation:
+            image = np.rot90(image, -(rotation // 90)).copy()
+        target = (256 * scale, 192 * scale)
+        if rotation in (90, 270):
+            target = target[::-1]
+        interpolation = (
+            cv2.INTER_CUBIC
+            if any(n["type"] == "antialiasing" for n in active_nodes(document, "software"))
+            else cv2.INTER_NEAREST
+        )
+        return bytes_image(resize(image, target, interpolation)), source
+
+    def _process_single(
+        self,
+        frame,
+        averaged,
+        document,
+        camera_palette=1,
+        inputs=None,
+    ):
         _, raw, preview = decode_duo_frame(frame)
         software = active_nodes(document, "software")
         ranges = [item for item in software if item["type"] == "range"]
@@ -105,7 +243,7 @@ class PipelineProcessor:
             )
             palette = (
                 f"camera_{int(selected_palette)}"
-                if document["hardware"][0]["params"]["source"] == "preview"
+                if document["software"][0]["params"]["source"] == "preview"
                 else "white_hot"
             )
             image = colorize(gray, palette).astype(np.float32)
@@ -127,10 +265,44 @@ class PipelineProcessor:
                     (preview.astype(np.float32) - low) * 255 / max(high - low, 1e-6), 0, 255
                 )
                 image = np.repeat(gray[..., None], 3, axis=2)
+        direct_preview = None
+
+        def resolve_input(source, params):
+            nonlocal direct_preview
+            if source == "preview":
+                if direct_preview is None:
+                    if not np.any(preview):
+                        raise ValueError("Camera preview is unavailable for the combine input/mask")
+                    yuyv = np.frombuffer(frame, np.uint8, offset=IMAGE_OFFSET * 2).reshape(
+                        *preview.shape, 2
+                    )
+                    direct_preview = cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2).astype(np.float32)
+                return direct_preview
+            if source == "raw":
+                plane = raw_temperatures(averaged if averaged is not None else raw, offset=50)
+                gray = np.clip(
+                    (plane - params["raw_low"]) * 255 / (params["raw_high"] - params["raw_low"]),
+                    0,
+                    255,
+                )
+                return np.repeat(gray[..., None], 3, axis=2)
+            return inputs[source]
+
         first_range = True
         for item in software:
             kind, p = item["type"], item["params"]
-            if kind == "brightness":
+            if kind == "combine":
+                incoming = resolve_input(p["tab"], p)
+                mask_source = p["mask_source"]
+                mask = (
+                    None
+                    if mask_source == "none"
+                    else incoming
+                    if mask_source == "input"
+                    else resolve_input(mask_source, p)
+                )
+                image = combine_images(image, incoming, p, mask)
+            elif kind == "brightness":
                 image = map_luminance(image, lambda y, p=p: y + p["amount"] * 2.55)
             elif kind == "contrast":
                 image = map_luminance(image, lambda y, p=p: (y - 127.5) * p["amount"] + 127.5)
@@ -211,19 +383,7 @@ class PipelineProcessor:
             if item["type"] == "enhance"
         }
         self.models = {key: value for key, value in self.models.items() if key in live}
-        if rotation:
-            image = np.rot90(image, -(rotation // 90)).copy()
-        target = (raw.shape[1] * scale, raw.shape[0] * scale)
-        if rotation in (90, 270):
-            target = target[::-1]
-        final_interpolation = (
-            cv2.INTER_CUBIC
-            if any(item["type"] == "antialiasing" for item in software)
-            else cv2.INTER_NEAREST
-        )
-        return bytes_image(
-            resize(image, target, final_interpolation)
-        ), "raw" if thermal else "preview"
+        return image, "raw" if thermal else "preview"
 
 
 class PipelineWorker:
@@ -260,6 +420,7 @@ class PipelineWorker:
             with self.condition:
                 self.condition.wait_for(lambda: self.pending is not None or self.closed)
                 if self.closed:
+                    self.processor.close()
                     return
                 frame, averaged, document, revision, scale, rotation, palette = self.pending
                 self.pending = None

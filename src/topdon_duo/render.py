@@ -164,7 +164,7 @@ class ThermalRenderer:
 
     def set_pipeline(self, document):
         self.pipeline = validate_pipeline(document)
-        self.image_source = self.pipeline["hardware"][0]["params"]["source"]
+        self.image_source = self.pipeline["software"][0]["params"]["source"]
         self.mirror_horizontal, self.mirror_vertical = geometry(self.pipeline, self.rotation)
         self.analyze_mode = False
 
