@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
 from threading import Condition, Thread
@@ -14,6 +15,7 @@ from .camera import IMAGE_OFFSET, decode_duo_frame, raw_temperatures
 from .pipeline import (
     active_nodes,
     execution_dependencies,
+    preview_roots,
     software_tabs,
     thermal_source,
     validate_pipeline,
@@ -145,11 +147,27 @@ def combine_images(base, incoming, params, mask=None):
     return np.clip(base * (1 - opacity) + result * opacity, 0, 255)
 
 
+def encode_thumbnail(image):
+    height, width = image.shape[:2]
+    factor = min(320 / width, 240 / height, 1)
+    thumbnail = bytes_image(
+        resize(
+            image, (max(1, round(width * factor)), max(1, round(height * factor))), cv2.INTER_AREA
+        )
+    )
+    success, encoded = cv2.imencode(".png", thumbnail, [cv2.IMWRITE_PNG_COMPRESSION, 3])
+    return base64.b64encode(encoded).decode("ascii") if success else ""
+
+
 class PipelineProcessor:
     def __init__(self):
         self.models = {}
         self.executors = {}
         self.branches = {}
+        self.last_previews = {}
+        self.collect_previews = False
+        self.preview_active = False
+        self.last_preview_errors = {}
 
     def close(self):
         for executor in self.executors.values():
@@ -157,13 +175,19 @@ class PipelineProcessor:
         self.executors.clear()
         self.branches.clear()
         self.models = {}
+        self.last_previews = {}
 
     def process(self, frame, averaged, document, scale=3, rotation=0, camera_palette=1):
+        self.last_previews = {}
+        self.last_preview_errors = {}
         document = validate_pipeline(document)
-        dependencies = execution_dependencies(document)
+        viewer_dependencies = execution_dependencies(document)
+        roots = preview_roots(document) if self.preview_active or self.collect_previews else ()
+        retained_dependencies = execution_dependencies(document, roots=("A", *roots))
+        dependencies = retained_dependencies if self.collect_previews else viewer_dependencies
         tabs = software_tabs(document)
         # Stop idle branch threads and release their model caches after disconnection.
-        for tab in set(self.executors) - set(dependencies):
+        for tab in set(self.executors) - set(retained_dependencies):
             self.executors.pop(tab).shutdown(wait=True)
             self.branches.pop(tab)
         for tab in dependencies:
@@ -172,13 +196,22 @@ class PipelineProcessor:
                     max_workers=1, thread_name_prefix=f"pipeline-{tab}"
                 )
                 self.branches[tab] = PipelineProcessor()
-        outputs, pending, submitted = {}, {}, set()
+        outputs, pending, submitted, errors = {}, {}, set(), {}
         try:
             while len(outputs) < len(dependencies):
                 for tab, required in dependencies.items():
                     if tab not in submitted and required <= outputs.keys():
+                        failed_inputs = [t for t in required if outputs[t][0] is None]
+                        if failed_inputs:
+                            errors[tab] = (
+                                f"Input tab {failed_inputs[0]} failed: {errors[failed_inputs[0]]}"
+                            )
+                            outputs[tab] = None, ""
+                            submitted.add(tab)
+                            continue
                         branch = {"hardware": document["hardware"], "software": tabs[tab]}
                         inputs = {t: outputs[t][0] for t in required}
+                        self.branches[tab].collect_previews = self.collect_previews
                         future = self.executors[tab].submit(
                             self.branches[tab]._process_single,
                             frame,
@@ -189,15 +222,36 @@ class PipelineProcessor:
                         )
                         pending[future] = tab
                         submitted.add(tab)
+                if not pending and len(outputs) == len(dependencies):
+                    break
                 if not pending:
                     raise ValueError("Unresolved combine connections")
                 done, _ = wait(pending, return_when=FIRST_COMPLETED)
                 for future in done:
-                    outputs[pending.pop(future)] = future.result()
+                    tab = pending.pop(future)
+                    try:
+                        outputs[tab] = future.result()
+                    except (ValueError, TypeError, KeyError, cv2.error, MemoryError) as exc:
+                        if tab in viewer_dependencies:
+                            raise
+                        outputs[tab] = None, ""
+                        errors[tab] = str(exc)
         finally:
             # Drain this frame before processing another; never mutate a branch model concurrently.
             if pending:
                 wait(pending)
+        self.last_previews = {
+            identity: payload
+            for tab in dependencies
+            if outputs[tab][0] is not None
+            for identity, payload in self.branches[tab].last_previews.items()
+        }
+        self.last_preview_errors = {
+            n["id"]: errors[tab]
+            for tab in errors
+            for n in tabs[tab]
+            if n["type"] == "preview" and n["expanded"] and not n["bypass"]
+        }
         self.models = self.branches["A"].models
         image, source = outputs["A"]
         if rotation:
@@ -220,6 +274,7 @@ class PipelineProcessor:
         camera_palette=1,
         inputs=None,
     ):
+        self.last_previews = {}
         _, raw, preview = decode_duo_frame(frame)
         software = active_nodes(document, "software")
         ranges = [item for item in software if item["type"] == "range"]
@@ -291,7 +346,9 @@ class PipelineProcessor:
         first_range = True
         for item in software:
             kind, p = item["type"], item["params"]
-            if kind == "combine":
+            if kind == "preview" and item["expanded"] and self.collect_previews:
+                self.last_previews[item["id"]] = encode_thumbnail(image)
+            elif kind == "combine":
                 incoming = resolve_input(p["tab"], p)
                 mask_source = p["mask_source"]
                 mask = (
@@ -393,6 +450,10 @@ class PipelineWorker:
         self.condition = Condition()
         self.pending = None
         self.result = None
+        self.preview_result = None
+        self.preview_errors = {}
+        self.preview_enabled = False
+        self.last_preview_at = 0.0
         self.closed = False
         self.processor = PipelineProcessor()
         self.thread = Thread(target=self._run, name="image-pipeline", daemon=True)
@@ -415,6 +476,27 @@ class PipelineWorker:
         with self.condition:
             return self.result if self.result is not None and self.result[0] == revision else None
 
+    def enable_previews(self, enabled):
+        with self.condition:
+            self.preview_enabled = bool(enabled)
+            if not enabled:
+                self.preview_result = None
+                self.preview_errors = {}
+
+    def latest_previews(self, revision):
+        with self.condition:
+            if self.preview_result is not None and self.preview_result[0] == revision:
+                return self.preview_result[1]
+            return {}
+
+    def latest_preview_errors(self, revision):
+        with self.condition:
+            return (
+                self.preview_errors
+                if self.preview_result is not None and self.preview_result[0] == revision
+                else {}
+            )
+
     def _run(self):
         while True:
             with self.condition:
@@ -424,13 +506,23 @@ class PipelineWorker:
                     return
                 frame, averaged, document, revision, scale, rotation, palette = self.pending
                 self.pending = None
+                make_preview = self.preview_enabled and (
+                    perf_counter() - self.last_preview_at >= 0.5
+                    or self.preview_result is None
+                    or self.preview_result[0] != revision
+                )
+                self.processor.collect_previews = make_preview
+                self.processor.preview_active = self.preview_enabled
             started = perf_counter()
             try:
                 image, source = self.processor.process(
                     frame, averaged, document, scale, rotation, palette
                 )
                 result = revision, image, source, (perf_counter() - started) * 1000, ""
+                previews = self.processor.last_previews if make_preview else None
+                self.processor.last_previews = {}
             except (ValueError, TypeError, KeyError, cv2.error, MemoryError) as exc:
+                previews = {}
                 result = (
                     revision,
                     None,
@@ -440,10 +532,17 @@ class PipelineWorker:
                 )
             with self.condition:
                 self.result = result
+                if previews is not None and self.preview_enabled:
+                    self.preview_result = revision, previews
+                    self.preview_errors = self.processor.last_preview_errors.copy()
+                    self.last_preview_at = perf_counter()
 
     def close(self):
         with self.condition:
             self.closed = True
+            self.preview_enabled = False
             self.pending = None
+            self.preview_result = None
+            self.preview_errors = {}
             self.condition.notify()
         self.thread.join(timeout=1)

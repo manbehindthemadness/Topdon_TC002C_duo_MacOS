@@ -1,11 +1,12 @@
 """Expandable, draggable pipeline stacks; UI stays in the popup process."""
 
+import base64
 import json
 from copy import deepcopy
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QImage, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QTabBar,
     QVBoxLayout,
     QWidget,
@@ -32,6 +34,123 @@ from .pipeline import (
     validate_pipeline,
 )
 from .pipeline_hardware import desired_hardware
+
+
+class PipelinePreview(QLabel):
+    """Small, aspect-preserving preview; decoding never affects widget geometry."""
+
+    def __init__(self):
+        super().__init__("Waiting for pipeline image…")
+        self.setAlignment(Qt.AlignCenter)
+        self.setFixedHeight(200)
+        self.setMinimumWidth(1)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setStyleSheet(
+            "border: 1px solid palette(mid); background: palette(base); padding: 4px"
+        )
+        self.image = QPixmap()
+        self.payload = None
+        self.zoomed = False
+        self.pan = QPointF(0.5, 0.5)
+        self.drag_anchor = None
+        self.setToolTip("Right-click to toggle fit-width zoom. Drag to pan while zoomed.")
+
+    def show_image(self, payload, placeholder):
+        if payload == self.payload and (payload is not None or self.text() == placeholder):
+            return
+        self.payload = payload
+        self.image = QPixmap()
+        if isinstance(payload, str) and len(payload) <= 420_000:
+            try:
+                decoded = QImage.fromData(base64.b64decode(payload, validate=True))
+                if not decoded.isNull() and decoded.width() <= 320 and decoded.height() <= 240:
+                    self.image = QPixmap.fromImage(decoded)
+            except ValueError:
+                pass
+        if self.image.isNull():
+            self.drag_anchor = None
+            self.setCursor(Qt.ArrowCursor)
+            self.clear()
+            self.setText(placeholder)
+        else:
+            self.fit_image()
+
+    def fit_image(self):
+        if self.image.isNull():
+            return
+        area = self.contentsRect().size()
+        if area.width() < 1 or area.height() < 1:
+            return
+        if self.zoomed:
+            # Paint only the visible source strip; don't allocate the full enlarged image.
+            scale = area.width() / self.image.width()
+            visible_height = min(area.height(), round(self.image.height() * scale))
+            source_height = min(self.image.height(), visible_height / scale)
+            source_top = self.pan.y() * (self.image.height() - source_height)
+            viewport = QPixmap(area.width(), visible_height)
+            viewport.fill(Qt.transparent)
+            painter = QPainter(viewport)
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
+            painter.drawPixmap(
+                QRectF(0, 0, area.width(), visible_height),
+                self.image,
+                QRectF(0, source_top, self.image.width(), source_height),
+            )
+            painter.end()
+            self.setPixmap(viewport)
+        else:
+            self.setPixmap(self.image.scaled(area, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.setCursor(Qt.OpenHandCursor if self.zoomed else Qt.ArrowCursor)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_image()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            if not self.image.isNull():
+                self.zoomed = not self.zoomed
+                self.pan = QPointF(0.5, 0.5)
+                self.drag_anchor = None
+                self.fit_image()
+            event.accept()
+        elif event.button() == Qt.LeftButton:
+            if self.zoomed and not self.image.isNull():
+                self.drag_anchor = event.position()
+                self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.drag_anchor is not None and not self.image.isNull():
+            delta = event.position() - self.drag_anchor
+            self.drag_anchor = event.position()
+            area = self.contentsRect().size()
+            scaled_height = self.image.height() * area.width() / self.image.width()
+            travel_y = max(0, round(scaled_height) - area.height())
+            if travel_y:
+                self.pan.setY(max(0, min(1, self.pan.y() - delta.y() / travel_y)))
+            self.fit_image()
+            self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_anchor = None
+            if self.zoomed and not self.image.isNull():
+                self.setCursor(Qt.OpenHandCursor)
+            event.accept()
+        elif event.button() == Qt.RightButton:
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event):
+        # The image's right-click belongs to zoom; the node header keeps its menu.
+        event.accept()
 
 
 class StackList(QListWidget):
@@ -171,6 +290,8 @@ class PipelineEditor(QWidget):
         self.locked = False
         self.rebuilding = False
         self.widgets = {}
+        self.preview_widgets = {}
+        self.preview_cache = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         instruction = QLabel(
@@ -284,7 +405,7 @@ class PipelineEditor(QWidget):
                     item["params"][parameter] = bool(value) if parameter == "enabled" else value
         if kind == "combine":
             item["params"]["tab"] = next(t for t in "BCD" if t != self.tab)
-        item["expanded"] = True
+        item["expanded"] = kind != "preview"
         if stack == "software":
             position = max(1, min(position, len(self.nodes(stack)) - (self.tab == "A")))
         self.nodes(stack).insert(position, item)
@@ -344,8 +465,27 @@ class PipelineEditor(QWidget):
         self.publish()
 
     def rebuild(self):
+        for identity, thumbnail in self.preview_widgets.items():
+            if not thumbnail.image.isNull():
+                self.preview_cache[identity] = (
+                    thumbnail.payload,
+                    thumbnail.zoomed,
+                    QPointF(thumbnail.pan),
+                )
+        live_ids = {
+            n["id"]
+            for nodes in software_tabs(self.document).values()
+            for n in nodes
+            if n["type"] == "preview"
+        }
+        self.preview_cache = {
+            identity: value
+            for identity, value in self.preview_cache.items()
+            if identity in live_ids
+        }
         self.rebuilding = True
         self.widgets = {}
+        self.preview_widgets = {}
         for stack, listing in self.stacks.items():
             listing.clear()
             for item in self.nodes(stack):
@@ -421,6 +561,13 @@ class PipelineEditor(QWidget):
                     row.update_state(item["params"][key])
                     controls[key] = row
                     fields.addWidget(row)
+                if item["type"] == "preview":
+                    thumbnail = PipelinePreview()
+                    if item["id"] in self.preview_cache:
+                        payload, thumbnail.zoomed, thumbnail.pan = self.preview_cache[item["id"]]
+                        thumbnail.show_image(payload, "Waiting for pipeline image…")
+                    fields.addWidget(thumbnail)
+                    self.preview_widgets[item["id"]] = thumbnail
                 body.setVisible(item["expanded"])
                 layout.addWidget(body)
                 title.clicked.connect(
@@ -445,7 +592,12 @@ class PipelineEditor(QWidget):
             if self.tab == "A"
             else f"Tab {self.tab} · connected to viewer"
             if self.tab in active
-            else f"Tab {self.tab} · idle — add a Combine node in a connected tab to use this output"
+            else f"Tab {self.tab} · preview only"
+            if any(
+                n["type"] == "preview" and n["expanded"] and not n["bypass"]
+                for n in self.nodes("software")
+            )
+            else f"Tab {self.tab} · idle — expand a Preview node or connect this tab to use its output"
         )
         for i, tab in enumerate("ABCD"):
             self.tab_bar.setTabText(i, tab)
@@ -492,6 +644,21 @@ class PipelineEditor(QWidget):
         self.last_desired = desired_hardware(self.document)
         self.update_tab_status()
         self.locked = locked
+        current = state.get("pipeline_serial", 0) >= self.edit_serial
+        for item in self.nodes("software"):
+            if item["type"] == "preview":
+                payload = state.get("pipeline_previews", {}).get(item["id"]) if current else None
+                thumbnail = self.preview_widgets[item["id"]]
+                if item["bypass"] and not thumbnail.image.isNull():
+                    continue  # A bypassed preview keeps its last image and viewport.
+                thumbnail.show_image(
+                    payload if item["expanded"] and not item["bypass"] else None,
+                    "Preview bypassed"
+                    if item["bypass"]
+                    else f"Preview failed: {state['pipeline_preview_errors'][item['id']]}"
+                    if state.get("pipeline_preview_errors", {}).get(item["id"])
+                    else "Waiting for pipeline image…",
+                )
         thermal = not preview_required(self.document)
         for stack in ("hardware", "software"):
             for item in self.nodes(stack):

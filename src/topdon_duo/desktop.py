@@ -45,6 +45,7 @@ from .graphs import (
 )
 from .hardware_controls import HARDWARE_CONTROLS, HardwareControls, camera_operation_title
 from .pipeline import (
+    collapse_previews,
     default_pipeline,
     execution_dependencies,
     geometry,
@@ -1450,7 +1451,7 @@ def main(argv: list[str] | None = None) -> int:
         def signature(document):
             tabs = software_tabs(document)
             return (
-                {tab: [(n["type"], n["params"], n["bypass"]) for n in tabs[tab]]
+                {tab: [(n["type"], n["params"], n["bypass"]) for n in tabs[tab] if n["type"] != "preview"]
                  for tab in execution_dependencies(document)},
                 sorted((n["type"], json.dumps(n["params"], sort_keys=True), n["bypass"])
                        for n in document["hardware"]),
@@ -1521,6 +1522,8 @@ def main(argv: list[str] | None = None) -> int:
             **renderer.view_settings(),
             "pipeline": pipeline,
             "pipeline_serial": pipeline_serial,
+            "pipeline_previews": pipeline_worker.latest_previews(pipeline_revision) if pipeline_worker is not None else {},
+            "pipeline_preview_errors": pipeline_worker.latest_preview_errors(pipeline_revision) if pipeline_worker is not None else {},
             "hardware": ui_hardware,
             "color_source": (
                 "camera"
@@ -1551,6 +1554,9 @@ def main(argv: list[str] | None = None) -> int:
         }
 
     def open_view() -> None:
+        if not view_panel.is_open:
+            collapse_previews(pipeline)
+            persist_settings()
         try:
             try:
                 hardware.load()
@@ -2058,6 +2064,7 @@ def main(argv: list[str] | None = None) -> int:
                     request_save(action)
                 if (capture_cursor, capture_graphs, timelapse_fpm) != previous_capture_preferences:
                     persist_settings()
+            pipeline_worker.enable_previews(view_panel.is_open)
             renderer.camera_preview = hardware.preview_active
             renderer.camera_color = "palette" in hardware.enabled
             renderer.hardware_settings = hardware.state() if hardware.original else {}

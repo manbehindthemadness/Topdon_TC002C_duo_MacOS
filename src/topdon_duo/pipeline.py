@@ -118,6 +118,7 @@ SOFTWARE_NODES = {
         },
     ),
     "output": ("Output → viewer", {}),
+    "preview": ("Pipeline preview", {}),
     "combine": (
         "Combine pipeline",
         {
@@ -438,7 +439,7 @@ def software_tabs(document):
     return {"A": document["software"], **document.get("branches", {})}
 
 
-def execution_dependencies(document, all_tabs=False):
+def execution_dependencies(document, all_tabs=False, roots=("A",)):
     """Reachable DAG, with bypassed combines creating no connection."""
     tabs = software_tabs(document)
     dependencies = {}
@@ -464,9 +465,25 @@ def execution_dependencies(document, all_tabs=False):
         visiting.remove(tab)
         dependencies[tab] = targets
 
-    for tab in tabs if all_tabs else ("A",):
+    for tab in tabs if all_tabs else roots:
         visit(tab)
     return dependencies
+
+
+def preview_roots(document):
+    return tuple(
+        tab
+        for tab, nodes in software_tabs(document).items()
+        if any(n["type"] == "preview" and n["expanded"] and not n["bypass"] for n in nodes)
+    )
+
+
+def collapse_previews(document):
+    """Opening Camera always starts its read-only preview taps off."""
+    for nodes in software_tabs(document).values():
+        for item in nodes:
+            if item["type"] == "preview":
+                item["expanded"] = False
 
 
 def preview_required(document):

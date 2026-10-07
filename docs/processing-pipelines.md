@@ -31,6 +31,7 @@ sensor pixels through mirror changes and rotation.
 | | Anime4K09 or ACNet enhancement |
 | | Combine: another tab, camera preview or raw thermal |
 | | Output → viewer (mandatory, last, tab A only) |
+| | Pipeline preview (repeatable, active only when expanded) |
 
 Auto calibrate, camera measurement overlay, measurement units, ambient
 and reflected temperatures, optical transmission, distance, emissivity, and the calibration tools
@@ -52,9 +53,9 @@ and calibration measurements. Mouse-wheel scrolling never edits inputs.
 
 Your existing software pipeline becomes tab A. B–D start with independent Image
 source nodes; configure them just like A. Selecting a tab edits it, without
-changing the viewer output. A always feeds the viewer. A branch runs only when
+changing the viewer output. A always feeds the viewer. A branch runs when
 an enabled Combine input or mask connects it, directly or through other tabs,
-to A. Idle branches retain their settings without processing frames.
+to A, or while an expanded Preview node inspects it in Camera. Idle branches retain their settings without processing frames.
 
 To mix B into A, add a Combine node in A and select **Tab B** for Blend input.
 The node blends B's final image with A's image at that point in the stack;
@@ -91,6 +92,34 @@ current image using the node's selected interpolation. This matches dimensions,
 not geometric registration: keep mirrors/orientation aligned, or use another
 tab to prepare a spatially matching input/mask. Pixel blending changes displayed
 colors only; temperatures and CSV measurements always use the sensor data.
+
+## Preview nodes
+
+Right-click the software stack and choose **Add node → Pipeline preview**.
+Place it anywhere after Image source and before A's Output. Its image shows
+exactly the processing stage at that position, before later nodes and the
+main-window rotation. Multiple preview nodes let you compare stages. Right-click
+the preview image to toggle fit-width zoom; click and drag to pan the zoomed
+image. Right-click again restores the full-image view. Zoom keeps the preview
+height fixed and crops vertically; panning stops at the image edges. Live updates
+retain your zoom and pan. The node header retains its normal context menu.
+
+Expanding a Preview node enables its live thumbnail; collapsing it disables
+thumbnail generation. Bypass stops updates and keeps the last displayed frame,
+including its current zoom and pan; re-enabling resumes live updates. Node locations and bypass states persist and export with the pipeline. Preview
+nodes always start collapsed when Camera opens, including after reopening it.
+New Preview nodes also start collapsed; expand one to begin inspecting that stage. Thumbnails preserve aspect ratio and
+refresh at up to twice per second while the Camera window is open. They are
+read-only taps: inserting, moving or clearing a preview does not change the
+image output, temperature measurements, or camera hardware.
+
+An expanded Preview node temporarily activates its tab and any Combine inputs
+or masks it needs, even if the tab is disconnected from A. Preview-only branches
+run at the thumbnail update rate and keep their model caches between updates.
+Closing the last preview in an unconnected tab stops that branch and dependencies
+needed solely for it. Closing Camera stops all preview-only branches. Tabs
+connected to A continue viewer processing regardless of previews. A failure in
+an unconnected preview reports inside the node without interrupting the viewer.
 
 ## Static board analysis
 
