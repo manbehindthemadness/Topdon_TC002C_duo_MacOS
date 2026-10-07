@@ -249,10 +249,19 @@ class Device:
         self.writes = []
         self.ignore_next_write = False
         self.last_request = None
+        self.protocol_ready = False
+        self.version_reads = 0
 
     def ctrl_transfer(self, kind, request, value, index, data, timeout):
         assert index == 0x0A00
         selector = value >> 8
+        if kind == 0xA1 and selector == 4:
+            if request == 0x85:
+                return b"\x04\x00"
+            assert request == 0x81 and data == 4
+            self.protocol_ready = True
+            self.version_reads += 1
+            return b"2.0\x00"
         if kind == 0x21 and selector == 5:
             self.selected = tuple(data)
             self.last_request = "select"
@@ -262,6 +271,8 @@ class Device:
         if request == 0x85:
             assert data == 4
             self.last_request = "length"
+            if not self.protocol_ready:
+                return (512).to_bytes(2, "little")
             return len(block).to_bytes(2, "little")
         if kind == 0xA1:
             assert request == 0x81 and data == len(block)
@@ -388,6 +399,33 @@ def test_unsupported_layout_leaves_hardware_controls_unavailable(controls):
     assert not controls.camera.device.writes
 
 
+def test_cold_camera_initializes_protocol_before_loading_settings(controls):
+    controls.camera.device = Device()
+    cold = HardwareControls(controls.camera)
+    cold.load()
+    assert len(cold.original) == len(BLOCK_LENGTHS)
+    assert cold.camera.device.version_reads == 1
+    assert not cold.camera.device.writes
+
+
+@pytest.mark.parametrize('version', [b'1.0\x00', b'2.0', b''])
+def test_unknown_protocol_prevents_configuration_writes(monkeypatch, controls, version):
+    device = Device()
+    transfer = device.ctrl_transfer
+
+    def reply(kind, request, value, index, data, timeout):
+        if kind == 0xA1 and request == 0x81 and value == 0x0400:
+            return version
+        return transfer(kind, request, value, index, data, timeout)
+
+    monkeypatch.setattr(device, 'ctrl_transfer', reply)
+    controls.camera.device = device
+    cold = HardwareControls(controls.camera)
+    with pytest.raises(CameraError, match='Unsupported camera protocol version'):
+        cold.set('brightness', 60, True)
+    assert not cold.original and not device.writes and device.selected is None
+
+
 def test_zero_brightness_keeps_camera_preview_selected():
     frame, _ = frame_with_preview()
     dark = frame[: IMAGE_OFFSET * 2] + bytes(len(frame) - IMAGE_OFFSET * 2)
@@ -416,6 +454,44 @@ class CalibrationDevice(Device):
             assert request == 0x81 and data == 1
             return self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
         return super().ctrl_transfer(kind, request, value, index, data, timeout)
+
+
+def test_auto_calibrate_initializes_cold_protocol_without_loading_settings():
+    from types import SimpleNamespace
+
+    device = CalibrationDevice()
+    control = HardwareControls(SimpleNamespace(device=device))
+    control.set_auto_calibrate(False)
+    assert device.version_reads == 1
+    assert control.auto_calibrate is False
+    control.set_auto_calibrate(True)
+    assert control.auto_calibrate is True
+    assert device.version_reads == 1
+
+
+def test_legacy_layout_after_reset_reinitializes_before_auto_calibrate_write():
+    from types import SimpleNamespace
+
+    device = CalibrationDevice()
+    control = HardwareControls(SimpleNamespace(device=device))
+    control.set_auto_calibrate(True)
+    device.protocol_ready = False
+    control.set_auto_calibrate(False)
+    assert device.version_reads == 2
+    assert control.auto_calibrate is False
+    assert device.writes[-1] == ((1, 24), bytes.fromhex('0200000120000000000000'))
+
+
+def test_new_usb_device_requires_its_own_protocol_initialization():
+    from types import SimpleNamespace
+
+    camera = SimpleNamespace(device=CalibrationDevice())
+    control = HardwareControls(camera)
+    control.set_auto_calibrate(False)
+    camera.device = CalibrationDevice()
+    control.set_auto_calibrate(True)
+    assert camera.device.version_reads == 1
+    assert control.auto_calibrate is True
 
 
 def test_calibration_commands_poll_direct_status_and_restore_automatic_operation(monkeypatch):

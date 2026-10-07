@@ -136,6 +136,7 @@ class HardwareControls:
         self._tone_owned = False
         self._tone_queue: list[int] = []
         self._tone_sent = 0
+        self._protocol_device = None
 
     @property
     def tone_busy(self) -> bool:
@@ -405,21 +406,40 @@ class HardwareControls:
         except (usb.core.USBError, AttributeError) as exc:
             raise CameraError(f"Camera control transfer failed: {exc}") from exc
 
+    def _ensure_protocol(self) -> None:
+        if self.camera.device is not None and self._protocol_device is self.camera.device:
+            return
+        length = bytes(self._transfer(0xA1, 0x85, 4, 4))
+        if len(length) not in (2, 4) or int.from_bytes(length, "little") != 4:
+            raise CameraError("Unsupported camera protocol version layout")
+        # The version getter also enables SDK 2.0 dispatch in the firmware.
+        # Without it a freshly powered camera reports legacy 512-byte blocks.
+        version = bytes(self._transfer(0xA1, 0x81, 4, 4))
+        if version != b"2.0\x00":
+            raise CameraError(f"Unsupported camera protocol version: {version!r}")
+        self._protocol_device = self.camera.device
+
     def _select(self, selector, command, delay=0) -> int:
-        if self._transfer(0x21, 1, 5, bytes((selector, command))) != 2:
-            raise CameraError("Incomplete camera command selection")
-        if delay:
-            time.sleep(delay)
-        response = bytes(self._transfer(0xA1, 0x85, selector, 4))
-        size = int.from_bytes(response, "little")
+        self._ensure_protocol()
         expected = {**BLOCK_LENGTHS, (1, 24): 11, (2, 4): 1}[selector, command]
-        if len(response) not in (2, 4) or size != expected:
+        for attempt in range(2):
+            if self._transfer(0x21, 1, 5, bytes((selector, command))) != 2:
+                raise CameraError("Incomplete camera command selection")
+            if delay:
+                time.sleep(delay)
+            response = bytes(self._transfer(0xA1, 0x85, selector, 4))
+            size = int.from_bytes(response, "little")
+            if len(response) in (2, 4) and size == expected:
+                return size
+            if attempt == 0 and len(response) in (2, 4) and size == 512:
+                self._protocol_device = None
+                self._ensure_protocol()
+                continue
             raise CameraError(
                 "Camera returned an unsupported control layout "
                 f"for {selector}:{command}: expected {expected} bytes, "
                 f"received length {size} ({response.hex()})"
             )
-        return size
 
     def read(self, selector, command) -> bytes:
         size = self._select(selector, command, delay=0.1)

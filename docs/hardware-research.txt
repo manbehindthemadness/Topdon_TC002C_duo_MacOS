@@ -2844,3 +2844,23 @@ These timings are observed prototype runs, not full application timing guarantee
 Contours indicate temperature boundaries, not verified physical component edges;
 region fills discard local temperature variation. Original counts remain saved.
 All finished comparisons opened in ImageMagick. No flash/NVM/register operations.
+
+Production SDK initialization follow-up (2026-10-07)
+User reports Auto calibrate fails after power cycle and hardware controls all
+become unavailable with unsupported layout. Live read-only reproduction reported
+2:1 expected2 but received512 (0002). GET_LEN selector4 returned0400 and GET_CUR
+returned'2.0\0'; subsequent normal block reads2:1,2:2,2:5,3:1 yielded2,2,79,80.
+This independently reproduces the firmware dispatch finding above.
+
+HardwareControls now initializes validated SDK2.0 communication on first control
+selection per device, including direct auto-calibrate/calibrate-now paths. A
+legacy512 length after initialization triggers exactly one version handshake and
+command reselection. All writes continue to require exact known payload lengths;
+unknown versions and other block layouts remain rejected. The initialization
+cache is published only after successful version validation and is per device.
+
+Live patched auto-calibrate OFF then ON succeeded via direct command status;
+cleanup restored automatic operation. Four settings blocks matched their before
+bytes afterward. No NVM/factory command sent. Regression tests cover cold-start
+block reads, cold auto-toggle without load, protocol reset, replacement device,
+invalid versions and the existing unsupported-layout rejection. 535 tests passed.

@@ -287,6 +287,10 @@ Readings are held during the calibration as usual. Right-click the thermal image
 logging or measuring a calibration reference. Automatic camera calibration is
 re-enabled when the viewer exits; the saved switch choice is retained for the
 next launch. Restore camera settings and Reset display settings keep this choice.
+Before accessing controls, the viewer reads the camera's SDK 2.0 protocol version
+to initialize command dispatch after a power cycle. If a legacy 512-byte layout
+reappears, it repeats this handshake once and reselects the command; unexpected
+versions or block sizes remain rejected before configuration writes.
 
 Each control has a title and editable value; only numeric ranges have sliders.
 The **Units** toggle and Camera's **Measurement units** selection switch together:

@@ -262,3 +262,12 @@ control added on this evidence. Investigate refresh/latch or inactive support.
   gradients. These are documented experiments, not camera settings or app modes.
 * Local evidence: diagnostics/board-analysis-20261006-200511. No new hardware
   register writes during software visualization experiments. 528 tests passed.
+
+2026-10-07: Cold-power control layout fix verified
+* Reproduced legacy brightness length512 before SDK initialization; read selector4
+  protocol '2.0\0'; normal control lengths immediately became2/2/79/80.
+* Viewer control selection now initializes SDK protocol before configuration and
+  auto-calibration commands. Handshake is per USB device; legacy512 replies cause
+  one bounded handshake/reselection retry. Unknown versions/layouts still fail.
+* Live auto-calibrate OFF/ON commands accepted, automatic operation restored, all
+  four configuration blocks unchanged. No flash/NVM writes. 535 tests passed.
