@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from .capture_window import run_window
-from .hardware_controls import HARDWARE_CONTROLS
+from .hardware_controls import HARDWARE_CONTROLS, camera_operation_title
 from .view_settings import (
     ANALYZE_UPSCALING_MODES,
     COLOR_PALETTES,
@@ -553,7 +553,7 @@ class ReflectedCalibrationControls(QWidget):
 class ViewWindow(QWidget):
     def __init__(self, send) -> None:
         super().__init__()
-        self._send = send
+        self._send_to_viewer = send
         self._settings_locked = False
         self.controls = {}
         self.rows = {}
@@ -567,6 +567,11 @@ class ViewWindow(QWidget):
         heading = QLabel("Camera")
         heading.setStyleSheet("font-size: 20px; font-weight: bold")
         layout.addWidget(heading)
+        self.operation_status = QLabel()
+        self.operation_status.setWordWrap(True)
+        self.operation_status.setStyleSheet("font-weight: bold; padding: 8px")
+        self.operation_status.hide()
+        layout.addWidget(self.operation_status)
         self.auto_calibrate = NoWheelCheckBox("Auto calibrate")
         self.auto_calibrate.setToolTip(
             "Allow the camera to calibrate automatically. Use Calibrate now in the image's right-click menu when off."
@@ -856,6 +861,17 @@ class ViewWindow(QWidget):
         self._save_window_size()
         super().closeEvent(event)
 
+    def _send(self, command):
+        title = camera_operation_title(command)
+        if title:
+            self.operation_status.setText(
+                f"Applying {title.lower()}… Image and graph updates may pause briefly."
+            )
+            self.operation_status.show()
+            # Paint in this independent Qt process before the viewer's USB work.
+            self.operation_status.repaint()
+        self._send_to_viewer(command)
+
     def _reset_display(self):
         if self._settings_locked:
             return
@@ -878,7 +894,13 @@ class ViewWindow(QWidget):
         for widget in self.analyze_widgets:
             widget.setVisible(analyze)
         preview_view = selected_source == "preview" and actual_source == "preview" and not analyze
-        settings_locked = bool(state.get("settings_locked", False)) or tone_busy
+        operation_busy = bool(state.get("camera_operation_busy", False))
+        operation = state.get("camera_operation", "")
+        if tone_busy:
+            operation = f"Updating camera gamma… {state.get('tone_progress', 0)}%"
+        self.operation_status.setText(operation)
+        self.operation_status.setVisible(bool(operation))
+        settings_locked = bool(state.get("settings_locked", False)) or tone_busy or operation_busy
         if settings_locked and not self._settings_locked:
             focused = QApplication.focusWidget()
             if focused is not None and self.isAncestorOf(focused):

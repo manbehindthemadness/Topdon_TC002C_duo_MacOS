@@ -260,6 +260,25 @@ window = ViewWindow(messages.append)
 window.show()
 app.processEvents()
 assert messages == []
+assert window.operation_status.isHidden()
+def check_notification_before_send(command):
+    assert not window.operation_status.isHidden()
+    assert "Applying detail enhancement mode" in window.operation_status.text()
+    assert "may pause briefly" in window.operation_status.text()
+window._send_to_viewer = check_notification_before_send
+window._send({"action": "hardware", "name": "detail_enabled", "value": 0, "enabled": True})
+window._send_to_viewer = messages.append
+window.update_state({**VIEW_DEFAULTS, "camera_operation": "Applying detail enhancement mode…",
+                     "camera_operation_busy": True})
+assert not window.hardware_rows["detail_enabled"].input.isEnabled()
+assert not window.auto_calibrate.isEnabled()
+window.update_state({**VIEW_DEFAULTS, "camera_operation": "Detail enhancement mode updated"})
+assert window.hardware_rows["detail_enabled"].input.isEnabled()
+assert window.operation_status.text() == "Detail enhancement mode updated"
+window.update_state({**VIEW_DEFAULTS, "camera_operation": "Camera setting rejected: timed out"})
+assert "rejected" in window.operation_status.text()
+window.update_state(VIEW_DEFAULTS)
+assert window.operation_status.isHidden()
 assert window.windowTitle() == "Camera"
 assert window.processing_preset.slider is None
 assert [window.processing_preset.input.itemText(i) for i in range(3)] == ["Balanced", "Shadow", "Soft"]
@@ -1067,3 +1086,33 @@ def test_tone_commands_are_locked_during_logging(viewer, monkeypatch):
     assert desktop.main([]) == 0
     viewer.hardware.set_tone.assert_not_called()
     viewer.hardware.restore_tone.assert_not_called()
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_camera_operation_notifies_before_usb_work_and_reports_outcome(viewer, monkeypatch, fails):
+    from topdon_duo.camera import CameraError
+
+    panel = Mock()
+    panel.poll.return_value = [
+        {'action': 'hardware', 'name': 'detail_enabled', 'value': 0, 'enabled': True}
+    ]
+    monkeypatch.setattr(desktop, 'ViewPanel', lambda: panel)
+    viewer.hardware.state.return_value = {
+        'ambient': {'value': 30, 'available': True},
+        'detail_enabled': {'value': 0, 'available': True},
+    }
+
+    def apply(*_args):
+        state = panel.update.call_args.args[0]
+        assert state['camera_operation_busy']
+        assert 'Applying detail enhancement mode' in state['camera_operation']
+        if fails:
+            raise CameraError('test timeout')
+
+    viewer.hardware.set.side_effect = apply
+    monkeypatch.setattr(desktop.cv2, 'waitKey', lambda _delay: ord('q'))
+    assert desktop.main([]) == 0
+    states = [call.args[0] for call in panel.update.call_args_list]
+    expected = 'Camera setting rejected: test timeout' if fails else 'Detail enhancement mode updated'
+    assert any(state['camera_operation'] == expected and not state['camera_operation_busy']
+               for state in states)

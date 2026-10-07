@@ -107,6 +107,20 @@ BLOCK_LENGTHS = {(2, 1): 2, (2, 2): 2, (2, 5): 79, (3, 1): 80}
 PROCESSING_PRESETS = {"balanced": 1, "shadow": 2, "soft": 0}
 
 
+def camera_operation_title(command: dict) -> str | None:
+    if command.get("action") == "hardware":
+        spec = HARDWARE_CONTROLS.get(command.get("name"))
+        return spec.title if spec else "Camera settings"
+    return {
+        "tone": "Camera gamma / boost",
+        "cancel_tone": "Restore camera gamma / boost",
+        "processing_preset": "Camera processing preset",
+        "fixed_range": "Fixed detail mode",
+        "auto_calibrate": "Auto calibrate",
+        "restore_hardware": "Restore camera settings",
+    }.get(command.get("action"))
+
+
 def validate_fixed_range_bounds(bounds: object) -> tuple[int, int]:
     if not isinstance(bounds, (tuple, list)) or len(bounds) != 2:
         raise ValueError("Fixed range needs lower and upper bounds")

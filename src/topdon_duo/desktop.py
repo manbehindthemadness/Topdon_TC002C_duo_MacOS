@@ -43,7 +43,7 @@ from .graphs import (
     graph_log_button_rect,
     graph_reset_rect,
 )
-from .hardware_controls import HARDWARE_CONTROLS, HardwareControls
+from .hardware_controls import HARDWARE_CONTROLS, HardwareControls, camera_operation_title
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
 from .reflected_calibration import ReflectedCalibrator
@@ -1195,6 +1195,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     status_message = "Ready"
     status_until = 0.0
+    camera_operation = ""
+    camera_operation_until = 0.0
+    camera_operation_busy = False
     status = "Ready"
     show_instructions = False
     last_selected: tuple[int, int] | None = None
@@ -1488,6 +1491,8 @@ def main(argv: list[str] | None = None) -> int:
             "camera_gamma": hardware.gamma,
             "camera_boost": hardware.boost,
             "tone_busy": hardware.tone_busy,
+            "camera_operation": camera_operation if time.monotonic() < camera_operation_until else "",
+            "camera_operation_busy": camera_operation_busy,
             "tone_progress": round(hardware._tone_sent * 100 / 257),
             "actual_image_source": actual_image_source,
             "settings_locked": graphs.logging
@@ -1610,9 +1615,13 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     if hardware.advance_tone():
                         notify("Camera tone update complete")
+                        camera_operation = "Camera tone update complete"
+                        camera_operation_until = time.monotonic() + 8
                 except CameraError as exc:
                     remembered_gamma, remembered_boost = hardware.gamma, hardware.boost
                     hardware.error = str(exc)
+                    camera_operation = f"Camera tone update failed: {exc}"
+                    camera_operation_until = time.monotonic() + 8
                     persist_settings()
             fresh_frame = frame is not None
             if fresh_frame:
@@ -1725,6 +1734,17 @@ def main(argv: list[str] | None = None) -> int:
                 ) == "emissivity_calibration":
                     notify("Stop temperature logging before emissivity calibration.")
                     continue
+                operation_title = camera_operation_title(command)
+                operation_started = time.monotonic()
+                operation_error = None
+                if operation_title:
+                    camera_operation_busy = True
+                    camera_operation = (
+                        f"Applying {operation_title.lower()}… Image and graph updates may pause briefly."
+                    )
+                    camera_operation_until = float("inf")
+                    LOG.info("Camera operation started: %s", command)
+                    view_panel.update(view_state())
                 try:
                     if reflected_calibration.active and command.get("action") in (
                         "hardware",
@@ -1932,7 +1952,16 @@ def main(argv: list[str] | None = None) -> int:
                         notify(f"Camera window failed: {command.get('message', '')}")
                 except (KeyError, ValueError, TypeError, CameraError) as exc:
                     hardware.error = f"Camera setting rejected: {exc}"
+                    operation_error = hardware.error
                     notify(hardware.error)
+                finally:
+                    if operation_title:
+                        camera_operation_busy = False
+                        camera_operation = operation_error or f"{operation_title} updated"
+                        camera_operation_until = time.monotonic() + 8
+                        LOG.info("Camera operation finished: %s in %.3fs; %s", operation_title,
+                                 time.monotonic() - operation_started, camera_operation)
+                        view_panel.update(view_state())
             for command in capture_panel.poll():
                 previous_capture_preferences = (capture_cursor, capture_graphs, timelapse_fpm)
                 action = command.get("action")

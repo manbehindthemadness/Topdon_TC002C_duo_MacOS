@@ -291,6 +291,11 @@ Before accessing controls, the viewer reads the camera's SDK 2.0 protocol versio
 to initialize command dispatch after a power cycle. If a legacy 512-byte layout
 reappears, it repeats this handshake once and reselects the command; unexpected
 versions or block sizes remain rejected before configuration writes.
+Hardware setting changes show an operation notice at the top of Camera before
+USB commands run, explaining that image and graph updates may pause briefly.
+Controls are locked during the operation; completion or rejection stays visible
+for eight seconds. Gamma uploads show their existing percentage progress there.
+The viewer log records each camera operation and its completion time.
 
 Each control has a title and editable value; only numeric ranges have sliders.
 The **Units** toggle and Camera's **Measurement units** selection switch together:
