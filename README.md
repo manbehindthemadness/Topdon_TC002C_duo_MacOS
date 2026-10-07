@@ -166,7 +166,7 @@ Changes redraw the graphs immediately without adding extra measurements to CSV.
 **Log to CSV** opens a Save dialog before logging begins. **Stop logging** closes
 and saves the file; **Cancel logging** cancels an unfinished Save dialog. Hiding
 the graph area is disabled while logging or choosing its file. During logging,
-Camera inputs, reset/restore buttons and Advanced / Auto are disabled. Main-window
+Camera inputs and pipeline editing are disabled. Main-window
 unit, rotation and spot changes are also blocked, including shortcuts and queued
 settings requests. Stopping logging unlocks the available controls again.
 Quitting the app
@@ -264,14 +264,16 @@ dimensions with black borders, preserving its aspect ratio.
 
 The main thermal image window remembers its resized dimensions across viewer
 restarts. The **Camera** popup also remembers its window size across closes and viewer restarts,
-and groups display, AI enhancement, and camera adjustments.
-Display preferences, selected temperature unit, rotation, Auto calibrate and Advanced / Auto states
+and contains expandable Camera hardware and Software processing stacks.
+[Pipeline controls and examples](docs/processing-pipelines.md) explain node ordering,
+static board imaging, persistence, and import/export.
+Display preferences, selected temperature unit, rotation, Auto calibrate, pipeline nodes and their expanded/bypassed states
 and successfully applied hardware overrides are saved as `settings.json` beside
 `main-window.json` in the application configuration directory. Changes save as
 they are applied and on exit. Saved overrides are reapplied after reading and
 preserving the camera baseline on the next launch; the physical baseline is
 still restored on exit. Restore camera settings also clears saved hardware
-overrides; Reset display settings saves the display defaults. Explicit
+overrides and bypasses optional hardware nodes; Restore default pipeline resets the stacks. Explicit
 `--rotate` and `--image-source` options override remembered values. Invalid saved
 fields are ignored independently so valid preferences can still load.
 Ambient temperature inputs retain the value you enter (for example, 72°F), while
@@ -304,94 +306,34 @@ reflected-temperature and distance inputs convert their values, ranges and
 steps accordingly. Distance sliders retain the camera's 1 cm precision, and
 pending edits survive unit changes. Hardware writes and saved hardware overrides
 remain in Celsius and meters, so switching units does not change calibration.
-Choice and on/off controls use dropdowns. On/off settings use two columns within Display controls, above
-AI enhancement and camera adjustments. All available inputs stay enabled. The
-**Advanced / Auto** checkbox is reserved for future automatic control behavior. Hardware rows include ambient and reflected temperature,
-distance, emissivity, humidity, optical transmission, center overlay, brightness,
-contrast, noise reduction mode and levels, detail enhancement, and camera palettes.
-Use **Restore camera settings** to restore all original camera values. Quitting also restores camera overrides.
-Original payloads are saved under `$XDG_STATE_HOME/topdon-duo/camera-baselines`
-(default `~/.local/state/topdon-duo/camera-baselines`) before controls are enabled.
+Choice controls use dropdowns, and on/off settings use checkboxes. Numeric range
+controls have sliders. Image source is pinned first in the Camera hardware stack;
+optional hardware nodes are singletons. Software processing nodes run top to bottom
+and can be repeated. Headers expand/collapse, grips drag, and right-click menus
+add, insert, remove, or clear nodes. All inputs ignore wheel edits.
 
-**Display controls → Camera processing preset** offers **Balanced** (normal),
-**Shadow** (darker tones), and **Soft** (a gentler look). These change the camera's
-preview processing independently of its palette; they do not lock automatic
-contrast or change the app's raw-image color scaling. The selection persists,
-including after camera brightness/contrast and detail adjustments. Presets require
-the verified factory ISP configuration. **Fixed mode** requires Balanced; turn
-Fixed mode off before choosing another preset. Presets are locked during logging
-and calibration measurements. Restore camera settings or quitting returns the
-camera to its original Balanced processing; quitting retains the saved selection.
-For static objects, enable the **Camera → Analyze mode** checkbox.
-Its controls appear only while enabled and provide From/To temperatures,
-an optional palette, sharpening amount, and a separate upsampler selection.
-Choose Sensor interpolation for a view without model enhancement,
-Anime4K09 (1–5 passes), ACNet with the desired denoising strength,
-or Off for ordinary display scaling. Enhancement operates on grayscale before
-the optional palette; White hot keeps the result black and white.
-Defaults are a fixed **15–45°C** range (59–113°F), White hot, sharpening off,
-and bicubic interpolation of the float temperature-display plane from native
-256×192 to 512×384 before conversion to display bytes, then
-scaling to the viewport with the image aspect preserved. Colors do not
-automatically stretch when hotter or colder objects enter the scene; values
-outside the selected range clip to the palette endpoints. Temperature inputs
-follow the selected units, and the mode and its settings persist across restarts.
-Enhancement changes only display pixels; spot measurements, charts, calibration,
-and CSV readings continue to use the separate temperature data. Preview filter,
-palette, and AI controls are disabled in Analyze mode; its own controls are
-hidden when off and disabled while logging or taking calibration measurements.
-Switching it off returns to the previously selected image source.
-The existing Raw thermal image view retains its automatic display scaling.
-Upsampling does not add measured sensor pixels. Anime4K09, ACNet, and sharpening
-can change small shapes; use Sensor interpolation with sharpening at zero when
-comparing subtle features, and use spot/CSV data for temperatures. Making a target
-occupy more native sensor pixels is needed to obtain finer measured spatial detail.
+Auto calibrate, overlay, units, ambient/reflected temperature, optical transmission,
+distance, emissivity and calibration tools remain separate. Optical transmission
+appears directly below Reflected temperature. Fixed detail mode is a checkbox
+inside Detail enhancement. It requires enabled detail enhancement, Balanced,
+neutral camera gamma (50), and boost Off. Hardware controls restore their owned
+fields when bypassed/removed, and original camera overrides restore on exit.
+Snapshots remain under `$XDG_STATE_HOME/topdon-duo/camera-baselines`.
 
-The preset control is disabled while displaying raw thermal data, including
-when App colors makes Camera preview use the raw thermal source.
+The old Analyze toggle is replaced by repeatable Temperature range and Sensor
+interpolation nodes. A range fixes software temperature scaling, including when
+Camera preview is selected (then rendering uses thermal data and explicitly
+approximate camera-style colors). Camera preview effects are inactive in that
+case. Bounds follow the selected temperature units and never change measurements.
+[Static board analysis examples](docs/processing-pipelines.md#static-board-analysis)
+show a useful starting pipeline.
 
-**Camera gamma adjustment** changes preview midtones on a 0–100 scale; **50**
-is neutral and preserves the selected processing preset. **Camera tone boost**
-offers **Off**, **Mode 1**, **Mode 2**, and **Mode 3**. The enabled modes set
-different camera flags; tests found similar contrast increases, not ordered
-strength levels. Existing saved On settings become Mode 3. Both settings persist and are disabled for raw thermal
-viewing, logging, and calibration measurements. Gamma uploads gradually with a
-progress indicator and **Cancel tone update**, keeping preview and sampling active.
-Use neutral gamma and turn boost off before enabling Fixed mode. These controls
-change display processing; they do not freeze automatic contrast or change
-radiometric calibration. Restore camera settings returns gamma to neutral and
-turns boost off; quitting retains the saved selection for the next launch.
-
-Controls follow the active image source: camera brightness, contrast, gamma,
-boost, noise reduction, detail, overlay and Fixed mode are disabled while viewing
-raw thermal data, including preview fallback to raw. Raw thermal rendering uses
-the app palette; Camera colors uses the camera palette. Color source selection
-is disabled when Raw thermal image is selected. Measurement and calibration
-controls stay available in both views, as do filters, enhancement and mirroring.
-Switching views retains the saved values of disabled controls.
-
-**Camera → Enhancement algorithm** offers **Anime4K09 2×** (the algorithm selected
-by the inspected Android phone app), plus **ACNet 2×** with no, light, medium,
-or strong denoising.
-It defaults to Off. **Enhancement input size** selects
-native sensor size (the default, 256×192 → 512×384) or the full preview.
-**Enhancement amount** blends ACNet output with ordinary interpolation, or
-adjusts Anime4K09's gradient strength; 0 gives the original image and 1 gives
-full enhancement. **Anime4K09 passes** offers 1–5 passes; the phone uses 3.
-
-Anime4K09 uses a portable CPU port of the public OpenCL rules with the phone's
-parameters. ACNet uses four bundled ONNX models through the existing OpenCV CPU
-engine. Neither needs downloads, compilation, or extra runtime dependencies.
-Models load when selected and are reused across frames.
-The Camera status shows processing time or a fallback error.
-Enhancement also appears in saved images and recordings, while the temperature
-grid, spot positions, and temperature readings keep their original resolution.
-The existing display scale controls the final image size; Anime4K09 and ACNet run at 2×,
-before that final resize. Native mode downsamples enlarged previews before
-enhancement. Full preview mode retains their complete input resolution.
-Processing may reduce the live frame rate, especially for the full 512×384 preview.
-The portable Anime4K09 port has been checked against the public kernel rules;
-identical results to a phone GPU have not been established.
+AI enhancement nodes offer Anime4K09 and bundled ACNet ONNX models, with amount,
+passes, ACNet denoising and Current/Native/Preview input sizes. They need no
+compilation or downloads. Image processing runs independently from measurements
+and graphs; slow chains report latency rather than blocking sampling. A four
+megapixel intermediate-image limit reports oversize chains. Sharpening and AI
+can change shapes; they do not add measured sensor pixels.
 
 
 Desktop measurements always use the camera count conversion (`raw / 64 - 50`),
@@ -668,7 +610,7 @@ validation against physical references. Reflected temperature has an experimenta
 transmission remains manual until a suitable reference-based calibration is available. Palettes,
 mirrors and overlays remain user preferences. Weather humidity is a possible
 optional outdoor estimate, with its source and age shown; it is not a measured
-indoor value. Advanced / Auto is currently a placeholder.
+indoor value. Automatic calculation remains a future feature.
 
 | Future calibration | Required reference or data | Proposed method | Validation / limits |
 | --- | --- | --- | --- |

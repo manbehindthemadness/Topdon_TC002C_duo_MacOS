@@ -44,6 +44,17 @@ from .graphs import (
     graph_reset_rect,
 )
 from .hardware_controls import HARDWARE_CONTROLS, HardwareControls, camera_operation_title
+from .pipeline import (
+    default_pipeline,
+    geometry,
+    migrate_pipeline,
+    node,
+    thermal_source,
+    validate_pipeline,
+)
+from .pipeline_hardware import PIPELINE_FIELDS as pipeline_hardware_fields
+from .pipeline_hardware import PipelineHardware, desired_hardware
+from .pipeline_processing import PipelineWorker
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
 from .reflected_calibration import ReflectedCalibrator
@@ -1145,6 +1156,18 @@ def main(argv: list[str] | None = None) -> int:
         renderer.set_view_setting(name, value)
     if args.image_source is not None:
         renderer.set_view_setting("image_source", args.image_source)
+    pipeline = saved_settings.get("pipeline") or migrate_pipeline(saved_settings)
+    if args.image_source is not None:
+        pipeline["hardware"][0]["params"]["source"] = "raw" if args.image_source == "analyze" else args.image_source
+        if args.image_source == "analyze" and not any(n["type"] == "range" and not n["bypass"] for n in pipeline["software"]):
+            pipeline["software"].insert(0, node("software", "range", low=renderer.raw_temperature_low, high=renderer.raw_temperature_high))
+    renderer.set_pipeline(pipeline)
+    pipeline_serial = 0
+    pipeline_revision = 0
+    pipeline_elapsed_ms = 0.0
+    pipeline_error = ""
+    pipeline_worker = None
+    tone_previous_pipeline = None
     renderer.native_temperatures = True
     if args.ambient is not None:
         LOG.warning("--ambient is ignored; set hardware ambient temperature in Camera.")
@@ -1174,6 +1197,7 @@ def main(argv: list[str] | None = None) -> int:
     graph_panel = GraphPanel()
     spots_panel = SpotsPanel()
     hardware = HardwareControls(camera)
+    pipeline_hardware = PipelineHardware(hardware)
     emissivity_calibration = EmissivityCalibrator(
         hardware, saved_settings.get("emissivity_calibration")
     )
@@ -1210,6 +1234,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             save_settings(
                 {
+                    "pipeline": pipeline,
                     "display": {name: getattr(renderer, name) for name in VIEW_DEFAULTS},
                     "hardware": remembered_hardware,
                     "ambient_input_celsius": ambient_input_celsius,
@@ -1338,7 +1363,7 @@ def main(argv: list[str] | None = None) -> int:
             notify(f"Unable to open Save dialog: {exc}")
 
     def rotate_view() -> None:
-        nonlocal last_selected
+        nonlocal last_selected, pipeline_revision
         if graphs.logging or emissivity_calibration.running or reflected_calibration.running:
             notify("Stop logging or calibration measurement before changing settings.")
             return
@@ -1354,10 +1379,12 @@ def main(argv: list[str] | None = None) -> int:
             sensor_width, sensor_height, renderer.mirror_horizontal, renderer.mirror_vertical
         )
         spots.rotate_clockwise(sensor_height)
+        renderer.rotate_clockwise()
+        pipeline_revision += 1
+        renderer.mirror_horizontal, renderer.mirror_vertical = geometry(pipeline, renderer.rotation)
         spots.mirror(
             sensor_height, sensor_width, renderer.mirror_horizontal, renderer.mirror_vertical
         )
-        renderer.rotate_clockwise()
         if distance_calibration.corners or distance_calibration.selecting:
             distance_calibration.cancel()
         persist_settings()
@@ -1369,7 +1396,24 @@ def main(argv: list[str] | None = None) -> int:
         if graphs.logging or emissivity_calibration.running or reflected_calibration.running:
             notify("Stop logging or calibration measurement before changing settings.")
             return
-        previous = renderer.view_settings()
+        if name in ("mirror_horizontal", "mirror_vertical", "image_filter", "image_source"):
+            candidate = validate_pipeline(pipeline)
+            if name == "image_source":
+                candidate["hardware"][0]["params"]["source"] = "raw" if value == "analyze" else value
+            else:
+                kind = "mirror" if name.startswith("mirror_") else "filter"
+                item = next((n for n in candidate["software"] if n["type"] == kind), None)
+                if item is None:
+                    item = node("software", kind)
+                    candidate["software"].append(item)
+                key = name.removeprefix("mirror_") if kind == "mirror" else "filter"
+                if kind == "mirror" and renderer.rotation in (90, 270):
+                    key = "vertical" if key == "horizontal" else "horizontal"
+                item["params"][key] = value
+            set_pipeline(candidate)
+            setattr(renderer, name, value)
+            persist_settings()
+            return
         if name == "palette_source" and value == "camera":
             palette = hardware.state().get("palette", {})
             if not palette.get("available", False):
@@ -1380,22 +1424,44 @@ def main(argv: list[str] | None = None) -> int:
         if name == "color_palette":
             renderer.set_view_setting("palette_source", "app")
         persist_settings()
-        if name in ("mirror_horizontal", "mirror_vertical") and previous[name] != value:
+
+    def set_pipeline(document):
+        nonlocal pipeline, pipeline_revision, last_selected, tone_previous_pipeline, actual_image_source
+        candidate = validate_pipeline(document)
+        previous_pipeline = pipeline
+        pipeline_hardware.apply(candidate)
+        if hardware.tone_busy and tone_previous_pipeline is None:
+            tone_previous_pipeline = previous_pipeline
+        previous_mirrors = renderer.mirror_horizontal, renderer.mirror_vertical
+        next_mirrors = geometry(candidate, renderer.rotation)
+        if previous_mirrors != next_mirrors:
+            width, height = ((SENSOR_WIDTH, SENSOR_HEIGHT) if renderer.rotation in (0, 180) else (SENSOR_HEIGHT, SENSOR_WIDTH))
+            spots.mirror(width, height, previous_mirrors[0] != next_mirrors[0], previous_mirrors[1] != next_mirrors[1])
             spot_drag.cancel()
+            distance_calibration.cancel()
             if emissivity_calibration.active:
                 emissivity_calibration.cancel()
             if reflected_calibration.active:
                 reflected_calibration.cancel()
-            width, height = (
-                (SENSOR_WIDTH, SENSOR_HEIGHT)
-                if renderer.rotation in (0, 180)
-                else (SENSOR_HEIGHT, SENSOR_WIDTH)
-            )
-            spots.mirror(width, height, name == "mirror_horizontal", name == "mirror_vertical")
-            if distance_calibration.corners or distance_calibration.selecting:
-                distance_calibration.cancel()
             picker.x = picker.y = None
             last_selected = None
+        def signature(document):
+            return (document["hardware"][0]["params"],
+                    [(n["type"], n["params"], n["bypass"]) for n in document["software"]],
+                    sorted((n["type"], json.dumps(n["params"], sort_keys=True), n["bypass"]) for n in document["hardware"][1:]))
+        changed_image = signature(candidate) != signature(pipeline)
+        pipeline = candidate
+        renderer.set_pipeline(pipeline)
+        actual_image_source = "raw" if thermal_source(pipeline) else "preview"
+        if changed_image:
+            pipeline_revision += 1
+        for name in tuple(remembered_hardware):
+            if name in pipeline_hardware_fields:
+                remembered_hardware.pop(name)
+        for name, setting in hardware.state().items():
+            if name in pipeline_hardware_fields and setting["enabled"]:
+                remembered_hardware[name] = setting["value"]
+        persist_settings()
 
     def spots_state():
         return {
@@ -1422,45 +1488,17 @@ def main(argv: list[str] | None = None) -> int:
 
     def view_state() -> dict:
         message = "Camera preview" if actual_image_source == "preview" else "Raw thermal image"
-        if renderer.analyze_mode:
-            low = renderer.display_temperature(renderer.raw_temperature_low)
-            high = renderer.display_temperature(renderer.raw_temperature_high)
-            message = f"Analyze mode · Fixed {low:.1f}–{high:.1f} °{renderer.temperature_unit}"
-        if not renderer.analyze_mode and renderer.image_source == "preview" and actual_image_source == "raw":
-            message = (
-                "App colors from raw thermal data"
-                if renderer.palette_source == "app" and renderer.camera_color
-                else "Camera preview unavailable; showing the raw thermal image."
-            )
+        if pipeline["hardware"][0]["params"]["source"] == "preview" and actual_image_source == "raw":
+            message += " · Camera-style thermal recoloring (approximate palette)"
+        message += f" · Pipeline {pipeline_elapsed_ms:.0f} ms"
+        if pipeline_elapsed_ms > 500:
+            message += " · Slow pipeline: image updates exceed 500 ms; sampling continues"
+        if pipeline_error:
+            message += f" · Pipeline error: {pipeline_error}"
         if hardware.error:
-            message = hardware.error
-        else:
-            message += " · Camera temperatures (approximate)"
+            message += f" · {hardware.error}"
         if renderer.measurement_status:
             message += f" · {renderer.measurement_status}"
-        if hardware.fixed_range:
-            message += " · Fixed detail mode"
-        if renderer.analyze_mode and renderer.raw_upsampling == "bicubic":
-            message += " · Sensor interpolation 2×"
-        elif renderer.analyze_mode and renderer.raw_upsampling != "off":
-            if renderer.upsampler.error:
-                message += f" · {renderer.upsampler.error}; showing unenhanced image"
-            else:
-                algorithm = (f"Anime4K09 2×, {renderer.raw_anime4k_passes} passes"
-                             if renderer.raw_upsampling == "anime4k09" else "ACNet 2×")
-                message += f" · {algorithm} · {renderer.upsampler.elapsed_ms:.0f} ms"
-        elif not renderer.analyze_mode and renderer.upsampling != "off":
-            if not renderer.enhancement_amount:
-                message += " · Enhancement amount 0 (original image)"
-            elif renderer.upsampler.error:
-                message += f" · {renderer.upsampler.error}; showing unenhanced image"
-            else:
-                algorithm = (
-                    "Anime4K09 2×"
-                    if renderer.upsampling == "anime4k09"
-                    else "ACNet 2×"
-                )
-                message += f" · {algorithm} · {renderer.upsampler.elapsed_ms:.0f} ms"
         if graphs.logging:
             message += " · Settings locked while logging"
         elif reflected_calibration.running:
@@ -1475,6 +1513,8 @@ def main(argv: list[str] | None = None) -> int:
             }
         return {
             **renderer.view_settings(),
+            "pipeline": pipeline,
+            "pipeline_serial": pipeline_serial,
             "hardware": ui_hardware,
             "color_source": (
                 "camera"
@@ -1510,7 +1550,14 @@ def main(argv: list[str] | None = None) -> int:
                 hardware.load()
             except CameraError as exc:
                 hardware.error = str(exc)
-            view_panel.open(view_state())
+            state = view_state()
+            try:
+                x, y, width, height = cv2.getWindowImageRect(WINDOW_NAME)
+                if width > 0 and height > 0:
+                    state["anchor_top_right"] = [x + width - 1, y]
+            except cv2.error:
+                pass
+            view_panel.open(state)
         except OSError as exc:
             notify(f"Could not open Camera: {exc}")
 
@@ -1546,11 +1593,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     def initialize_hardware() -> bool:
-        nonlocal calibration_available, remembered_fixed_range, remembered_processing_preset
+        nonlocal calibration_available, tone_previous_pipeline
         try:
             hardware.load()
             hardware.error = ""
             for name, value in remembered_hardware.items():
+                if name in pipeline_hardware_fields:
+                    continue
                 try:
                     hardware.set(name, value, True)
                 except (CameraError, ValueError, TypeError) as exc:
@@ -1567,24 +1616,15 @@ def main(argv: list[str] | None = None) -> int:
             hardware.error = f"Could not set Auto calibrate: {exc}"
             LOG.warning("%s", hardware.error)
         try:
-            hardware.set_processing_preset(remembered_processing_preset)
-        except (CameraError, ValueError) as exc:
-            remembered_processing_preset = hardware.processing_preset
-            hardware.error = f"Could not restore processing preset: {exc}"
+            pipeline_hardware.apply(pipeline)
+            if hardware.tone_busy:
+                tone_previous_pipeline = validate_pipeline(pipeline)
+                for item in tone_previous_pipeline["hardware"]:
+                    if item["type"] in ("gamma", "boost"):
+                        item["bypass"] = True
+        except (CameraError, ValueError, TypeError) as exc:
+            hardware.error = f"Could not restore pipeline: {exc}"
             LOG.warning("%s", hardware.error)
-        if remembered_fixed_range:
-            try:
-                hardware.set_fixed_range(True)
-            except (CameraError, ValueError) as exc:
-                remembered_fixed_range = False
-                hardware.error = f"Could not restore fixed mode: {exc}"
-                LOG.warning("%s", hardware.error)
-        if remembered_gamma != 50 or remembered_boost:
-            try:
-                hardware.set_tone(remembered_gamma, remembered_boost)
-            except (CameraError, ValueError) as exc:
-                hardware.error = f"Could not restore gamma/boost: {exc}"
-                LOG.warning("%s", hardware.error)
         return True
 
     try:
@@ -1607,6 +1647,7 @@ def main(argv: list[str] | None = None) -> int:
         cv2.setMouseCallback(WINDOW_NAME, picker.callback)
         set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
+        pipeline_worker = PipelineWorker()
         frame_pump = CameraFramePump(camera)
         last_frame = None
         last_frame_at = None
@@ -1614,10 +1655,19 @@ def main(argv: list[str] | None = None) -> int:
             if hardware.tone_busy:
                 try:
                     if hardware.advance_tone():
+                        tone_previous_pipeline = None
                         notify("Camera tone update complete")
                         camera_operation = "Camera tone update complete"
                         camera_operation_until = time.monotonic() + 8
                 except CameraError as exc:
+                    if tone_previous_pipeline is not None:
+                        previous_pipeline = tone_previous_pipeline
+                        tone_previous_pipeline = None
+                        pipeline_hardware._desired = None
+                        try:
+                            set_pipeline(previous_pipeline)
+                        except (CameraError, ValueError) as restore_error:
+                            LOG.error("Pipeline tone rollback failed: %s", restore_error)
                     remembered_gamma, remembered_boost = hardware.gamma, hardware.boost
                     hardware.error = str(exc)
                     camera_operation = f"Camera tone update failed: {exc}"
@@ -1715,6 +1765,7 @@ def main(argv: list[str] | None = None) -> int:
                     or emissivity_calibration.running
                     or reflected_calibration.running
                 ) and command.get("action") in (
+                    "pipeline",
                     "setting",
                     "hardware",
                     "advanced_auto",
@@ -1734,6 +1785,11 @@ def main(argv: list[str] | None = None) -> int:
                 ) == "emissivity_calibration":
                     notify("Stop temperature logging before emissivity calibration.")
                     continue
+                if command.get("action") == "pipeline":
+                    try:
+                        command["hardware_operation"] = desired_hardware(validate_pipeline(command["document"])) != pipeline_hardware._desired
+                    except (ValueError, TypeError, KeyError):
+                        command["hardware_operation"] = False
                 operation_title = camera_operation_title(command)
                 operation_started = time.monotonic()
                 operation_error = None
@@ -1756,43 +1812,48 @@ def main(argv: list[str] | None = None) -> int:
                         reflected_calibration.cancel()
                     if hardware.tone_busy and command.get("action") not in ("tone", "cancel_tone", "restore_hardware"):
                         raise ValueError("Wait for the camera tone update, or cancel it")
-                    if command.get("action") == "setting":
+                    if command.get("action") in ("pipeline", "pipeline_refresh"):
+                        pipeline_serial = command.get("serial", pipeline_serial)
+                        if command["action"] == "pipeline":
+                            set_pipeline(command["document"])
+                            hardware.error = ""
+                    elif command.get("action") == "setting":
                         set_view_setting(command["name"], command["value"])
-                    elif command.get("action") == "tone":
-                        if renderer.image_source != "preview" or actual_image_source != "preview":
-                            raise ValueError("Gamma and boost require Camera preview")
-                        hardware.set_tone(command.get("gamma", hardware.gamma), command.get("boost", hardware.boost))
+                    elif command.get("action") in ("tone", "processing_preset", "fixed_range", "cancel_tone"):
+                        candidate = validate_pipeline(pipeline)
+                        def camera_node(kind, candidate=candidate):
+                            item = next((n for n in candidate["hardware"] if n["type"] == kind), None)
+                            if item is None:
+                                item = node("hardware", kind)
+                                candidate["hardware"].append(item)
+                            return item
+                        action = command["action"]
+                        if action == "tone":
+                            for key in ("gamma", "boost"):
+                                if key in command:
+                                    item = camera_node(key)
+                                    item["params"]["value"] = command[key]
+                                    item["bypass"] = False
+                        elif action == "cancel_tone":
+                            hardware.restore_tone()
+                            tone_previous_pipeline = None
+                            pipeline_hardware._desired = None
+                            for item in candidate["hardware"]:
+                                if item["type"] in ("gamma", "boost"):
+                                    item["bypass"] = True
+                        elif action == "processing_preset":
+                            camera_node("preset")["params"]["value"] = command["value"]
+                        elif action == "fixed_range":
+                            item = camera_node("detail")
+                            item["params"]["fixed"] = command["value"]
+                            if command["value"]:
+                                item["params"]["enabled"] = True
+                        set_pipeline(candidate)
                         remembered_gamma, remembered_boost = hardware.gamma, hardware.boost
-                        persist_settings()
-                        hardware.error = ""
-                    elif command.get("action") == "cancel_tone":
-                        hardware.restore_tone()
-                        remembered_gamma, remembered_boost = 50, 0
-                        persist_settings()
-                    elif command.get("action") == "processing_preset":
-                        if renderer.image_source != "preview" or actual_image_source != "preview":
-                            raise ValueError("Camera processing presets require Camera preview")
-                        if emissivity_calibration.active:
-                            emissivity_calibration.cancel()
-                        if reflected_calibration.active:
-                            reflected_calibration.cancel()
-                        hardware.set_processing_preset(command["value"])
                         remembered_processing_preset = hardware.processing_preset
+                        remembered_fixed_range = command["value"] if action == "fixed_range" else hardware.fixed_range
                         persist_settings()
                         hardware.error = ""
-                    elif command.get("action") == "fixed_range":
-                        if emissivity_calibration.active:
-                            emissivity_calibration.cancel()
-                        if reflected_calibration.active:
-                            reflected_calibration.cancel()
-                        hardware.set_fixed_range(command["value"])
-                        remembered_fixed_range = command["value"]
-                        persist_settings()
-                        hardware.error = ""
-                        if hardware.fixed_range:
-                            notify("Fixed detail mode enabled")
-                        else:
-                            notify("Normal camera processing restored")
                     elif command.get("action") == "auto_calibrate":
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
@@ -1931,6 +1992,11 @@ def main(argv: list[str] | None = None) -> int:
                         if emissivity_calibration.active:
                             emissivity_calibration.cancel()
                         hardware.restore()
+                        pipeline_hardware._desired = None
+                        for item in pipeline["hardware"][1:]:
+                            item["bypass"] = True
+                        renderer.set_pipeline(pipeline)
+                        pipeline_revision += 1
                         remembered_gamma, remembered_boost = 50, 0
                         remembered_processing_preset = hardware.processing_preset
                         remembered_fixed_range = False
@@ -1940,13 +2006,9 @@ def main(argv: list[str] | None = None) -> int:
                         hardware.error = ""
                         renderer._average_raw = None
                     elif command.get("action") == "reset":
-                        renderer.raw_temperature_low = VIEW_DEFAULTS["raw_temperature_low"]
-                        renderer.raw_temperature_high = VIEW_DEFAULTS["raw_temperature_high"]
+                        set_pipeline(default_pipeline())
                         for name, value in VIEW_DEFAULTS.items():
-                            if name == "palette_source":
-                                renderer.set_view_setting(name, value)
-                            else:
-                                set_view_setting(name, value)
+                            setattr(renderer, name, value)
                         persist_settings()
                     elif command.get("action") == "error":
                         notify(f"Camera window failed: {command.get('message', '')}")
@@ -1996,7 +2058,20 @@ def main(argv: list[str] | None = None) -> int:
             ambient = renderer.hardware_settings.get("ambient", {})
             renderer.ambient_celsius = ambient.get("value") if ambient.get("available") else None
             diagnostics.stage("render")
-            rendered = renderer.render_detailed(frame, update_measurements=fresh_frame)
+            rendered = renderer.render_detailed(frame, update_measurements=fresh_frame, image_processing=False)
+            image_frame = frame if rendered.measurements_valid else renderer._last_valid_frame
+            if image_frame is not None:
+                palette = renderer.hardware_settings.get("palette", {}).get("value", 1)
+                pipeline_worker.submit(image_frame, renderer._average_raw, pipeline, pipeline_revision, renderer.scale, renderer.rotation, palette)
+            processed = pipeline_worker.latest(pipeline_revision)
+            if processed is not None:
+                previous_error = pipeline_error
+                _, image, source, pipeline_elapsed_ms, pipeline_error = processed
+                if pipeline_error and pipeline_error != previous_error:
+                    LOG.warning("Image pipeline failed: %s", pipeline_error)
+                    notify(f"Image pipeline: {pipeline_error}")
+                if image is not None:
+                    rendered = replace(rendered, image=image, image_source=source)
             if not fresh_frame and time.monotonic() - last_frame_at >= 0.5:
                 rendered = replace(
                     rendered,
@@ -2509,6 +2584,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     finally:
         diagnostics.stage("shutdown")
+        if pipeline_worker is not None:
+            pipeline_worker.close()
         try:
             reflected_calibration.cancel()
         except CameraError as exc:

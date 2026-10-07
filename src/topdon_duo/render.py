@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 
 from .camera import IMAGE_OFFSET, decode_duo_frame, measurement_frame_status, raw_temperatures
+from .pipeline import geometry, thermal_source, validate_pipeline
+from .pipeline_processing import PipelineProcessor
 from .upsampling import VisionUpsampler
 from .view_settings import IMAGE_SOURCES, VIEW_DEFAULTS, validate_view_setting
 
@@ -122,6 +124,8 @@ class ThermalRenderer:
         self.camera_color = False
         self.hardware_settings = {}
         self.upsampler = VisionUpsampler()
+        self.pipeline = None
+        self.pipeline_processor = PipelineProcessor()
 
     def display_temperature(self, celsius: float) -> float:
         if self.temperature_unit == "F":
@@ -154,7 +158,15 @@ class ThermalRenderer:
             settings["temperature_conversion"] = (
                 "camera" if self.native_temperatures else "software_ambient"
             )
+        if self.pipeline is not None:
+            settings["pipeline"] = self.pipeline
         return settings
+
+    def set_pipeline(self, document):
+        self.pipeline = validate_pipeline(document)
+        self.image_source = self.pipeline["hardware"][0]["params"]["source"]
+        self.mirror_horizontal, self.mirror_vertical = geometry(self.pipeline, self.rotation)
+        self.analyze_mode = False
 
     def set_view_setting(self, name: str, value: object) -> None:
         validate_view_setting(name, value)
@@ -251,7 +263,7 @@ class ThermalRenderer:
         return self._colorize(rgb[..., 0], self.raw_palette)
 
     def render_detailed(
-        self, frame: bytes, *, update_measurements: bool = True
+        self, frame: bytes, *, update_measurements: bool = True, image_processing: bool = True
     ) -> RenderedThermalFrame:
         telemetry, raw, preview = decode_duo_frame(frame)
         self.measurement_status = measurement_frame_status(telemetry, raw)
@@ -292,6 +304,19 @@ class ThermalRenderer:
             maximum=float(celsius.max()),
             center=float(celsius[center_y, center_x]),
         )
+
+        if not image_processing or self.pipeline is not None:
+            if image_processing:
+                palette = self.hardware_settings.get("palette", {}).get("value", 1)
+                heatmap, source = self.pipeline_processor.process(
+                    frame, averaged, self.pipeline, self.scale, self.rotation, palette
+                )
+            else:
+                heatmap = np.zeros((*celsius.shape, 3), np.uint8)
+                heatmap = cv2.resize(heatmap, (celsius.shape[1] * self.scale, celsius.shape[0] * self.scale))
+                source = "raw" if self.pipeline is not None and thermal_source(self.pipeline) else self.image_source
+            return RenderedThermalFrame(heatmap, stats, celsius, oriented_raw, source,
+                                        self.view_settings(), measurements_valid, self.measurement_status)
 
         # Image processing and measurement data remain independent. Some modes
         # leave the preview empty; those retain the radiometric visualization.

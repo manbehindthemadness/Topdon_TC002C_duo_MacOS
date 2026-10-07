@@ -9,6 +9,7 @@ from .emissivity_calibration import validate_reference
 from .graph_settings import validate_graph_settings
 from .graphs import validate_graph_interval
 from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS, PROCESSING_PRESETS
+from .pipeline import legacy_transmission_value, validate_pipeline
 from .reflected_calibration import validate_reference as validate_reflected_reference
 from .spot_preferences import validate_spots
 from .view_settings import VIEW_DEFAULTS, validate_view_setting
@@ -110,6 +111,13 @@ def load_settings() -> dict:
         result["reflected_calibration"] = validate_reflected_reference(
             saved.get("reflected_calibration")
         )
+    except (TypeError, ValueError):
+        pass
+    try:
+        result["pipeline"] = validate_pipeline(saved.get("pipeline"))
+        transmission = legacy_transmission_value(saved["pipeline"])
+        if transmission is not None:
+            result["hardware"]["transmission"] = transmission
     except (TypeError, ValueError):
         pass
     return result

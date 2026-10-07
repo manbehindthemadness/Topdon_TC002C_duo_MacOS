@@ -7,7 +7,7 @@ from pathlib import Path
 from .window_preferences import _path
 
 LOG = logging.getLogger(__name__)
-KINDS = {"image", "video", "timelapse", "temperatures"}
+KINDS = {"image", "video", "timelapse", "temperatures", "pipeline_import", "pipeline_export"}
 
 
 def _directory_path(kind):

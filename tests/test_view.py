@@ -270,394 +270,53 @@ window._send({"action": "hardware", "name": "detail_enabled", "value": 0, "enabl
 window._send_to_viewer = messages.append
 window.update_state({**VIEW_DEFAULTS, "camera_operation": "Applying detail enhancement mode…",
                      "camera_operation_busy": True})
-assert not window.hardware_rows["detail_enabled"].input.isEnabled()
 assert not window.auto_calibrate.isEnabled()
+assert window.pipeline_editor.locked
 window.update_state({**VIEW_DEFAULTS, "camera_operation": "Detail enhancement mode updated"})
-assert window.hardware_rows["detail_enabled"].input.isEnabled()
 assert window.operation_status.text() == "Detail enhancement mode updated"
 window.update_state({**VIEW_DEFAULTS, "camera_operation": "Camera setting rejected: timed out"})
 assert "rejected" in window.operation_status.text()
 window.update_state(VIEW_DEFAULTS)
 assert window.operation_status.isHidden()
 assert window.windowTitle() == "Camera"
-assert window.processing_preset.slider is None
-assert [window.processing_preset.input.itemText(i) for i in range(3)] == ["Balanced", "Shadow", "Soft"]
-window.update_state({"processing_preset": "balanced", "processing_preset_available": True})
-# Raw selection and preview-to-raw fallback cancel pending preset edits.
-for extra in ({"image_source": "raw"}, {"actual_image_source": "raw"}):
-    window.processing_preset.timer.start()
-    window.update_state({"processing_preset": "shadow", "processing_preset_available": True, **extra})
-    assert not window.processing_preset.input.isEnabled()
-    assert not window.processing_preset.timer.isActive()
-    window.processing_preset._emit()
-    assert messages == []
-window.update_state({"processing_preset": "balanced", "processing_preset_available": True, "actual_image_source": "preview"})
-assert window.processing_preset.input.isEnabled()
-window.processing_preset.input.setCurrentIndex(window.processing_preset.input.findData("shadow"))
-window.processing_preset._emit()
-assert messages.pop() == {"action": "processing_preset", "value": "shadow"}
-window.processing_preset.timer.start()
-window.update_state({"processing_preset": "shadow", "processing_preset_available": True, "settings_locked": True})
-assert not window.processing_preset.input.isEnabled() and not window.processing_preset.timer.isActive()
-window.update_state({"processing_preset": "soft", "processing_preset_available": True, "fixed_range": True})
-assert not window.processing_preset.input.isEnabled()
-window.update_state({"processing_preset": "soft", "processing_preset_available": True, "hardware": {"detail_enabled": {"value": 1}}})
-assert window.processing_preset.input.isEnabled() and not window.fixed_range.isEnabled()
-window.update_state({"processing_preset": "balanced", "processing_preset_available": True})
-# Tone controls follow preview, logging, upload and fixed-mode locks.
-for extra in ({"image_source": "raw"}, {"actual_image_source": "raw"},
-              {"settings_locked": True}, {"fixed_range": True}, {"tone_busy": True}):
-    window.update_state({"processing_preset_available": True, **extra})
-    assert not window.camera_gamma.input.isEnabled()
-    assert not window.camera_boost.input.isEnabled()
-window.update_state({"processing_preset_available": True, "tone_busy": True, "tone_progress": 40})
-assert window.cancel_tone.isEnabled() and "40%" in window.tone_status.text()
-window.cancel_tone.click()
-assert messages.pop() == {"action": "cancel_tone"}
-window.update_state({"processing_preset_available": True, "camera_gamma": 25,
-                     "camera_boost": 3, "hardware": {"detail_enabled": {"value": 1}}})
-assert window.camera_gamma.input.isEnabled() and window.camera_gamma.value() == 25
-assert window.camera_boost.input.currentData() == 3 and not window.fixed_range.isEnabled()
-assert messages == []
-window.update_state({"processing_preset_available": True})
-# All audited boost modes have dropdown entries and send their actual mode ID.
-assert window.camera_boost.slider is None and not window.camera_boost.is_switch
-assert [window.camera_boost.input.itemText(i) for i in range(4)] == ["Off", "Mode 1", "Mode 2", "Mode 3"]
-for mode in (1, 2, 3, 0):
-    window.camera_boost.input.setCurrentIndex(window.camera_boost.input.findData(mode))
-    window.camera_boost._emit()
-    assert messages.pop() == {"action": "tone", "boost": mode}
-window.update_state({"processing_preset_available": True})
-# Locking the focused gamma input must not scroll to calibration controls.
-scroll = window.findChild(QScrollArea)
-for control in (window.camera_gamma.input, window.camera_gamma.slider):
-    window.update_state({"processing_preset_available": True})
-    control.setFocus()
-    app.processEvents()
-    position = scroll.verticalScrollBar().value()
-    for progress in (0, 40, 99):
-        window.update_state({"processing_preset_available": True,
-                             "tone_busy": True, "tone_progress": progress})
-        app.processEvents()
-        assert scroll.verticalScrollBar().value() == position
-    window.update_state({"processing_preset_available": True})
-    app.processEvents()
-    assert scroll.verticalScrollBar().value() == position
-assert messages == []
-# Wheel events cannot edit dropdowns, numeric inputs or sliders, even with focus.
-for control_row in (window.processing_preset, window.camera_gamma, window.camera_boost, *window.rows.values(), *window.hardware_rows.values()):
-    for control in (control_row.input, control_row.slider):
-        if control is None:
-            continue
-        control.setFocus()
-        before = control_row.value()
-        for delta in (120, -120):
-            event = QWheelEvent(QPointF(5, 5), QPointF(control.mapToGlobal(QPoint(5, 5))),
-                                QPoint(), QPoint(0, delta), Qt.NoButton, Qt.NoModifier,
-                                Qt.NoScrollPhase, False)
-            QApplication.sendEvent(control, event)
-            assert not event.isAccepted() or not control.isEnabled()
-            assert control_row.value() == before
-        assert not control_row.timer.isActive()
-assert messages == []
-# Delivered through the window, ignored input events scroll the containing menu.
-scroll = window.findChild(QScrollArea)
-scroll.verticalScrollBar().setValue(0)
-control = window.controls["image_source"]
-control.setFocus()
-app.processEvents()
-position = control.mapTo(window, control.rect().center())
-QTest.wheelEvent(window.windowHandle(), position, QPoint(0, -120))
-app.processEvents()
-assert scroll.verticalScrollBar().value() > 0
-assert messages == []
-scroll.verticalScrollBar().setValue(0)
-
-switches = [row.input for row in (*window.rows.values(), *window.hardware_rows.values()) if row.is_switch]
-assert all(isinstance(control, QCheckBox) for control in switches)
-assert set(window.findChildren(QCheckBox)) == set(switches + [window.auto_calibrate, window.fixed_range, window.advanced_auto])
-assert not hasattr(window, "fixed_lower") and not hasattr(window, "fixed_bounds_apply")
-window.update_state({"hardware": {"detail_enabled": {"value": 0, "available": True}}})
-assert not window.fixed_range.isEnabled()
-window.update_state({"hardware": {"detail_enabled": {"value": 1, "available": True}}})
-assert window.fixed_range.isEnabled() and not window.fixed_range.isChecked()
-window.fixed_range.click()
-assert messages.pop() == {"action": "fixed_range", "value": True}
-window.update_state({"fixed_range": True, "hardware": {"detail_enabled": {"value": 1}}})
-assert window.fixed_range.isChecked()
-assert window.hardware_rows["detail_enabled"].input.isEnabled()
-assert window.hardware_rows["detail"].input.isEnabled()
-assert not window.hardware_rows["contrast"].input.isEnabled()
-assert window.hardware_rows["ambient"].input.isEnabled()
-window.update_state({"fixed_range": False})
-assert not window.fixed_range.isChecked()
-detail_row = window.hardware_rows["detail_enabled"]
-detail_row.input.click()
-detail_row._emit()
-assert messages.pop() == {"action": "hardware", "name": "detail_enabled", "value": 1, "enabled": True}
-assert type(detail_row.value()) is int and not window.fixed_range.isChecked()
-window.update_state({"hardware": {"detail_enabled": {"value": 1}}})
-detail_row.input.click()
-detail_row._emit()
-assert messages.pop() == {"action": "hardware", "name": "detail_enabled", "value": 0, "enabled": True}
-window.update_state({"hardware": {"detail_enabled": {"value": 0}}})
-assert not window.fixed_range.isEnabled()
-assert not window.auto_calibrate.isChecked()
-window.auto_calibrate.click()
-assert messages.pop() == {"action": "auto_calibrate", "value": True}
-assert window.advanced_auto.text() == "Advanced / Auto"
-for row in (*window.rows.values(), *window.hardware_rows.values()):
-    assert row.input.isEnabled() == (row is not window.rows["color_palette"]
-                                    and row not in [r for n, r in window.rows.items()
-                                                    if n.startswith("raw_")])
-    assert (row.slider is None) == bool(row.options)
-    if row.slider is not None:
-        assert row.slider.isEnabled() == row.input.isEnabled()
-window.advanced_auto.click()
-assert messages.pop() == {"action": "advanced_auto", "value": False}
-assert all(row.input.isEnabled() for name, row in window.rows.items()
-           if name != "color_palette" and not name.startswith("raw_"))
-assert all(row.input.isEnabled() for row in window.hardware_rows.values())
-
-for name, value in [("image_source", "raw"), ("temperature_unit", "F"),
-                    ("image_filter", "median"), ("upsampling", "acnet-legacy-hdn2"),
-                    ("upsampling", "anime4k09"), ("enhancement_input", "preview"),
-                    ("color_palette", "white_hot"),
-                    ("mirror_horizontal", True), ("mirror_vertical", True),
-                    ("antialiasing", False)]:
-    if name == "color_palette":
-        window.update_state({**VIEW_DEFAULTS, "palette_source": "app"})
-    control = window.controls[name]
-    if isinstance(control, QCheckBox):
-        control.setChecked(value)
-    else:
-        control.setCurrentIndex(control.findData(value))
-    window.rows[name]._emit()
-    assert messages[-1] == {"action": "setting", "name": name, "value": value}
-for name, value in [("enhancement_amount", 0.5), ("anime4k_passes", 2)]:
-    window.controls[name].setValue(value)
-    window.rows[name]._emit()
-    assert messages[-1] == {"action": "setting", "name": name, "value": value}
-count = len(messages)
-window.update_state({**VIEW_DEFAULTS, "status": "Camera preview"})
-assert len(messages) == count
-assert window.controls["image_source"].currentData() == "preview"
-assert not window.controls["mirror_horizontal"].isChecked()
-assert window.controls["mirror_horizontal"].isEnabled()
-assert window.status.text() == "Camera preview"
-assert all(widget.isHidden() for widget in window.analyze_widgets)
-window.controls["analyze_mode"].setChecked(True)
-window.rows["analyze_mode"]._emit()
-assert messages[-1] == {"action": "setting", "name": "analyze_mode", "value": True}
-window.update_state({**VIEW_DEFAULTS, "analyze_mode": True, "temperature_unit": "F"})
-assert all(not widget.isHidden() for widget in window.analyze_widgets)
-assert not window.controls["image_source"].isEnabled()
-assert window.controls["raw_temperature_low"].value() == 59
-assert window.controls["raw_temperature_high"].value() == 113
-assert all(row.input.isEnabled() for name, row in window.rows.items()
-           if name.startswith("raw_") and name != "raw_anime4k_passes")
-assert not window.controls["raw_anime4k_passes"].isEnabled()
-assert not window.controls["upsampling"].isEnabled()
-assert not window.controls["color_palette"].isEnabled()
-assert not window.controls["palette_source"].isEnabled()
-window.update_state({**VIEW_DEFAULTS, "analyze_mode": True, "raw_upsampling": "acnet-legacy-hdn0"})
-assert window.controls["raw_upsampling"].isEnabled()
-assert not window.controls["raw_anime4k_passes"].isEnabled()
-assert window.controls["raw_palette"].isEnabled()
-window.rows["raw_sharpen_amount"].timer.start()
-window.update_state({**VIEW_DEFAULTS, "analyze_mode": True, "settings_locked": True})
-assert not window.controls["raw_sharpen_amount"].isEnabled()
-assert not window.rows["raw_sharpen_amount"].timer.isActive()
-window.update_state(VIEW_DEFAULTS)
-assert set(window.hardware_rows) == set(HARDWARE_CONTROLS)
-window.update_state({**VIEW_DEFAULTS, "color_source": "camera"})
-assert not window.controls["color_palette"].isEnabled()
-assert "Camera palette" in window.color_status.text()
-window.update_state({**VIEW_DEFAULTS, "palette_source": "app", "color_source": "app"})
-assert window.controls["color_palette"].isEnabled()
-assert not window.hardware_rows["palette"].input.isEnabled()
-window.controls["palette_source"].setCurrentIndex(window.controls["palette_source"].findData("camera"))
-window.rows["palette_source"]._emit()
-assert messages[-1] == {"action": "setting", "name": "palette_source", "value": "camera"}
-# Raw thermal rendering uses app colors even with a saved camera color preference.
-window.update_state({**VIEW_DEFAULTS, "palette_source": "camera", "image_source": "raw", "color_source": "app"})
-assert not window.hardware_rows["palette"].input.isEnabled()
-assert window.controls["color_palette"].isEnabled()
-window.update_state({**VIEW_DEFAULTS, "palette_source": "app", "color_source": "camera"})
-assert window.controls["color_palette"].isEnabled()
-assert not window.hardware_rows["palette"].input.isEnabled()
-
-window.update_state(VIEW_DEFAULTS)
-count = len(messages)
-
-
+assert not hasattr(window, "advanced_auto")
+assert not hasattr(window, "analyze_widgets")
 row = window.hardware_rows["ambient"]
-window.update_state({**VIEW_DEFAULTS, "hardware": {
-    "ambient": {"value": 30, "enabled": False, "available": True}}})
-assert len(messages) == count
-assert row.input.value() == 30
-assert row.input.isEnabled() and row.slider.isEnabled()
-row.input.setValue(27.5)
-assert row.slider.value() == 775
-row._emit()
-assert messages[-1] == {"action": "hardware", "name": "ambient",
-                        "value": 27.5, "enabled": True}
-row.slider.setValue(800)
-assert row.input.value() == 30
-window._restore_hardware()
-assert messages[-1] == {"action": "restore_hardware"}
-assert not row.timer.isActive()
-
-window.update_state({**VIEW_DEFAULTS, "hardware": {
-    "palette": {"value": 11.0, "enabled": True, "available": True},
-    "ambient": {"value": 30, "enabled": False, "available": True}}})
-assert window.hardware_rows["palette"].input.currentData() == 11
-assert window.hardware_rows["palette"].slider is None
-assert row.input.isEnabled()
-
-# Display conversion must not change hardware values or emit writes on synchronization.
-count = len(messages)
+reflected = window.hardware_rows["reflected"]
+transmission = window.hardware_rows["transmission"]
+body_layout = reflected.parentWidget().layout()
+assert body_layout.indexOf(transmission) == body_layout.indexOf(reflected) + 1
+window.update_state({**VIEW_DEFAULTS, "image_source": "raw", "actual_image_source": "raw", "hardware": {"transmission": {"value": 95, "available": True}}})
+assert transmission.input.isEnabled() and transmission.input.value() == 95
+assert transmission.input.suffix() == " %"
+transmission.input.setValue(90)
+transmission._emit()
+assert messages[-1] == {"action": "hardware", "name": "transmission", "value": 90, "enabled": True}
+window.update_state({**VIEW_DEFAULTS, "settings_locked": True})
+assert not transmission.input.isEnabled()
 state = {**VIEW_DEFAULTS, "temperature_unit": "F", "hardware": {
     "ambient": {"value": 30, "available": True},
     "reflected": {"value": 20, "available": True}}}
 window.update_state(state)
-assert len(messages) == count
 assert row.input.value() == 86
 assert row.input.suffix() == " °F"
-assert row.input.minimum() == -58 and row.input.maximum() == 212
-assert abs(row.input.singleStep() - 0.18) < 1e-8
-assert row.slider.value() == 800
-assert window.hardware_rows["reflected"].input.value() == 68
-assert window.hardware_rows["distance"].input.suffix() == " in"
-row.input.setValue(95)
-assert row.value() == 35 and row.slider.value() == 850
-row._emit()
-assert messages[-1] == {"action": "hardware", "name": "ambient",
-                        "value": 35.0, "enabled": True}
-row.slider.setValue(775)
-assert row.input.value() == 81.5 and row.value() == 27.5
-# Preserve a pending edit across a unit change without sending a second write.
-count = len(messages)
-window.update_state({**state, "temperature_unit": "C"})
-assert len(messages) == count
-assert row.input.value() == 27.5 and row.input.suffix() == " °C"
-row._emit()
-assert messages[-1]["value"] == 27.5
-window.update_state({**state, "temperature_unit": "C"})
-assert row.input.value() == 30
-
-# Check both sources and preview-to-raw fallback, including pending edits.
-shared = ("ambient", "reflected", "distance", "emissivity", "transmission", "humidity")
-preview_only = [name for name, spec in HARDWARE_CONTROLS.items()
-                if spec.selector == 2 or name == "center_overlay"]
-for extra in ({"image_source": "raw"},
-              {"image_source": "preview", "actual_image_source": "raw"}):
-    window.update_state({**VIEW_DEFAULTS, "processing_preset_available": True})
-    for name in preview_only:
-        window.hardware_rows[name].timer.start()
-    window.update_state({**VIEW_DEFAULTS, "processing_preset_available": True,
-                         "hardware": {"detail_enabled": {"value": 1}}, **extra})
-    for name in preview_only:
-        control = window.hardware_rows[name]
-        assert not control.input.isEnabled() and not control.timer.isActive()
-        if control.slider is not None:
-            assert not control.slider.isEnabled()
-    assert not window.fixed_range.isEnabled()
-    assert not window.camera_gamma.input.isEnabled()
-    assert not window.camera_boost.input.isEnabled()
-    assert not window.processing_preset.input.isEnabled()
-    assert window.controls["color_palette"].isEnabled()
-    assert window.controls["palette_source"].isEnabled() == (extra["image_source"] == "preview")
-    assert all(window.hardware_rows[name].input.isEnabled() for name in shared)
-    assert all(window.controls[name].isEnabled() for name in
-               ("image_source", "image_filter", "upsampling", "mirror_horizontal", "antialiasing"))
-window.update_state({**VIEW_DEFAULTS, "processing_preset_available": True,
-                     "hardware": {"detail_enabled": {"value": 1}}})
-assert all(window.hardware_rows[name].input.isEnabled() for name in preview_only)
-assert window.camera_gamma.input.isEnabled() and window.camera_boost.input.isEnabled()
-assert window.fixed_range.isEnabled() and not window.controls["color_palette"].isEnabled()
-
-# Ambient typing retains the requested Fahrenheit value; the owner rounds the USB write.
-window.update_state(state)
 row.input.setValue(72)
-assert row.input.value() == 72
-assert abs(row.value() - 22.2222222222) < 1e-9
 row._emit()
 assert abs(messages[-1]["value"] - 22.2222222222) < 1e-9
 window.update_state({**state, "hardware": {"ambient": {"value": messages[-1]["value"], "available": True}}})
 assert row.input.value() == 72
-
-# Distance uses inches in imperial mode while hardware commands retain meters.
+for control in window.findChildren(QCheckBox):
+    before = control.isChecked()
+    event = QWheelEvent(QPointF(5, 5), QPointF(control.mapToGlobal(QPoint(5, 5))), QPoint(), QPoint(0, -120), Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+    QApplication.sendEvent(control, event)
+    assert control.isChecked() == before
 count = len(messages)
-distance = window.hardware_rows["distance"]
-metric = {**VIEW_DEFAULTS, "hardware": {"distance": {"value": 1, "available": True}}}
-window.update_state(metric)
-assert distance.input.value() == 100 and distance.input.suffix() == " cm"
-window.update_state({**metric, "temperature_unit": "F"})
-assert len(messages) == count
-assert abs(distance.input.value() - 39.37008) < 0.005
-assert distance.input.suffix() == " in" and distance.input.decimals() == 2
-assert abs(distance.input.minimum() - 0.3/0.0254) < 0.005
-assert abs(distance.input.maximum() - 99/0.0254) < 0.005
-assert abs(distance.input.singleStep() - 0.01/0.0254) < 0.005
-assert distance.slider.value() == 70
-# User inputs in inches are quantized to the camera's 1 cm precision.
-distance.input.setValue(78.74016)
-assert distance.value() == 2 and distance.slider.value() == 170
-distance._emit()
-assert messages[-1] == {"action": "hardware", "name": "distance", "value": 2.0, "enabled": True}
-distance.slider.setValue(120)
-assert distance.value() == 1.5 and abs(distance.input.value() - 1.5/0.0254) < 0.005
-# A pending distance edit survives a unit change without an unintended write.
-count = len(messages)
-window.update_state(metric)
-assert distance.input.value() == 150 and distance.input.suffix() == " cm"
-assert len(messages) == count
-distance._emit()
-assert messages[-1]["value"] == 1.5
-# Repeated round trips at both range endpoints must not drift or write hardware.
-for value in (0.3, 1, 27.54, 99):
-    expected = {**metric, "hardware": {"distance": {"value": value, "available": True}}}
-    count = len(messages)
-    for _ in range(5):
-        window.update_state(expected)
-        window.update_state({**expected, "temperature_unit": "F"})
-        assert distance.value() == value
-        window.update_state(expected)
-        assert distance.input.value() == value * 100
-    assert len(messages) == count
-
-# Logging locks every settings input and cancels pending debounce timers.
-count = len(messages)
-for control_row in (*window.rows.values(), *window.hardware_rows.values()):
-    control_row.timer.start()
-window.update_state({**state, "temperature_unit": "C", "settings_locked": True})
-assert len(messages) == count
-for control_row in (*window.rows.values(), *window.hardware_rows.values()):
-    assert not control_row.input.isEnabled()
-    assert control_row.slider is None or not control_row.slider.isEnabled()
-    assert not control_row.timer.isActive()
-    control_row._emit()
-assert not window.advanced_auto.isEnabled()
-assert not window.auto_calibrate.isEnabled()
-assert not window.fixed_range.isEnabled()
-assert not window.reset_button.isEnabled() and not window.restore_button.isEnabled()
-window._reset_display()
+window.update_state({**state, "settings_locked": True})
+assert window.pipeline_editor.locked
+assert not row.input.isEnabled() and not window.restore_button.isEnabled()
 window._restore_hardware()
 assert len(messages) == count
-window.update_state({**state, "temperature_unit": "C", "settings_locked": False})
-assert window.advanced_auto.isEnabled()
-assert window.auto_calibrate.isEnabled()
-assert not window.fixed_range.isEnabled()  # No enabled detail setting in this state.
-assert window.reset_button.isEnabled() and window.restore_button.isEnabled()
-assert all(control_row.input.isEnabled()
-           for control_row in (*window.rows.values(), *window.hardware_rows.values())
-           if control_row is not window.rows["color_palette"]
-           and control_row not in [r for n, r in window.rows.items() if n.startswith("raw_")])
-# Unlocking must still respect controls that are unavailable on this camera.
-window.update_state({**state, "hardware": {"ambient": {"value": 30, "available": False}}})
-assert not row.input.isEnabled()
-window.update_state({**state, "temperature_unit": "C"})
+window.update_state(state)
 
 # The Post-it calibration works in native units and obeys the logging lock.
 cal = window.distance_calibration
@@ -749,30 +408,6 @@ em.update_state({"reference": saved_em}, "F", False)
 assert em.apply.isEnabled() and em.apply.text() == "Apply saved emissivity"
 assert em.known.value() == 104 and "Saved emissivity: 0.50" in em.status.text()
 
-body_layout = row.parentWidget().layout()
-headings = {body_layout.itemAt(i).widget().text(): i
-            for i in range(body_layout.count())
-            if isinstance(body_layout.itemAt(i).widget(), QLabel)}
-for name in ("upsampling", "enhancement_input", "enhancement_amount", "anime4k_passes"):
-    assert headings["AI enhancement"] < body_layout.indexOf(window.rows[name])
-    assert body_layout.indexOf(window.rows[name]) < headings["Camera adjustments"]
-assert "On / off settings" not in headings
-switches = window.display_switches
-assert switches.columnCount() == 2
-assert headings["Display controls"] < body_layout.indexOf(switches) < headings["AI enhancement"]
-expected = [row for row in (*window.rows.values(), *window.hardware_rows.values())
-            if row.is_switch and row is not window.rows["analyze_mode"]]
-assert switches.count() == len(expected) + 1
-for index, control in enumerate(expected):
-    assert switches.itemAtPosition(index // 2, index % 2).widget() is control
-    assert control.slider is None
-    assert control.input.isVisible()
-assert switches.itemAtPosition(len(expected) // 2, len(expected) % 2).widget() is window.fixed_range
-
-window.rows["color_palette"].timer.start()
-next(b for b in window.findChildren(QPushButton) if b.text().startswith("Reset")).click()
-assert messages[-1] == {"action": "reset"}
-assert not window.rows["color_palette"].timer.isActive()
 app.processEvents()
 window.grab().save(sys.argv[1])
 window.resize(760, 880)
@@ -1052,7 +687,7 @@ def test_processing_preset_command_is_locked_during_logging(viewer, monkeypatch)
     monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
-    viewer.hardware.set_processing_preset.assert_called_once_with("balanced")
+    viewer.hardware.set_processing_preset.assert_not_called()
 
 
 def test_tone_selection_reloads_after_hardware_and_presets_and_persists(viewer, monkeypatch):

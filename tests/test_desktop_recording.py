@@ -19,7 +19,31 @@ def viewer(monkeypatch, tmp_path):
     hardware.boost = 0
     hardware.tone_busy = False
     hardware._tone_sent = 0
-    hardware.state.return_value = {"ambient": {"value": 30.0, "available": True}}
+    hardware.fixed_range = False
+    from topdon_duo.hardware_controls import HARDWARE_CONTROLS
+    hardware.state.return_value = {name: {"value": spec.minimum, "enabled": False, "available": True} for name, spec in HARDWARE_CONTROLS.items()}
+    hardware.state.return_value["ambient"]["value"] = 30.0
+    from copy import deepcopy
+    hardware.state.side_effect = lambda: deepcopy(hardware.state.return_value)
+    def set_hardware(name, value, enabled):
+        hardware.state.return_value[name].update(value=value, enabled=enabled)
+        if enabled:
+            hardware.enabled.add(name)
+        else:
+            hardware.enabled.discard(name)
+    hardware.set.side_effect = set_hardware
+    baseline = {name: value["value"] for name, value in hardware.state.return_value.items()}
+    def restore_hardware():
+        for name, value in hardware.state.return_value.items():
+            value.update(value=baseline[name], enabled=False)
+        hardware.enabled.clear()
+        hardware.fixed_range = False
+        hardware.gamma, hardware.boost, hardware.processing_preset = 50, 0, "balanced"
+    hardware.restore.side_effect = restore_hardware
+    hardware.set_processing_preset.side_effect = lambda value: setattr(hardware, "processing_preset", value)
+    hardware.set_fixed_range.side_effect = lambda value: setattr(hardware, "fixed_range", value)
+    hardware.restore_fixed_range.side_effect = lambda: setattr(hardware, "fixed_range", False)
+    hardware.set_tone.side_effect = lambda gamma, boost: (setattr(hardware, "gamma", gamma), setattr(hardware, "boost", boost))
     monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
     graphs = Mock(logging=False)
     graphs.take_logging_error.return_value = None

@@ -1,12 +1,11 @@
 """Camera and display controls in a separate Qt process."""
 
-from PySide6.QtCore import QSettings, QSignalBlocker, QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QSettings, QSignalBlocker, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -18,18 +17,7 @@ from PySide6.QtWidgets import (
 
 from .capture_window import run_window
 from .hardware_controls import HARDWARE_CONTROLS, camera_operation_title
-from .view_settings import (
-    ANALYZE_UPSCALING_MODES,
-    COLOR_PALETTES,
-    DISTANCE_METERS_PER_UNIT,
-    ENHANCEMENT_INPUTS,
-    IMAGE_FILTERS,
-    IMAGE_SOURCES,
-    PALETTE_SOURCES,
-    TEMPERATURE_UNITS,
-    UPSCALING_MODES,
-    VIEW_DEFAULTS,
-)
+from .view_settings import DISTANCE_METERS_PER_UNIT, TEMPERATURE_UNITS, VIEW_DEFAULTS
 
 
 class NoWheelSlider(QSlider):
@@ -553,16 +541,13 @@ class ReflectedCalibrationControls(QWidget):
 class ViewWindow(QWidget):
     def __init__(self, send) -> None:
         super().__init__()
+        from .pipeline_editor import PipelineEditor
         self._send_to_viewer = send
         self._settings_locked = False
-        self.controls = {}
-        self.rows = {}
-        self.hardware_rows = {}
+        self._anchor_top_right = None
         self.setWindowTitle("Camera")
-        self.setMinimumWidth(570)
-        self._settings = QSettings(
-            QSettings.IniFormat, QSettings.UserScope, "topdon-duo", "desktop"
-        )
+        self.setMinimumWidth(650)
+        self._settings = QSettings(QSettings.IniFormat, QSettings.UserScope, "topdon-duo", "desktop")
         layout = QVBoxLayout(self)
         heading = QLabel("Camera")
         heading.setStyleSheet("font-size: 20px; font-weight: bold")
@@ -573,265 +558,34 @@ class ViewWindow(QWidget):
         self.operation_status.hide()
         layout.addWidget(self.operation_status)
         self.auto_calibrate = NoWheelCheckBox("Auto calibrate")
-        self.auto_calibrate.setToolTip(
-            "Allow the camera to calibrate automatically. Use Calibrate now in the image's right-click menu when off."
-        )
-        self.auto_calibrate.toggled.connect(
-            lambda value: self._send({"action": "auto_calibrate", "value": value})
-        )
+        self.auto_calibrate.toggled.connect(lambda value: self._send({"action": "auto_calibrate", "value": value}))
         layout.addWidget(self.auto_calibrate)
-        self.fixed_range = NoWheelCheckBox("Fixed mode")
-        self.fixed_range.setToolTip(
-            "Flatten thermal shading and retain enhanced detail in Camera preview. "
-            "Requires detail enhancement. Turning detail enhancement off also turns this off. "
-            "Camera processing is restored on exit."
-        )
-        self.fixed_range.toggled.connect(
-            lambda value: self._send({"action": "fixed_range", "value": value})
-        )
-        self.processing_preset = ControlRow(
-            "Camera processing preset",
-            lambda value: self._send({"action": "processing_preset", "value": value}),
-            options=(("balanced", "Balanced"), ("shadow", "Shadow"), ("soft", "Soft")),
-        )
-        self.processing_preset.setToolTip(
-            "Changes processing inside the camera, independently of its color palette. "
-            "Affects Camera preview, not the app's raw thermal colors. "
-            "Balanced is the normal preset; Shadow is darker; Soft has a gentler look. "
-            "Available with Fixed mode off. Original processing is restored on exit."
-        )
-        description = QLabel(
-            "Adjust controls directly. Use Restore camera settings to return to the "
-            "original values. Camera overrides are also restored on exit."
-        )
-        self.camera_gamma = ControlRow(
-            "Camera gamma adjustment",
-            lambda value: self._send({"action": "tone", "gamma": int(value)}),
-            minimum=0, maximum=100, step=1,
-        )
-        self.camera_gamma.setToolTip(
-            "Adjust camera preview midtones. 50 is neutral and preserves the processing preset. "
-            "Updates take several seconds; the image and temperature sampling continue."
-        )
-        self.camera_boost = ControlRow(
-            "Camera tone boost",
-            lambda value: self._send({"action": "tone", "boost": int(value)}),
-            options=((0, "Off"), (1, "Mode 1"), (2, "Mode 2"), (3, "Mode 3")),
-        )
-        self.camera_boost.setToolTip(
-            "Camera preview tone boost. Modes 1, 2 and 3 set different camera flags; "
-            "our tests found similar contrast increases, not ordered strength levels. "
-            "Previous On corresponds to Mode 3."
-        )
-        self.tone_status = QLabel()
         self.cancel_tone = QPushButton("Cancel tone update")
         self.cancel_tone.clicked.connect(lambda: self._send({"action": "cancel_tone"}))
-        description.setWordWrap(True)
-        layout.addWidget(description)
-        self.advanced_auto = NoWheelCheckBox("Advanced / Auto")
-        self.advanced_auto.setChecked(True)
-        self.advanced_auto.setToolTip(
-            "Reserved for future automatic controls. All inputs stay enabled."
-        )
-        self.advanced_auto.toggled.connect(
-            lambda value: self._send({"action": "advanced_auto", "value": value})
-        )
-        layout.addWidget(self.advanced_auto)
+        self.cancel_tone.hide()
+        layout.addWidget(self.cancel_tone)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         body = QWidget()
         rows = QVBoxLayout(body)
-        rows.setSpacing(16)
-        display_options = {
-            "image_source": ("Image source", tuple((key, label) for key, label in IMAGE_SOURCES.items() if key != "analyze")),
-            "palette_source": ("Color source", tuple(PALETTE_SOURCES.items())),
-            "temperature_unit": ("Measurement units", tuple(TEMPERATURE_UNITS.items())),
-            "image_filter": ("Image filter", tuple(IMAGE_FILTERS.items())),
-            "upsampling": ("Enhancement algorithm", tuple(UPSCALING_MODES.items())),
-            "enhancement_input": ("Enhancement input size", tuple(ENHANCEMENT_INPUTS.items())),
-            "color_palette": ("App palette (raw / grayscale)", tuple(COLOR_PALETTES.items())),
-            "mirror_horizontal": ("Mirror left / right", ((False, "Off"), (True, "On"))),
-            "mirror_vertical": ("Mirror top / bottom", ((False, "Off"), (True, "On"))),
-            "antialiasing": ("Antialiasing", ((False, "Off"), (True, "On"))),
-            "analyze_mode": ("Analyze mode", ((False, "Off"), (True, "On"))),
-            "raw_palette": ("Analyze palette", tuple(COLOR_PALETTES.items())),
-            "raw_upsampling": ("Analyze upsampling", tuple(ANALYZE_UPSCALING_MODES.items())),
-        }
-        numeric_options = {
-            "enhancement_amount": ("Enhancement amount", 0, 1, 0.01),
-            "anime4k_passes": ("Anime4K09 passes", 1, 5, 1),
-            "raw_temperature_low": ("From temperature", -20, 550, 0.1),
-            "raw_temperature_high": ("To temperature", -20, 550, 0.1),
-            "raw_anime4k_passes": ("Analyze Anime4K09 passes", 1, 5, 1),
-            "raw_sharpen_amount": ("Analyze sharpening", 0, 1, 0.01),
-        }
-        hardware_switches = tuple(
-            name
-            for name, spec in HARDWARE_CONTROLS.items()
-            if tuple(text for _, text in spec.options) == ("Off", "On")
-        )
-        source_title, source_options = display_options["image_source"]
-        source_row = ControlRow(
-            source_title,
-            lambda value: self._send({"action": "setting", "name": "image_source", "value": value}),
-            options=source_options,
-        )
-        self.rows["image_source"] = source_row
-        self.controls["image_source"] = source_row.input
-        rows.addWidget(source_row)
-        toggle = ControlRow(
-            "Analyze mode",
-            lambda value: self._send({"action": "setting", "name": "analyze_mode", "value": value}),
-            options=display_options["analyze_mode"][1],
-        )
-        self.rows["analyze_mode"] = toggle
-        self.controls["analyze_mode"] = toggle.input
-        rows.addWidget(toggle)
-        self.analyze_widgets = []
-        for title, display_names, hardware_names in (
-            (
-                "Analyze mode",
-                ("raw_temperature_low", "raw_temperature_high", "raw_palette",
-                 "raw_sharpen_amount", "raw_upsampling", "raw_anime4k_passes"),
-                (),
-            ),
-            (
-                "Display controls",
-                (
-                    "temperature_unit",
-                    "image_filter",
-                    "palette_source",
-                    "color_palette",
-                    "mirror_horizontal",
-                    "mirror_vertical",
-                    "antialiasing",
-                ),
-                ("palette", *hardware_switches),
-            ),
-            (
-                "AI enhancement",
-                (
-                    "upsampling",
-                    "enhancement_input",
-                    "enhancement_amount",
-                    "anime4k_passes",
-                ),
-                (),
-            ),
-            (
-                "Camera adjustments",
-                (),
-                tuple(
-                    name
-                    for name in HARDWARE_CONTROLS
-                    if name not in hardware_switches and name != "palette"
-                ),
-            ),
-        ):
-            heading = QLabel(title)
-            heading.setStyleSheet("font-size: 16px; font-weight: bold")
-            rows.addWidget(heading)
-            if title == "Analyze mode":
-                self.analyze_widgets.append(heading)
-                description = QLabel(
-                    "For static objects and board analysis. "
-                    "Colors use a fixed temperature range with no automatic contrast. "
-                    "Enhancement operates in grayscale; optional color is applied afterward. "
-                    "Sharpening and upsampling affect only the image."
-                )
-                description.setWordWrap(True)
-                rows.addWidget(description)
-                self.analyze_widgets.append(description)
-            if title == "Display controls":
-                rows.addWidget(self.processing_preset)
-                rows.addWidget(self.camera_boost)
-            switches = QGridLayout() if title == "Display controls" else None
-            switch_count = 0
-            for name in display_names:
-                if name in numeric_options:
-                    row_title, minimum, maximum, step = numeric_options[name]
-                    arguments = {"minimum": minimum, "maximum": maximum, "step": step}
-                    if name.startswith("raw_temperature_"):
-                        arguments.update(unit="°C", preserve_input=True)
-                else:
-                    row_title, options = display_options[name]
-                    arguments = {"options": options}
-                row = ControlRow(
-                    row_title,
-                    lambda value, name=name: self._send(
-                        {"action": "setting", "name": name, "value": value}
-                    ),
-                    **arguments,
-                )
-                if title == "Analyze mode":
-                    self.analyze_widgets.append(row)
-                self.rows[name] = row
-                self.controls[name] = row.input
-                if row.is_switch and switches is not None:
-                    switches.addWidget(row, switch_count // 2, switch_count % 2)
-                    switch_count += 1
-                else:
-                    rows.addWidget(row)
-                if name == "color_palette":
-                    row.setToolTip(
-                        "Colors raw thermal images and grayscale previews. Camera color previews use the camera palette instead."
-                    )
-                    self.color_status = QLabel()
-                    self.color_status.setWordWrap(True)
-                    rows.addWidget(self.color_status)
-                if name == "enhancement_amount":
-                    row.setToolTip("0 gives the original image; 1 gives full enhancement.")
-                elif name == "anime4k_passes":
-                    row.setToolTip("Used by Anime4K09 only. The phone's setting is 3 passes.")
-                elif name == "enhancement_input":
-                    row.setToolTip(
-                        "Native uses the phone's input size. Full preview retains all supplied "
-                        "pixels and takes more processing time."
-                    )
-            for name in hardware_names:
-                spec = HARDWARE_CONTROLS[name]
-                row = ControlRow(
-                    "Camera palette (color preview)" if name == "palette" else spec.title,
-                    lambda value, name=name: self._send(
-                        {"action": "hardware", "name": name, "value": value, "enabled": True}
-                    ),
-                    minimum=spec.minimum,
-                    maximum=spec.maximum,
-                    step=spec.step,
-                    options=spec.options,
-                    unit=spec.unit,
-                    preserve_input=name == "ambient",
-                )
-                if name == "palette":
-                    row.setToolTip(
-                        "Sets colors inside the camera. Used only with Camera preview; choosing a palette enables camera colors for that preview."
-                    )
-                self.hardware_rows[name] = row
-                if row.is_switch and switches is not None:
-                    switches.addWidget(row, switch_count // 2, switch_count % 2)
-                    switch_count += 1
-                else:
-                    rows.addWidget(row)
-                if name == "brightness":
-                    rows.addWidget(self.camera_gamma)
-                    rows.addWidget(self.tone_status)
-                    rows.addWidget(self.cancel_tone)
-                if name == "detail_enabled":
-                    switches.addWidget(self.fixed_range, switch_count // 2, switch_count % 2)
-                    switch_count += 1
-            if switches is not None:
-                switches.setHorizontalSpacing(24)
-                switches.setVerticalSpacing(16)
-                switches.setColumnStretch(0, 1)
-                switches.setColumnStretch(1, 1)
-                rows.addLayout(switches)
-                self.display_switches = switches
+        self.pipeline_editor = PipelineEditor(self._send, ControlRow)
+        rows.addWidget(self.pipeline_editor)
+        self.rows = {}
+        self.hardware_rows = {}
+        units = ControlRow("Measurement units", lambda value: self._send({"action": "setting", "name": "temperature_unit", "value": value}), options=tuple(TEMPERATURE_UNITS.items()))
+        self.rows["temperature_unit"] = units
+        self.controls = {"temperature_unit": units.input}
+        rows.addWidget(units)
+        for name in ("center_overlay", "ambient", "distance", "emissivity", "reflected", "transmission"):
+            spec = HARDWARE_CONTROLS[name]
+            row = ControlRow(spec.title, lambda value, name=name: self._send({"action": "hardware", "name": name, "value": value, "enabled": True}), minimum=spec.minimum, maximum=spec.maximum, step=spec.step, options=spec.options, unit=spec.unit, preserve_input=name == "ambient")
+            self.hardware_rows[name] = row
+            rows.addWidget(row)
         self.distance_calibration = DistanceCalibrationControls(self._send)
-        rows.addWidget(self.distance_calibration)
         self.emissivity_calibration = EmissivityCalibrationControls(self._send)
-        rows.addWidget(self.emissivity_calibration)
         self.reflected_calibration = ReflectedCalibrationControls(self._send)
-        rows.addWidget(self.reflected_calibration)
+        for tool in (self.distance_calibration, self.emissivity_calibration, self.reflected_calibration):
+            rows.addWidget(tool)
         rows.addStretch()
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -839,180 +593,96 @@ class ViewWindow(QWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         buttons = QHBoxLayout()
-        reset = self.reset_button = QPushButton("Reset display settings")
-        reset.clicked.connect(self._reset_display)
-        restore = self.restore_button = QPushButton("Restore camera settings")
-        restore.clicked.connect(self._restore_hardware)
+        self.restore_button = QPushButton("Restore camera settings")
+        self.restore_button.clicked.connect(self._restore_hardware)
         close = QPushButton("Close")
         close.clicked.connect(self.close)
-        for button in (reset, restore, close):
-            buttons.addWidget(button)
+        buttons.addWidget(self.restore_button)
+        buttons.addWidget(close)
         layout.addLayout(buttons)
         self.update_state(VIEW_DEFAULTS)
-        size = self._settings.value("camera/window_size", QSize(620, 780))
-        self.resize(size if isinstance(size, QSize) and size.isValid() else QSize(620, 780))
+        size = self._settings.value("camera/window_size", QSize(700, 850))
+        self.resize(size if isinstance(size, QSize) and size.isValid() else QSize(700, 850))
+        self._position_top_right()
         QApplication.instance().aboutToQuit.connect(self._save_window_size)
 
-    def _save_window_size(self) -> None:
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Recompute after the window manager supplies title-bar/frame dimensions.
+        QTimer.singleShot(0, self._position_top_right)
+
+    def _position_top_right(self):
+        point = self._anchor_top_right
+        screen = QApplication.screenAt(point) if point is not None else self.screen()
+        screen = screen or QApplication.primaryScreen()
+        if screen is None:
+            return
+        bounds = screen.availableGeometry()
+        right = point.x() if point is not None else bounds.right()
+        top = point.y() if point is not None else bounds.top()
+        frame = self.frameGeometry()
+        x = max(bounds.left(), min(right - frame.width() + 1, bounds.right() - frame.width() + 1))
+        y = max(bounds.top(), min(top, bounds.bottom() - frame.height() + 1))
+        self.move(x, y)
+
+    def _save_window_size(self):
         self._settings.setValue("camera/window_size", self.size())
         self._settings.sync()
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event):
         self._save_window_size()
         super().closeEvent(event)
 
     def _send(self, command):
         title = camera_operation_title(command)
         if title:
-            self.operation_status.setText(
-                f"Applying {title.lower()}… Image and graph updates may pause briefly."
-            )
+            self.operation_status.setText(f"Applying {title.lower()}… Image and graph updates may pause briefly.")
             self.operation_status.show()
-            # Paint in this independent Qt process before the viewer's USB work.
             self.operation_status.repaint()
         self._send_to_viewer(command)
 
-    def _reset_display(self):
-        if self._settings_locked:
-            return
-        for row in self.rows.values():
-            row.timer.stop()
-        self._send({"action": "reset"})
-
     def _restore_hardware(self):
-        if self._settings_locked:
-            return
-        for row in self.hardware_rows.values():
-            row.timer.stop()
-        self._send({"action": "restore_hardware"})
+        if not self._settings_locked:
+            for row in self.hardware_rows.values():
+                row.timer.stop()
+            self._send({"action": "restore_hardware"})
 
-    def update_state(self, state: dict) -> None:
+    def update_state(self, state):
+        anchor = state.get("anchor_top_right")
+        if isinstance(anchor, list) and len(anchor) == 2 and all(type(value) is int for value in anchor):
+            self._anchor_top_right = QPoint(*anchor)
+            QTimer.singleShot(0, self._position_top_right)
         tone_busy = bool(state.get("tone_busy", False))
-        selected_source = state.get("image_source", VIEW_DEFAULTS["image_source"])
-        actual_source = state.get("actual_image_source", selected_source)
-        analyze = state.get("analyze_mode", False)
-        for widget in self.analyze_widgets:
-            widget.setVisible(analyze)
-        preview_view = selected_source == "preview" and actual_source == "preview" and not analyze
         operation_busy = bool(state.get("camera_operation_busy", False))
         operation = state.get("camera_operation", "")
         if tone_busy:
             operation = f"Updating camera gamma… {state.get('tone_progress', 0)}%"
         self.operation_status.setText(operation)
         self.operation_status.setVisible(bool(operation))
-        settings_locked = bool(state.get("settings_locked", False)) or tone_busy or operation_busy
-        if settings_locked and not self._settings_locked:
+        locked = bool(state.get("settings_locked", False)) or tone_busy or operation_busy
+        if locked and not self._settings_locked:
             focused = QApplication.focusWidget()
             if focused is not None and self.isAncestorOf(focused):
-                # Disabling a focused input advances Qt's focus chain into the
-                # calibration controls, which scrolls the menu to the bottom.
                 self.setFocus(Qt.OtherFocusReason)
-        self._settings_locked = settings_locked
-        preset_available = (
-            not self._settings_locked
-            and state.get("processing_preset_available", False)
-            and not state.get("fixed_range", False)
-            and preview_view
-        )
-        if not preset_available:
-            self.processing_preset.timer.stop()
-        self.processing_preset.update_state(
-            state.get("processing_preset", "balanced"),
-            preset_available,
-        )
-        for row, value in ((self.camera_gamma, state.get("camera_gamma", 50)),
-                           (self.camera_boost, state.get("camera_boost", 0))):
-            if not preset_available:
-                row.timer.stop()
-            row.update_state(value, preset_available)
-        self.tone_status.setVisible(tone_busy)
-        self.tone_status.setText(f"Updating camera gamma… {state.get('tone_progress', 0)}%")
-        self.cancel_tone.setVisible(tone_busy)
-        self.cancel_tone.setEnabled(tone_busy and not state.get("settings_locked", False))
-        if self._settings_locked:
-            for row in (*self.rows.values(), *self.hardware_rows.values()):
-                row.timer.stop()
-        self.advanced_auto.setEnabled(not self._settings_locked)
-        self.auto_calibrate.setEnabled(not self._settings_locked)
-        detail = state.get("hardware", {}).get("detail_enabled", {})
-        self.fixed_range.setEnabled(
-            preview_view and not self._settings_locked and detail.get("available", True)
-            and (detail.get("value", 0) == 1 or state.get("fixed_range", False))
-            and state.get("processing_preset", "balanced") == "balanced"
-            and state.get("camera_gamma", 50) == 50
-            and not state.get("camera_boost", 0)
-        )
-        with QSignalBlocker(self.fixed_range):
-            self.fixed_range.setChecked(state.get("fixed_range", False))
+        self._settings_locked = locked
+        self.auto_calibrate.setEnabled(not locked)
         with QSignalBlocker(self.auto_calibrate):
             self.auto_calibrate.setChecked(state.get("auto_calibrate", False))
-        self.reset_button.setEnabled(not self._settings_locked)
-        self.restore_button.setEnabled(not self._settings_locked)
-        with QSignalBlocker(self.advanced_auto):
-            self.advanced_auto.setChecked(state.get("advanced_auto", True))
-        camera_palette_selected = (
-            state.get("palette_source", VIEW_DEFAULTS["palette_source"]) == "camera"
-        )
-        camera_colors = preview_view and camera_palette_selected
-        raw_view = not preview_view
-        for name, row in self.rows.items():
-            row.set_display_unit(state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]))
-            row.update_state(
-                state.get(name, VIEW_DEFAULTS[name]),
-                not self._settings_locked
-                and not (name == "color_palette" and camera_colors)
-                and not (name == "palette_source" and (selected_source == "raw" or analyze))
-                and not (name == "image_source" and analyze)
-                and not (name.startswith("raw_") and not analyze)
-                and not (name == "raw_anime4k_passes" and state.get("raw_upsampling",
-                         VIEW_DEFAULTS["raw_upsampling"]) != "anime4k09")
-                and not (analyze and name in (
-                    "image_filter", "color_palette", "upsampling", "enhancement_input",
-                    "enhancement_amount", "anime4k_passes",
-                )),
-            )
+        self.cancel_tone.setVisible(tone_busy)
+        self.cancel_tone.setEnabled(tone_busy and not state.get("settings_locked", False))
+        self.pipeline_editor.update_state(state, locked)
+        self.restore_button.setEnabled(not locked)
+        unit = state.get("temperature_unit", "C")
+        self.rows["temperature_unit"].update_state(unit, not locked)
         for name, row in self.hardware_rows.items():
-            row.set_display_unit(state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]))
+            row.set_display_unit(unit)
             setting = state.get("hardware", {}).get(name, {})
-            row.update_state(
-                setting.get("value", HARDWARE_CONTROLS[name].minimum),
-                setting.get("available", True)
-                and not self._settings_locked
-                and not ((HARDWARE_CONTROLS[name].selector == 2 or name == "center_overlay")
-                         and not preview_view)
-                and not (state.get("fixed_range", False) and HARDWARE_CONTROLS[name].selector == 2
-                         and name not in ("detail_enabled", "detail"))
-                and not (name == "palette" and not camera_palette_selected),
-            )
-        if analyze:
-            self.color_status.setText(
-                "Colors: Analyze palette with a fixed temperature range. Automatic contrast is off."
-            )
-        elif camera_colors:
-            self.color_status.setText(
-                "Colors: Camera palette. Choose App colors under Color source to use the app palette."
-            )
-        elif raw_view:
-            self.color_status.setText("Colors: App palette. Camera colors require Camera preview.")
-        else:
-            self.color_status.setText(
-                "Colors: App palette. Choose Camera colors with Camera preview to use the camera palette."
-            )
-        self.distance_calibration.update_state(
-            state.get("distance_calibration", {}),
-            state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]),
-            self._settings_locked,
-        )
-        self.emissivity_calibration.update_state(
-            state.get("emissivity_calibration", {}),
-            state.get("temperature_unit", VIEW_DEFAULTS["temperature_unit"]),
-            self._settings_locked,
-        )
-        self.reflected_calibration.update_state(
-            state.get("reflected_calibration", {}),
-            state.get("temperature_unit", "C"),
-            self._settings_locked,
-        )
+            available = setting.get("available", False) and not locked
+            if name == "center_overlay":
+                available &= state.get("actual_image_source", "preview") == "preview"
+            row.update_state(setting.get("value", HARDWARE_CONTROLS[name].minimum), available)
+        for tool, key in ((self.distance_calibration, "distance_calibration"), (self.emissivity_calibration, "emissivity_calibration"), (self.reflected_calibration, "reflected_calibration")):
+            tool.update_state(state.get(key, {}), unit, locked)
         self.status.setText(state.get("status", ""))
         if state.get("raise_window"):
             self.showNormal()

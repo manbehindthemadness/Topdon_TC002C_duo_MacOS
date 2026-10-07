@@ -108,10 +108,13 @@ PROCESSING_PRESETS = {"balanced": 1, "shadow": 2, "soft": 0}
 
 
 def camera_operation_title(command: dict) -> str | None:
+    if command.get("action") == "pipeline" and not command.get("hardware_operation", True):
+        return None
     if command.get("action") == "hardware":
         spec = HARDWARE_CONTROLS.get(command.get("name"))
         return spec.title if spec else "Camera settings"
     return {
+        "pipeline": "Camera pipeline",
         "tone": "Camera gamma / boost",
         "cancel_tone": "Restore camera gamma / boost",
         "processing_preset": "Camera processing preset",
