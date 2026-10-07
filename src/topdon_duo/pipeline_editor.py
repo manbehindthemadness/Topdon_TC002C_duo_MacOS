@@ -592,6 +592,23 @@ class PipelineEditor(QWidget):
                     elif item["type"] in ("edges", "contours"):
                         row.setVisible(key in feature_fields(item["type"], item["params"]))
                     fields.addWidget(row)
+                if item["type"] == "combine":
+                    source_row = controls["mask_source"]
+                    invert_row = controls["mask_invert"]
+                    index = fields.indexOf(source_row)
+                    fields.removeWidget(source_row)
+                    fields.removeWidget(invert_row)
+                    invert_row.layout().itemAt(0).widget().hide()
+                    invert_row.input.setText("Invert input")
+                    invert_row.input.setAccessibleName("Invert optional mix mask input")
+                    invert_row.input.setMinimumWidth(0)
+                    invert_row.input.setToolTip(
+                        "Reverse the optional mask: dark regions blend and bright regions preserve the current image."
+                    )
+                    mask_line = QHBoxLayout()
+                    mask_line.addWidget(source_row, 1)
+                    mask_line.addWidget(invert_row, 0, Qt.AlignBottom)
+                    fields.insertLayout(index, mask_line)
                 if item["type"] == "preview":
                     thumbnail = PipelinePreview()
                     if item["id"] in self.preview_cache:

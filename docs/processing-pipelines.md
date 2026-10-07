@@ -84,7 +84,7 @@ OpenCV arithmetic and blending primitives; see [OpenCV's image operations](https
 **Optional mix mask** can select the blend input, camera preview, raw thermal,
 or any tab output. A soft luminance mask scales the blend strength from black
 (no change) to white (full selected opacity). A binary mask exposes a threshold;
-Invert mix mask reverses either type. The mask applies to every blend mode.
+**Invert input**, beside the mask selector, reverses either type. The mask applies to every blend mode.
 Selecting a tab as a mask activates that branch even if it isn't a blend input.
 Blend input itself can also directly use camera preview or raw thermal.
 
