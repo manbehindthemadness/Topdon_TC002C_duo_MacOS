@@ -11,7 +11,6 @@ from topdon_duo.camera import (
     FRAME_MAGIC,
     FRAME_U16,
     HEADER_U16,
-    IMAGE_OFFSET,
     SENSOR_HEIGHT,
     SENSOR_PIXELS,
     SENSOR_WIDTH,
@@ -68,15 +67,6 @@ def test_decode_and_temperature_conversion():
     assert preview.shape == (SENSOR_HEIGHT, SENSOR_WIDTH)
     assert temperatures[0, 0] == pytest.approx(22.0)
     assert temperatures[100, 100] == pytest.approx(23.0)
-
-
-def test_macos_uyvy_preview_uses_high_byte_luminance():
-    expected = np.tile(np.arange(SENSOR_WIDTH, dtype=np.uint8), (SENSOR_HEIGHT, 1))
-    chroma = np.tile(np.array([16, 240], dtype=np.uint8), SENSOR_PIXELS // 2)
-    preview_words = chroma.astype("<u2") | (expected.ravel().astype("<u2") << 8)
-    frame = make_frame()[: IMAGE_OFFSET * 2] + preview_words.tobytes()
-    _, _, preview = decode_duo_frame(frame)
-    assert np.array_equal(preview, expected)
 
 
 def test_decode_rejects_wrong_magic():

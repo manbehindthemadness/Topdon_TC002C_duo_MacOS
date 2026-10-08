@@ -182,16 +182,13 @@ def decode_duo_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         .reshape(SENSOR_HEIGHT, SENSOR_WIDTH)
         .copy()
     )
-    # The two hosts expose different packed preview layouts. Ubuntu's complete
-    # 512x384 YUY2 plane stores luminance in each word's low byte. The shorter
-    # 256x192 macOS UYVY plane stores luminance in the high byte; reading its
-    # low byte alternates U and V and produces one-pixel vertical stripes.
-    yuy2_preview = has_yuy2_preview(frame)
-    preview_pixels = YUY2_PREVIEW_PIXELS if yuy2_preview else SENSOR_PIXELS
+    # Linux also exposes a complete 512x384 YUY2 grayscale preview. Each
+    # little-endian word contains luminance in its low byte and chroma above.
+    preview_pixels = YUY2_PREVIEW_PIXELS if has_yuy2_preview(frame) else SENSOR_PIXELS
     preview_scale = 2 if preview_pixels == YUY2_PREVIEW_PIXELS else 1
     preview_words = np.frombuffer(frame, dtype="<u2", count=preview_pixels, offset=IMAGE_OFFSET * 2)
     preview = (
-        ((preview_words & 0xFF) if yuy2_preview else (preview_words >> 8))
+        (preview_words & 0xFF)
         .astype(np.uint8)
         .reshape(SENSOR_HEIGHT * preview_scale, SENSOR_WIDTH * preview_scale)
     )

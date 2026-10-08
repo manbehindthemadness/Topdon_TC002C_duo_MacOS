@@ -12,13 +12,7 @@ def frame_with_preview(preview_scale=2):
     preview = np.zeros((SENSOR_HEIGHT * preview_scale, SENSOR_WIDTH * preview_scale), np.uint8)
     # Place detail beyond the first 256x192 pixels of the large preview.
     preview[preview.shape[0] // 2 :, preview.shape[1] // 2 :] = 200
-    # macOS carries a 256x192 UYVY plane (Y in the high byte); Ubuntu carries
-    # a 512x384 YUY2 plane (Y in the low byte).
-    words = (
-        (preview.astype("<u2") << 8) | 0x80
-        if preview_scale == 1
-        else preview.astype("<u2") | 0x8000
-    )
+    words = preview.astype("<u2") | 0x8000
     return make_frame()[: IMAGE_OFFSET * 2] + words.tobytes(), preview
 
 
