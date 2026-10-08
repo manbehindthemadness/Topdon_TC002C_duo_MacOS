@@ -215,6 +215,16 @@ def test_right_click_is_separate_from_placement_clicks():
     assert not picker.consume_context_clicks()
 
 
+def test_macos_control_click_opens_menu_without_placing_or_dragging(monkeypatch):
+    monkeypatch.setattr(desktop.sys, "platform", "darwin")
+    picker = desktop.MousePicker()
+    for event in (cv2.EVENT_LBUTTONDOWN, cv2.EVENT_LBUTTONUP):
+        picker.callback(event, 20, 30, cv2.EVENT_FLAG_CTRLKEY, None)
+    assert picker.consume_context_clicks() == [(20, 30)]
+    assert not picker.consume_clicks()
+    assert not picker.consume_drag_events()
+
+
 def test_region_name_does_not_change_image_labels_or_spot_identity():
     from test_camera import make_frame
 

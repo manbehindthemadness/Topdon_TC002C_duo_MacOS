@@ -1,6 +1,8 @@
 """Measuring-spot context menu in the separate Qt process."""
 
-from PySide6.QtCore import QSignalBlocker
+import sys
+
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -20,6 +22,11 @@ from .capture_window import run_window
 class SpotsMenu(QMenu):
     def __init__(self, send):
         super().__init__()
+        if sys.platform == "darwin":
+            # This menu belongs to a separate process from the Cocoa viewer.
+            # A native Popup cannot reliably acquire its mouse grab while that
+            # viewer owns focus. A floating tool can activate independently.
+            self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setWindowTitle("Measuring spots")
         self._send = send
         self._state = None
@@ -30,7 +37,13 @@ class SpotsMenu(QMenu):
     def show(self):
         # Wait for the initial state before showing the menu at the pointer.
         if self._state is not None:
-            self.popup(QCursor.pos())
+            if sys.platform == "darwin":
+                self.move(QCursor.pos())
+                super().show()
+                self.raise_()
+                self.activateWindow()
+            else:
+                self.popup(QCursor.pos())
 
     def _widget(self, widget):
         action = QWidgetAction(self)

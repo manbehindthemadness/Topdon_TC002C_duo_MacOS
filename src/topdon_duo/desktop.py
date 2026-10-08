@@ -114,6 +114,16 @@ class MousePicker:
     drag_events: list[tuple[int, int, int, int]] = field(default_factory=list)
 
     def callback(self, event: int, x: int, y: int, flags: int, _parameter) -> None:
+        if (
+            sys.platform == "darwin"
+            and flags & cv2.EVENT_FLAG_CTRLKEY
+            and event in (cv2.EVENT_LBUTTONDOWN, cv2.EVENT_LBUTTONUP)
+        ):
+            # Cocoa may report Control-click as a left click rather than a
+            # secondary click. Do not let it place or drag a measuring spot.
+            if event == cv2.EVENT_LBUTTONUP:
+                self.context_clicks.append((x, y))
+            return
         if event in (cv2.EVENT_MOUSEMOVE, cv2.EVENT_LBUTTONDOWN, cv2.EVENT_LBUTTONUP):
             self.drag_events.append((event, x, y, flags))
         if event in (cv2.EVENT_MOUSEMOVE, cv2.EVENT_LBUTTONDOWN):
@@ -2406,6 +2416,7 @@ def main(argv: list[str] | None = None) -> int:
                     is not None
                 ):
                     try:
+                        LOG.info("Opening measuring-spot menu")
                         spots_panel.open(spots_state())
                     except OSError as exc:
                         notify(f"Could not open spot menu: {exc}")
