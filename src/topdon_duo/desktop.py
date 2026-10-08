@@ -1109,7 +1109,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Native TOPDON TC002C Duo viewer")
     parser.add_argument("--ambient", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=None)
-    parser.add_argument("--scale", type=int, choices=range(1, 7), default=3)
+    parser.add_argument("--scale", type=int, choices=range(1, 7), default=4,
+                        help="native sensor display scale (default: 4, 1024x768 landscape image)")
+    parser.add_argument(
+        "--reset-window-size", action="store_true",
+        help="ignore the remembered viewer size on this launch; preserve image aspect ratio",
+    )
     parser.add_argument(
         "--image-source",
         choices=("preview", "raw", "analyze"),
@@ -1162,7 +1167,7 @@ def main(argv: list[str] | None = None) -> int:
     graph_interval_editor = GraphIntervalEditor(graph_interval)
     graph_settings = saved_settings.get("graph_settings", GRAPH_DEFAULTS.copy())
     requested_window_size = None
-    saved_window_size = load_main_window_size()
+    saved_window_size = None if args.reset_window_size else load_main_window_size()
     last_window_size = None
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

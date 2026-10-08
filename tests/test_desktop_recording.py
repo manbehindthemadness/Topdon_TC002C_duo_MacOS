@@ -11,6 +11,10 @@ from topdon_duo import desktop
 
 @pytest.fixture
 def viewer(monkeypatch, tmp_path):
+    # These interaction/recording tests use fixed 768px toolbar coordinates.
+    # Exercise the supported legacy scale explicitly, not the startup default.
+    parse_args = desktop.parse_args
+    monkeypatch.setattr(desktop, "parse_args", lambda argv: parse_args(["--scale", "3", *argv]))
     monkeypatch.setattr(desktop.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     hardware = Mock(original={"loaded": True}, enabled=set(), error="", preview_active=False)
@@ -225,6 +229,17 @@ def test_native_close_keeps_last_size_when_window_has_already_disappeared(viewer
     assert desktop.main([]) == 0
     assert len(calls) == 2
     assert load_main_window_size() == (870, 660)
+
+
+def test_native_1024_canvas_and_size_reset_preserve_aspect(viewer, monkeypatch):
+    from topdon_duo.window_preferences import save_main_window_size
+
+    save_main_window_size((930, 710))
+    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
+    assert desktop.main(["--scale", "4", "--rotate", "0", "--reset-window-size"]) == 0
+    height = 768 + desktop.toolbar_layout(1024).height
+    desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, 1024, height)
+    assert viewer.displayed[-1].shape == (height, 1024, 3)
 
 
 def test_corrupt_main_window_preferences_fall_back_to_image_size(viewer, monkeypatch, tmp_path):

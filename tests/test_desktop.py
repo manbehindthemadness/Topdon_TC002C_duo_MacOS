@@ -25,6 +25,15 @@ from topdon_duo.desktop import (
 from topdon_duo.render import READOUT_HEIGHT, ThermalRenderer, draw_temperature_readout
 
 
+def test_native_display_default_and_size_reset_option():
+    from topdon_duo import desktop
+
+    assert desktop.parse_args([]).scale == 4
+    assert not desktop.parse_args([]).reset_window_size
+    assert desktop.parse_args(["--reset-window-size"]).reset_window_size
+    assert desktop.parse_args(["--scale", "3"]).scale == 3
+
+
 @pytest.mark.parametrize("platform,expected", [("linux", 32), ("darwin", 32), ("win32", 0)])
 def test_usb_queue_default_and_synchronous_override(monkeypatch, platform, expected):
     from topdon_duo import desktop
@@ -469,7 +478,8 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
         return -1
 
     monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
-    assert desktop.main([]) == 0
+    # The synthetic clicks above deliberately target the legacy 3x canvas.
+    assert desktop.main(["--scale", "3"]) == 0
     assert startup[:3] == ["camera", "stream", "hardware"]
     assert states == [
         (False, []),

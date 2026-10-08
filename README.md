@@ -112,6 +112,13 @@ The controls are available from the toolbar as well as the keyboard:
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
 
+The default native camera canvas is **1024×768** in landscape (768×1024 when
+rotated), with the toolbar above it. The camera retains its aspect ratio.
+The viewer still remembers your resized window; use
+`uv run topdon-duo-desktop --reset-window-size` once to use the new native size.
+`--scale 3` selects the previous 768×576 camera canvas. Graphs are rendered at
+their pane's displayed size, rather than enlarged from a fixed low-resolution plot.
+
 **Show graph** doubles the main window width, keeping its height and displaying
 thermal history on the right. **Hide graph** halves the width again. The toggle
 is remembered across restarts. The master graph plots minimum, average, maximum
