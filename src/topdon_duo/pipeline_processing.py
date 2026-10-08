@@ -292,7 +292,10 @@ class PipelineProcessor:
         _, raw, preview = decode_duo_frame(frame)
         software = active_nodes(document, "software")
         ranges = [item for item in software if item["type"] == "range"]
-        thermal = thermal_source(document) or not np.any(preview)
+        # Only Ubuntu's complete 512x384 plane has a verified preview layout.
+        # The short macOS plane varies by firmware and can appear interleaved or
+        # blank, so render its trustworthy radiometric plane instead.
+        thermal = thermal_source(document) or not has_yuy2_preview(frame) or not np.any(preview)
         mapping = None
         if thermal:
             plane = raw_temperatures(averaged if averaged is not None else raw, offset=50)
@@ -345,7 +348,7 @@ class PipelineProcessor:
             nonlocal direct_preview
             if source == "preview":
                 if direct_preview is None:
-                    if not np.any(preview):
+                    if not has_yuy2_preview(frame) or not np.any(preview):
                         raise ValueError("Camera preview is unavailable for the combine input/mask")
                     if has_yuy2_preview(frame):
                         yuyv = np.frombuffer(frame, np.uint8, offset=IMAGE_OFFSET * 2).reshape(

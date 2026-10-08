@@ -138,13 +138,11 @@ def test_camera_preview_range_recolors_thermal_and_keeps_previous_filters():
     assert source == "preview"
 
 
-def test_macos_grayscale_preview_is_not_decoded_as_yuy2_stripes():
+def test_macos_unverified_preview_falls_back_to_radiometric_image():
     frame, _ = frame_with_preview(preview_scale=1)
     image, source = PipelineProcessor().process(frame, None, default_pipeline(), scale=1)
-    assert source == "preview"
-    # The upper half is a single grayscale value. It must remain spatially
-    # uniform instead of alternating between each word's low and high bytes.
-    assert np.unique(image[30, 20:220], axis=0).shape[0] == 1
+    assert source == "raw"
+    assert image.shape == (192, 256, 3)
 
 
 def test_filters_interpolation_aa_are_real_cumulative_operations():

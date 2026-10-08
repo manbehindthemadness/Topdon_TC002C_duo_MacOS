@@ -27,7 +27,7 @@ def test_decode_keeps_complete_preview_and_discards_chroma(preview_scale):
 
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 def test_camera_preview_preserves_detail_and_rotates_with_measurements(rotation):
-    frame, preview = frame_with_preview()
+    frame, preview = frame_with_preview(preview_scale=2)
     rendered = ThermalRenderer(scale=2, rotation=rotation).render_detailed(frame)
     expected = cv2.applyColorMap(
         np.where(preview == 200, 255, 0).astype(np.uint8), cv2.COLORMAP_INFERNO
@@ -53,7 +53,7 @@ def test_preview_keeps_mouse_and_spots_on_sensor_pixels(scale):
 
 
 def test_view_switch_changes_only_image_and_empty_preview_falls_back():
-    frame, _ = frame_with_preview()
+    frame, _ = frame_with_preview(preview_scale=2)
     renderer = ThermalRenderer(scale=2)
     camera = renderer.render_detailed(frame)
     assert renderer.toggle_image_source() == "raw"
@@ -70,7 +70,7 @@ def test_view_switch_changes_only_image_and_empty_preview_falls_back():
 
 
 def test_app_palette_is_independent_of_camera_colors_and_switching_preserves_temperatures():
-    frame, _ = frame_with_preview(preview_scale=1)
+    frame, _ = frame_with_preview(preview_scale=2)
     words = np.frombuffer(frame, dtype="<u2").copy()
     words[2320 : 2320 + SENSOR_WIDTH * SENSOR_HEIGHT] = (
         np.arange(SENSOR_WIDTH * SENSOR_HEIGHT) // 32 + 20000

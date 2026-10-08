@@ -330,6 +330,7 @@ class ThermalRenderer:
             not (self.camera_color and self.palette_source == "app")
             and self.image_source == "preview"
             and not self.analyze_mode
+            and has_yuy2_preview(frame)
             and (self.camera_preview or bool(np.any(preview)))
         )
         image_plane = self._orient(preview) if use_preview else oriented_average
