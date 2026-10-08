@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes as C
+import os
 import sys
 
 import cv2
@@ -10,6 +11,14 @@ import cv2
 
 class Point(C.Structure):
     _fields_ = [("x", C.c_double), ("y", C.c_double)]
+
+
+class Size(C.Structure):
+    _fields_ = [("width", C.c_double), ("height", C.c_double)]
+
+
+class Rect(C.Structure):
+    _fields_ = [("origin", Point), ("size", Size)]
 
 
 class PointerMonitor:
@@ -49,6 +58,19 @@ class PointerMonitor:
                 self._coregraphics.CGEventGetLocation.argtypes = [C.c_void_p]
                 self._coregraphics.CGEventGetLocation.restype = Point
                 self._coregraphics.CFRelease.argtypes = [C.c_void_p]
+                cg = self._coregraphics
+                cg.CGWindowListCopyWindowInfo.argtypes = [C.c_uint32, C.c_uint32]
+                cg.CGWindowListCopyWindowInfo.restype = C.c_void_p
+                cg.CFArrayGetCount.argtypes = [C.c_void_p]
+                cg.CFArrayGetCount.restype = C.c_long
+                cg.CFArrayGetValueAtIndex.argtypes = [C.c_void_p, C.c_long]
+                cg.CFArrayGetValueAtIndex.restype = C.c_void_p
+                cg.CFDictionaryGetValue.argtypes = [C.c_void_p, C.c_void_p]
+                cg.CFDictionaryGetValue.restype = C.c_void_p
+                cg.CFNumberGetValue.argtypes = [C.c_void_p, C.c_int, C.c_void_p]
+                cg.CFNumberGetValue.restype = C.c_bool
+                cg.CGRectMakeWithDictionaryRepresentation.argtypes = [C.c_void_p, C.POINTER(Rect)]
+                cg.CGRectMakeWithDictionaryRepresentation.restype = C.c_bool
         except (OSError, AttributeError):
             # Keep event-based bounds checks if the native API is unavailable.
             self.close()
@@ -94,6 +116,16 @@ class PointerMonitor:
         position = self._screen_position()
         if position is None:
             return None
+        if self._coregraphics is not None:
+            # Cocoa's getWindowImageRect is not a top-left screen rectangle.
+            # Compare native pointer and native window bounds in the same
+            # coordinate system; toolbar/image bounds come from mouse events.
+            rectangle = self._mac_window_rect()
+            if rectangle is None:
+                return None
+            left, top, width, height = rectangle
+            x, y = position
+            return left <= x < left + width and top <= y < top + height
         try:
             left, top, width, height = cv2.getWindowImageRect(self.window_name)
         except cv2.error:
@@ -102,3 +134,34 @@ class PointerMonitor:
             return None
         x, y = position
         return left <= x < left + width and top + height * toolbar_fraction <= y < top + height
+
+    def _mac_window_rect(self):
+        cg = self._coregraphics
+        windows = None
+        try:
+            pid_key = C.c_void_p.in_dll(cg, "kCGWindowOwnerPID").value
+            bounds_key = C.c_void_p.in_dll(cg, "kCGWindowBounds").value
+            windows = cg.CGWindowListCopyWindowInfo(1, 0)  # On-screen windows only.
+            if not windows:
+                return None
+            for index in range(cg.CFArrayGetCount(windows)):
+                window = cg.CFArrayGetValueAtIndex(windows, index)
+                number = cg.CFDictionaryGetValue(window, pid_key)
+                pid = C.c_int32()
+                if not number or not cg.CFNumberGetValue(number, 3, C.byref(pid)):
+                    continue
+                if pid.value != os.getpid():
+                    continue
+                bounds = cg.CFDictionaryGetValue(window, bounds_key)
+                rect = Rect()
+                if (
+                    bounds and cg.CGRectMakeWithDictionaryRepresentation(bounds, C.byref(rect))
+                    and rect.size.width > 0 and rect.size.height > 0
+                ):
+                    return rect.origin.x, rect.origin.y, rect.size.width, rect.size.height
+        except (OSError, AttributeError, ValueError):
+            return None
+        finally:
+            if windows:
+                cg.CFRelease(windows)
+        return None

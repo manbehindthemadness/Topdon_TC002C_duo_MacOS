@@ -51,6 +51,7 @@ def test_macos_coregraphics_pointer_uses_safe_c_api(monitor, monkeypatch):
     coregraphics.CGEventCreate.return_value = 123
     coregraphics.CGEventGetLocation.return_value = Point(200, 350)
     monitor._coregraphics = coregraphics
+    monkeypatch.setattr(monitor, "_mac_window_rect", lambda: (100, 200, 384, 315))
     monkeypatch.setattr(
         "topdon_duo.pointer.cv2.getWindowImageRect",
         lambda _name: (100, 200, 384, 315),
@@ -59,3 +60,18 @@ def test_macos_coregraphics_pointer_uses_safe_c_api(monitor, monkeypatch):
     coregraphics.CGEventGetLocation.return_value = Point(90, 350)
     assert monitor.over_image(576, 54) is False
     coregraphics.CFRelease.assert_called_with(123)
+
+
+def test_macos_pointer_containment_ignores_cocoa_image_rectangle(monitor, monkeypatch):
+    monitor._coregraphics = Mock()
+    # This rectangle is deliberately in an incompatible coordinate space.
+    get_rect = Mock(return_value=(200, 900, 768, 576))
+    monkeypatch.setattr("topdon_duo.pointer.cv2.getWindowImageRect", get_rect)
+    bounds = Mock(return_value=(100, 200, 384, 315))
+    monkeypatch.setattr(monitor, "_mac_window_rect", bounds)
+    for position, expected in (((200, 350), True), ((90, 350), False), ((200, 350), True)):
+        monkeypatch.setattr(monitor, "_screen_position", lambda position=position: position)
+        assert monitor.over_image(576, 54) is expected
+    get_rect.assert_not_called()
+    bounds.return_value = None
+    assert monitor.over_image(576, 54) is None

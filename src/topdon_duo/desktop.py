@@ -674,10 +674,10 @@ def save_capture(
 
 def mouse_viewport_size() -> tuple[int, int] | None:
     """Return viewport dimensions only when mouse events need image scaling."""
-    # Linux Qt/GTK callbacks already report coordinates in the imshow image,
+    # Linux Qt/GTK and macOS Cocoa callbacks report coordinates in the imshow image,
     # including its toolbar, even when the window is resized or letterboxed.
     # Scaling those coordinates again moves the sampler away from the cursor.
-    if sys.platform.startswith("linux"):
+    if sys.platform.startswith("linux") or sys.platform == "darwin":
         return None
     try:
         _left, _top, width, height = cv2.getWindowImageRect(WINDOW_NAME)

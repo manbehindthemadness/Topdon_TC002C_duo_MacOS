@@ -225,8 +225,11 @@ def test_mouse_picker_hides_marker_and_reading_outside_image(position):
 
 @pytest.mark.parametrize("rotation", [0, 90])
 @pytest.mark.parametrize("viewport_scale", [0.5, 1.0, 1.5])
-def test_linux_mouse_coordinates_are_already_image_pixels(monkeypatch, rotation, viewport_scale):
-    monkeypatch.setattr("topdon_duo.desktop.sys.platform", "linux")
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_native_mouse_coordinates_are_already_image_pixels(
+    monkeypatch, rotation, viewport_scale, platform
+):
+    monkeypatch.setattr("topdon_duo.desktop.sys.platform", platform)
     rendered = ThermalRenderer(scale=3, rotation=rotation).render_detailed(make_frame())
     layout = toolbar_layout(rendered.image.shape[1])
     canvas_height = rendered.image.shape[0] + layout.height
@@ -240,7 +243,7 @@ def test_linux_mouse_coordinates_are_already_image_pixels(monkeypatch, rotation,
     )
     monkeypatch.setattr("topdon_duo.desktop.cv2.getWindowImageRect", get_rect)
     viewport = mouse_viewport_size()
-    # Qt/GTK have already mapped the physical pointer to these canvas pixels.
+    # Qt/GTK/Cocoa have mapped the physical pointer to these canvas pixels.
     picker = MousePicker()
     picker.callback(cv2.EVENT_MOUSEMOVE, 123, 201 + layout.height, 0, None)
     image, selected = draw_picker(
@@ -272,8 +275,8 @@ def test_linux_mouse_coordinates_are_already_image_pixels(monkeypatch, rotation,
     get_rect.assert_not_called()
 
 
-def test_mac_mouse_coordinates_keep_viewport_scaling(monkeypatch):
-    monkeypatch.setattr("topdon_duo.desktop.sys.platform", "darwin")
+def test_other_backends_keep_viewport_scaling(monkeypatch):
+    monkeypatch.setattr("topdon_duo.desktop.sys.platform", "win32")
     get_rect = Mock(return_value=(100, 200, 384, 288))
     monkeypatch.setattr("topdon_duo.desktop.cv2.getWindowImageRect", get_rect)
     assert mouse_viewport_size() == (384, 288)
