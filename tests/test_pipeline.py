@@ -631,6 +631,26 @@ def test_software_pipeline_works_when_sdk_controls_are_unavailable():
         controller.apply(document)
 
 
+def test_source_toggle_preserves_unavailable_hardware_without_retrying_sdk():
+    hw = fake_hardware()
+    hw.original = {}
+    hw.load.side_effect = CameraError("Unsupported control layout")
+    controller = PipelineHardware(hw)
+    current = default_pipeline()
+    current["hardware"].append(node("hardware", "humidity", value=40))
+    for source in ("raw", "preview", "raw"):
+        candidate = deepcopy(current)
+        candidate["software"][0]["params"]["source"] = source
+        controller.apply(candidate, previous_document=current)
+        assert controller.document == candidate
+        hw.load.assert_not_called()
+        current = candidate
+    candidate = deepcopy(current)
+    candidate["hardware"][0]["params"]["value"] = 50
+    with pytest.raises(CameraError, match="Unsupported control layout"):
+        controller.apply(candidate, previous_document=current)
+
+
 def test_preview_unknown_baseline_palette_reports_error_without_killing_worker():
     frame, _ = frame_with_preview()
     _, raw, _ = decode_duo_frame(frame)

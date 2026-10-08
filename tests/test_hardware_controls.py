@@ -408,6 +408,24 @@ def test_cold_camera_initializes_protocol_before_loading_settings(controls):
     assert not cold.camera.device.writes
 
 
+def test_legacy_version_length_bootstraps_before_loading_settings(monkeypatch, controls):
+    device = Device()
+    transfer = device.ctrl_transfer
+
+    def reply(kind, request, value, index, data, timeout):
+        if kind == 0xA1 and request == 0x85 and value == 0x0400:
+            return b"\x00\x02"
+        return transfer(kind, request, value, index, data, timeout)
+
+    monkeypatch.setattr(device, "ctrl_transfer", reply)
+    controls.camera.device = device
+    cold = HardwareControls(controls.camera)
+    cold.load()
+    assert device.version_reads == 1
+    assert len(cold.original) == len(BLOCK_LENGTHS)
+    assert not device.writes
+
+
 @pytest.mark.parametrize('version', [b'1.0\x00', b'2.0', b''])
 def test_unknown_protocol_prevents_configuration_writes(monkeypatch, controls, version):
     device = Device()

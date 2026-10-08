@@ -428,7 +428,10 @@ class HardwareControls:
         if self.camera.device is not None and self._protocol_device is self.camera.device:
             return
         length = bytes(self._transfer(0xA1, 0x85, 4, 4))
-        if len(length) not in (2, 4) or int.from_bytes(length, "little") != 4:
+        # Cold legacy dispatch can advertise 512 even for the version selector.
+        # GET_CUR(version), not GET_LEN, activates SDK 2.0. Request only its
+        # known four-byte reply and validate it before selecting any setting.
+        if len(length) not in (2, 4) or int.from_bytes(length, "little") not in (4, 512):
             raise HardwareProtocolError(
                 "Unsupported camera protocol version layout "
                 f"(length reply {length.hex() or 'empty'})"
@@ -438,6 +441,7 @@ class HardwareControls:
         version = bytes(self._transfer(0xA1, 0x81, 4, 4))
         if version != b"2.0\x00":
             raise HardwareProtocolError(f"Unsupported camera protocol version: {version!r}")
+        LOG.info("Camera SDK 2.0 handshake complete")
         self._protocol_device = self.camera.device
 
     def _select(self, selector, command, delay=0) -> int:

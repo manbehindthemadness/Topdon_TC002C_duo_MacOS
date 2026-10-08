@@ -51,8 +51,18 @@ class PipelineHardware:
         self.document = None
         self._desired = None
 
-    def apply(self, document):
+    def apply(self, document, *, previous_document=None):
         candidate = validate_pipeline(document)
+        if (
+            not self.hardware.original
+            and previous_document is not None
+            and candidate["hardware"] == previous_document["hardware"]
+        ):
+            # An image-source/software edit must not depend on an unavailable
+            # SDK handshake. Preserve the last actual hardware state so future
+            # hardware edits still require validation and readback.
+            self.document = candidate
+            return
         desired = desired_hardware(candidate)
         if desired == self._desired:
             self.document = candidate

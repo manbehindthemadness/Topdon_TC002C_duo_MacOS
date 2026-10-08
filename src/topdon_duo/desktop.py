@@ -1442,7 +1442,7 @@ def main(argv: list[str] | None = None) -> int:
         nonlocal pipeline, pipeline_revision, last_selected, tone_previous_pipeline, actual_image_source
         candidate = validate_pipeline(document)
         previous_pipeline = pipeline
-        pipeline_hardware.apply(candidate)
+        pipeline_hardware.apply(candidate, previous_document=previous_pipeline)
         if hardware.tone_busy and tone_previous_pipeline is None:
             tone_previous_pipeline = previous_pipeline
         previous_mirrors = renderer.mirror_horizontal, renderer.mirror_vertical
