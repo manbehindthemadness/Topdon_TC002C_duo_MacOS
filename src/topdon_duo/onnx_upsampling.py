@@ -11,6 +11,7 @@ import numpy as np
 
 from .coreml_model import coreml_input_shape_overrides, explicit_coreml_padding
 from .enhancement_limits import MAX_PIXELS
+from .model_downloads import MODEL_DOWNLOADS
 from .onnx_models import MODELS, verified_model
 
 LOG = logging.getLogger(__name__)
@@ -24,6 +25,42 @@ class ONNXRuntime:
 
     def _infer(self, blob, model, noise=15):
         entry = self.session.get_inputs()[0]
+        if MODELS[model].get("task") == "style":
+            # Use each export's bounded working size and tensor convention.
+            # Fit the full rectangular view without cropping/stretching it.
+            spec = MODELS[model]
+            height, width = blob.shape[2:]
+            target_h, target_w = MODELS[model]["fixed_input"]
+            ratio = min(target_h / height, target_w / width)
+            fit_h = min(target_h, max(1, round(height * ratio)))
+            fit_w = min(target_w, max(1, round(width * ratio)))
+            rgb = blob[0].transpose(1, 2, 0)
+            fitted = cv2.resize(
+                rgb, (fit_w, fit_h), interpolation=cv2.INTER_AREA if ratio < 1 else cv2.INTER_LINEAR
+            )
+            top, left = (target_h - fit_h) // 2, (target_w - fit_w) // 2
+            padded = cv2.copyMakeBorder(
+                fitted,
+                top,
+                target_h - fit_h - top,
+                left,
+                target_w - fit_w - left,
+                cv2.BORDER_REPLICATE,
+            )
+            nhwc = spec.get("layout") == "nhwc"
+            feed = padded[None] if nhwc else padded.transpose(2, 0, 1)[None]
+            result = self.session.run(None, {entry.name: np.ascontiguousarray(feed)})[0]
+            channels = spec.get("output_channels", 3)
+            expected = (1, target_h, target_w, channels) if nhwc else (1, channels, target_h, target_w)
+            if result.shape != expected or not np.isfinite(result).all():
+                raise ValueError("Unexpected style output dimensions or non-finite pixels")
+            if nhwc:
+                result = result.transpose(0, 3, 1, 2)
+            if channels == 1:
+                result = np.repeat(result, 3, axis=1)
+            cropped = result[0, :, top : top + fit_h, left : left + fit_w].transpose(1, 2, 0)
+            restored = cv2.resize(cropped, (width, height), interpolation=cv2.INTER_CUBIC)
+            return np.ascontiguousarray(restored.transpose(2, 0, 1)[None])
         if model == "ffdnet-gray":
             height, width = blob.shape[2:]
             padded = np.pad(blob, ((0, 0), (0, 0), (0, height % 2), (0, width % 2)), mode="edge")
@@ -148,12 +185,16 @@ class ONNXRuntime:
             ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb) if color else None
             gray = ycrcb[..., 0] if color else image
             blob = gray[None, None]
-        blob = np.ascontiguousarray(blob, dtype=np.float32) / 255.0
+        pixel_range = spec.get("pixel_range", 1)
+        blob = np.ascontiguousarray(blob, dtype=np.float32) * (pixel_range / 255.0)
+        offset = spec.get("input_offset", 0)
+        if offset:
+            blob += offset
         tensor = self._infer(blob, model, noise)
         expected = (1, 3 if spec["rgb"] else 1, size[1], size[0])
         if tensor.shape != expected or not np.isfinite(tensor).all():
             raise ValueError("Unexpected ONNX output dimensions or non-finite pixels")
-        pixels = np.clip(tensor[0] * 255.0, 0, 255).round().astype(np.uint8)
+        pixels = np.clip((tensor[0] - offset) * (255.0 / pixel_range), 0, 255).round().astype(np.uint8)
         if spec["rgb"]:
             result = cv2.cvtColor(pixels.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
             if not color:
@@ -218,11 +259,22 @@ class ONNXUpsampler:
         if not amount:
             return image
         key = model, backend, compute
+        retry_download = self.key != key
         if self.key != key:
             self.close()
             self.key, self.error = key, ""
         if self.error:
             raise ValueError(self.error)
+        factor = MODELS[model]["factor"]
+        if image.shape[0] * image.shape[1] * factor * factor > MAX_PIXELS:
+            raise ValueError("ONNX upscale exceeds 4 megapixels; reduce preceding scales")
+        if not MODEL_DOWNLOADS.request(model, retry=retry_download):
+            # Keep the feed and downstream geometry live while installing.
+            self.elapsed_ms = 0.0
+            return image if factor == 1 else cv2.resize(
+                image, (image.shape[1] * factor, image.shape[0] * factor),
+                interpolation=cv2.INTER_CUBIC,
+            )
         try:
             if self.process is None:
                 context = multiprocessing.get_context("spawn")

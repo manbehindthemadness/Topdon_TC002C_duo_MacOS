@@ -523,6 +523,25 @@ SOFTWARE_NODES = {
             )),
         },
     ),
+    "onnx_style": (
+        "AI image styling",
+        {
+            "model": choice("Style", "style-mosaic", (
+                ("style-mosaic", "Mosaic"), ("style-candy", "Candy"),
+                ("style-rain-princess", "Rain Princess"),
+                ("style-udnie", "Udnie"),
+                ("style-pointillism", "Pointillism"),
+                ("style-line-art", "Line Art (Informative Drawings)"),
+                ("style-animegan-sketch", "AnimeGAN Portrait Sketch (non-commercial)"),
+            )),
+            "amount": Parameter("Style blend", 0.5, 0, 1, 0.01),
+            "backend": choice("Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))),
+            "apple_compute": choice("Apple compute devices", "CPUAndGPU", (
+                ("CPUAndGPU", "CPU + GPU"), ("ALL", "CPU + GPU + Neural Engine"),
+                ("CPUAndNeuralEngine", "CPU + Neural Engine"),
+            )),
+        },
+    ),
     "onnx_denoise": (
         "ONNX denoising (experimental)",
         {
@@ -543,13 +562,24 @@ SOFTWARE_NODES = {
         "AI enhancement",
         {
             "model": choice(
-                "Upsampler",
+                "Model",
                 "anime4k09",
-                (("off", "Off"), ("anime4k09", "Anime4K09 (CPU only)"), ("acnet", "ACNet")),
+                (
+                    ("off", "Off"), ("anime4k09", "Anime4K09 (CPU only)"), ("acnet", "ACNet"),
+                    ("espcn", "ESPCN 3×"),
+                    ("mewzoom", "MewZoom V0 4× (legacy)"),
+                    ("mewzoom-v0-2x", "MewZoom V0 2× (legacy)"),
+                    ("mewzoom-v1-2x", "MewZoom V1 2× (TrunkNet)"),
+                    ("mewzoom-v1-4x", "MewZoom V1 4× (TrunkNet)"),
+                    ("realesr-general-x4v3", "Real-ESRGAN general 4× v3"),
+                    ("dncnn-25", "DnCNN luminance (fixed noise 25)"),
+                    ("ffdnet-gray", "FFDNet luminance (adjustable noise)"),
+                ),
             ),
             "denoise": choice(
                 "ACNet denoising", 0, ((0, "None"), (1, "Light"), (2, "Medium"), (3, "Strong"))
             ),
+            "noise": Parameter("FFDNet noise sigma (not temperature)", 15, 0, 75, 1),
             "input": choice(
                 "Input size",
                 "current",
@@ -562,7 +592,7 @@ SOFTWARE_NODES = {
             "amount": Parameter("Enhancement amount", 1.0, 0, 1, 0.01),
             "passes": Parameter("Passes", 3, 1, 5),
             "backend": choice(
-                "ACNet execution", "cpu", (("cpu", "CPU (OpenCV)"), ("coreml", "Apple Core ML"))
+                "Execution", "cpu", (("cpu", "CPU (OpenCV / ONNX)"), ("coreml", "Apple Core ML"))
             ),
             "apple_compute": choice(
                 "Apple compute devices",
@@ -699,7 +729,7 @@ def validate_pipeline(document):
             if stack == "software" and kind == "enhance" and isinstance(item["params"], dict):
                 # Read existing version-4 presets without changing model/pass choices.
                 # Hardware-specific preferences remain serialized on every platform.
-                for key in ("backend", "apple_compute"):
+                for key in ("backend", "apple_compute", "noise"):
                     item["params"].setdefault(key, definitions[key].default)
             if (
                 legacy_filters

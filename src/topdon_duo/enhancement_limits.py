@@ -30,20 +30,27 @@ def enhancement_pass_limits(document, *, clamp=False):
         for item in nodes:
             kind, p = item["type"], item["params"]
             if kind == "enhance":
+                denoiser = p["model"] in ONNX_MODELS and ONNX_MODELS[p["model"]]["factor"] == 1
                 iw, ih = (
                     (256, 192)
-                    if p["input"] == "native"
+                    if p["input"] == "native" and not denoiser
                     else (512, 384)
-                    if p["input"] == "preview"
+                    if p["input"] == "preview" and not denoiser
                     else (width, height)
                 )
-                maximum = acnet_pass_limit(iw, ih) if p["model"] == "acnet" else 5
+                maximum = (
+                    acnet_pass_limit(iw, ih) if p["model"] == "acnet"
+                    else 1 if p["model"] in ONNX_MODELS else 5
+                )
                 limits[item["id"]] = maximum
                 if clamp and p["model"] == "acnet" and maximum:
                     p["passes"] = min(p["passes"], maximum)
                 if item["bypass"] or p["model"] == "off" or not p["amount"]:
                     continue
-                factor = 2 ** min(p["passes"], maximum) if p["model"] == "acnet" else 2
+                factor = (
+                    ONNX_MODELS[p["model"]]["factor"] if p["model"] in ONNX_MODELS
+                    else 2 ** min(p["passes"], maximum) if p["model"] == "acnet" else 2
+                )
                 width, height = iw * factor, ih * factor
             elif item["bypass"]:
                 continue

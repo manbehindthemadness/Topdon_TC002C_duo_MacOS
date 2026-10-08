@@ -453,17 +453,20 @@ class PipelineProcessor:
                     (image.shape[1] * p["scale"], image.shape[0] * p["scale"]),
                     INTERPOLATIONS[p["method"]],
                 )
-            elif kind in ("onnx_superresolution", "onnx_denoise") and p["amount"]:
-                if kind == "onnx_superresolution" and p["input"] != "current":
-                    image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
+            elif (
+                kind in ("onnx_superresolution", "onnx_denoise", "onnx_style")
+                or kind == "enhance" and p["model"] in ONNX_MODELS
+            ) and p["amount"]:
                 factor = ONNX_MODELS[p["model"]]["factor"]
+                if kind != "onnx_denoise" and factor > 1 and p["input"] != "current":
+                    image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
                 check_size(image.shape[1] * factor, image.shape[0] * factor)
                 backend = "coreml" if p["backend"] == "coreml" and self.apple_available else "cpu"
                 key = item["id"], p["model"], backend, p["apple_compute"]
                 upsampler = self.onnx_models.setdefault(key, ONNXUpsampler())
                 image = upsampler.apply(
                     bytes_image(image), p["model"], backend, p["apple_compute"], p["amount"],
-                    **({"noise": p["noise"]} if kind == "onnx_denoise" else {}),
+                    **({"noise": p["noise"]} if p["model"] in ("dncnn-25", "ffdnet-gray") else {}),
                 ).astype(np.float32)
             elif kind == "coreml_acnet" and p["amount"]:
                 if p["input"] != "current":
@@ -524,7 +527,9 @@ class PipelineProcessor:
              "coreml" if item["params"]["backend"] == "coreml" and self.apple_available else "cpu",
              item["params"]["apple_compute"])
             for item in software
-            if item["type"] in ("onnx_superresolution", "onnx_denoise") and not item["bypass"] and item["params"]["amount"]
+            if (item["type"] in ("onnx_superresolution", "onnx_denoise", "onnx_style")
+                or item["type"] == "enhance" and item["params"]["model"] in ONNX_MODELS)
+            and not item["bypass"] and item["params"]["amount"]
         }
         for key, engine in self.onnx_models.items():
             if key not in onnx_live:
@@ -538,7 +543,7 @@ class PipelineProcessor:
                 else f"acnet-legacy-hdn{item['params']['denoise']}",
             )
             for item in software
-            if item["type"] == "enhance"
+            if item["type"] == "enhance" and item["params"]["model"] in ("anime4k09", "acnet")
         }
         self.models = {key: value for key, value in self.models.items() if key in live}
         coreml_live = {

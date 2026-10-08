@@ -69,6 +69,10 @@ def node_title(stack, item, temperature_unit="C"):
         suffix = f"{option('model')} · {option('input')}"
         if p["backend"] == "coreml":
             suffix += " · Apple preferred (CPU fallback)"
+    elif kind == "onnx_style":
+        suffix = f"{option('model')} · {p['amount'] * 100:g}% blend"
+        if p["backend"] == "coreml":
+            suffix += " · Apple preferred (CPU fallback)"
     elif kind == "onnx_denoise":
         suffix = option("model")
         if p["model"] == "ffdnet-gray":
@@ -78,10 +82,15 @@ def node_title(stack, item, temperature_unit="C"):
     elif kind == "enhance":
         suffix = option("model")
         if p["model"] != "off":
-            suffix += f" · {int(p['passes'])} pass{'es' if p['passes'] != 1 else ''}"
+            if p["model"] in ("acnet", "anime4k09"):
+                suffix += f" · {int(p['passes'])} pass{'es' if p['passes'] != 1 else ''}"
+            elif p["model"] == "ffdnet-gray":
+                suffix += f" · sigma {p['noise']:g}"
+            elif p["model"] != "dncnn-25":
+                suffix += f" · {option('input')}"
             if p["model"] == "acnet" and p["denoise"]:
                 suffix += f" · {option('denoise')} denoise"
-            if p["model"] == "acnet" and p["backend"] == "coreml":
+            if p["model"] != "anime4k09" and p["backend"] == "coreml":
                 suffix += " · Apple preferred (CPU fallback)"
     elif kind == "combine":
         suffix = f"{option('tab')} · {option('mode')} · {p['opacity'] * 100:g}%"

@@ -1,0 +1,1262 @@
+{
+  "Detail Enhanced GPU Upscale": {
+    "version": 4,
+    "hardware": [
+      {
+        "id": "3bb23452949b49e5ab372eb540f6903f",
+        "type": "preset",
+        "params": {
+          "value": "balanced"
+        },
+        "bypass": false,
+        "expanded": true
+      }
+    ],
+    "software": [
+      {
+        "id": "7e5ee323b5ec4eff9bcc862219628745",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "f8fa7fccf5284b14b54f5e7bfa7cc29d",
+        "type": "filter",
+        "params": {
+          "filter": "sharpen",
+          "mix": 1,
+          "kernel": 0,
+          "sigma": 2.1,
+          "sigma_color": 21,
+          "sigma_space": 3,
+          "channels": "color",
+          "border": "reflect",
+          "direction": "magnitude",
+          "gain": 1,
+          "edge_low": 50,
+          "edge_high": 150,
+          "l2_gradient": false,
+          "clip_limit": 2,
+          "tile_size": 8,
+          "threshold": 127,
+          "threshold_type": "binary",
+          "maximum": 255,
+          "block_size": 11,
+          "adaptive_method": "gaussian",
+          "adaptive_c": 2,
+          "invert": false,
+          "morph_operation": "open",
+          "shape": "ellipse",
+          "iterations": 1,
+          "emboss_direction": "se",
+          "offset": 128,
+          "amount": 2.54
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "427064fad32649f7bfa52c298091a3e4",
+        "type": "colors",
+        "params": {
+          "palette": "plasma"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "dcdc9097a65c442f95bc0c07c171ca2a",
+        "type": "antialiasing",
+        "params": {
+          "amount": 0.35
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "87251759feb8445fac17af47d0651e19",
+        "type": "combine",
+        "params": {
+          "tab": "B",
+          "mode": "subtract",
+          "opacity": 0.5,
+          "mask_source": "B",
+          "mask_kind": "luminance",
+          "mask_threshold": 127,
+          "mask_invert": false,
+          "raw_low": 15,
+          "raw_high": 45,
+          "base_weight": 1,
+          "input_weight": 1,
+          "offset": 0,
+          "threshold": 127,
+          "invert": false,
+          "interpolation": "linear"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "119ad219258447e898ada6007e528116",
+        "type": "onnx_superresolution",
+        "params": {
+          "model": "realesr-general-x4v3",
+          "input": "native",
+          "amount": 1,
+          "backend": "coreml",
+          "apple_compute": "ALL"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "3396c6b82f9949998b5e30355afad02d",
+        "type": "output",
+        "params": {},
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "branches": {
+      "B": [
+        {
+          "id": "79c5bc08256d49c2af089271160806b4",
+          "type": "source",
+          "params": {
+            "source": "raw"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "fba94892c55b4d8fb81516d10f61476d",
+          "type": "filter",
+          "params": {
+            "filter": "scharr",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 0.8,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 1,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 0.7
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "83f3109745b24263bbae355b705ee471",
+          "type": "antialiasing",
+          "params": {
+            "amount": 1.05
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "d70aad88413c4d62bbc892e53f69a61f",
+          "type": "filter",
+          "params": {
+            "filter": "sharpen",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 0.1,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 1,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 3
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "cf1ee3dec77a49748b1366cfca06abec",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": true
+        }
+      ],
+      "C": [
+        {
+          "id": "4ed18ddc9b7e4798bd2e291046a78ce1",
+          "type": "source",
+          "params": {
+            "source": "preview"
+          },
+          "bypass": false,
+          "expanded": false
+        }
+      ],
+      "D": [
+        {
+          "id": "ff9a5f60812b4473a5ca4a620c2e87f3",
+          "type": "source",
+          "params": {
+            "source": "preview"
+          },
+          "bypass": false,
+          "expanded": false
+        }
+      ]
+    }
+  },
+  "Redneck Combat": {
+    "version": 4,
+    "hardware": [
+      {
+        "id": "3bb23452949b49e5ab372eb540f6903f",
+        "type": "preset",
+        "params": {
+          "value": "balanced"
+        },
+        "bypass": false,
+        "expanded": true
+      }
+    ],
+    "software": [
+      {
+        "id": "7e5ee323b5ec4eff9bcc862219628745",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "427064fad32649f7bfa52c298091a3e4",
+        "type": "colors",
+        "params": {
+          "palette": "inferno"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "dcdc9097a65c442f95bc0c07c171ca2a",
+        "type": "antialiasing",
+        "params": {
+          "amount": 0.35
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "d90ec59bd78f456aabe1989705635ef8",
+        "type": "combine",
+        "params": {
+          "tab": "B",
+          "mode": "and",
+          "opacity": 0.5,
+          "mask_source": "input",
+          "mask_kind": "luminance",
+          "mask_threshold": 127,
+          "mask_invert": true,
+          "raw_low": 15,
+          "raw_high": 45,
+          "base_weight": 1,
+          "input_weight": 1,
+          "offset": 0,
+          "threshold": 127,
+          "invert": false,
+          "interpolation": "linear"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "3396c6b82f9949998b5e30355afad02d",
+        "type": "output",
+        "params": {},
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "branches": {
+      "B": [
+        {
+          "id": "79c5bc08256d49c2af089271160806b4",
+          "type": "source",
+          "params": {
+            "source": "raw"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "e39ec4e5940040c49ce228e328c3da1f",
+          "type": "filter",
+          "params": {
+            "filter": "laplacian",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 0.8,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 1,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 0.7
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "126a900c23ac48c1865988067d0bd46d",
+          "type": "contours",
+          "params": {
+            "resolution": 512,
+            "blur": 3,
+            "region": "full",
+            "region_size": 75,
+            "exclude_border": true,
+            "max_count": 100,
+            "color": "white",
+            "thickness": 1,
+            "mix": 1,
+            "lower": 50,
+            "upper": 150,
+            "segmentation": "otsu",
+            "threshold": 127,
+            "invert": false,
+            "block_size": 11,
+            "adaptive_c": 0,
+            "close_kernel": 3,
+            "min_area": 0.05,
+            "max_area": 80,
+            "shape": "any",
+            "min_aspect": 1,
+            "max_aspect": 20,
+            "solidity": 0,
+            "circularity": 0,
+            "simplify": 2,
+            "rank": "largest",
+            "geometry": "contour",
+            "output": "overlay"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "611f169f03d1456d8e53879900b37b3e",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": false
+        }
+      ],
+      "C": [
+        {
+          "id": "4ed18ddc9b7e4798bd2e291046a78ce1",
+          "type": "source",
+          "params": {
+            "source": "preview"
+          },
+          "bypass": false,
+          "expanded": false
+        }
+      ],
+      "D": [
+        {
+          "id": "ff9a5f60812b4473a5ca4a620c2e87f3",
+          "type": "source",
+          "params": {
+            "source": "preview"
+          },
+          "bypass": false,
+          "expanded": false
+        }
+      ]
+    }
+  },
+  "Redneck Combat GPU": {
+    "version": 4,
+    "hardware": [
+      {
+        "id": "3bb23452949b49e5ab372eb540f6903f",
+        "type": "preset",
+        "params": {
+          "value": "balanced"
+        },
+        "bypass": false,
+        "expanded": true
+      }
+    ],
+    "software": [
+      {
+        "id": "7e5ee323b5ec4eff9bcc862219628745",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "427064fad32649f7bfa52c298091a3e4",
+        "type": "colors",
+        "params": {
+          "palette": "inferno"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "dcdc9097a65c442f95bc0c07c171ca2a",
+        "type": "antialiasing",
+        "params": {
+          "amount": 0.35
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "d90ec59bd78f456aabe1989705635ef8",
+        "type": "combine",
+        "params": {
+          "tab": "B",
+          "mode": "and",
+          "opacity": 0.5,
+          "mask_source": "input",
+          "mask_kind": "threshold",
+          "mask_threshold": 127,
+          "mask_invert": true,
+          "raw_low": 15,
+          "raw_high": 45,
+          "base_weight": 1,
+          "input_weight": 1,
+          "offset": 0,
+          "threshold": 127,
+          "invert": false,
+          "interpolation": "linear"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "f6076223dd24491b9b7a104bf95b1ba7",
+        "type": "enhance",
+        "params": {
+          "model": "realesr-general-x4v3",
+          "denoise": 0,
+          "noise": 15,
+          "input": "native",
+          "amount": 1,
+          "passes": 3,
+          "backend": "coreml",
+          "apple_compute": "ALL"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "3396c6b82f9949998b5e30355afad02d",
+        "type": "output",
+        "params": {},
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "branches": {
+      "B": [
+        {
+          "id": "79c5bc08256d49c2af089271160806b4",
+          "type": "source",
+          "params": {
+            "source": "raw"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "e39ec4e5940040c49ce228e328c3da1f",
+          "type": "filter",
+          "params": {
+            "filter": "scharr",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 0.8,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 0.2,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 0.7
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "126a900c23ac48c1865988067d0bd46d",
+          "type": "contours",
+          "params": {
+            "resolution": 512,
+            "blur": 3,
+            "region": "full",
+            "region_size": 75,
+            "exclude_border": true,
+            "max_count": 100,
+            "color": "white",
+            "thickness": 1,
+            "mix": 1,
+            "lower": 50,
+            "upper": 150,
+            "segmentation": "otsu",
+            "threshold": 127,
+            "invert": false,
+            "block_size": 11,
+            "adaptive_c": 0,
+            "close_kernel": 3,
+            "min_area": 0.05,
+            "max_area": 80,
+            "shape": "any",
+            "min_aspect": 1,
+            "max_aspect": 20,
+            "solidity": 0,
+            "circularity": 0,
+            "simplify": 2,
+            "rank": "largest",
+            "geometry": "contour",
+            "output": "overlay"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "b1c44c1de86a4b779cd7cfd4e88a60b0",
+          "type": "antialiasing",
+          "params": {
+            "amount": 1
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "f4cd8f6d4d7c433cb2ab7c2dec16bf41",
+          "type": "filter",
+          "params": {
+            "filter": "sharpen",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 1.5,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 1,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 3
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "611f169f03d1456d8e53879900b37b3e",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": false
+        }
+      ],
+      "C": [
+        {
+          "id": "4ed18ddc9b7e4798bd2e291046a78ce1",
+          "type": "source",
+          "params": {
+            "source": "preview"
+          },
+          "bypass": false,
+          "expanded": false
+        }
+      ],
+      "D": [
+        {
+          "id": "ff9a5f60812b4473a5ca4a620c2e87f3",
+          "type": "source",
+          "params": {
+            "source": "preview"
+          },
+          "bypass": false,
+          "expanded": false
+        }
+      ]
+    }
+  },
+  "Yautja": {
+    "version": 4,
+    "hardware": [
+      {
+        "id": "1332b0f7fa7943e4abb19034822924ee",
+        "type": "detail",
+        "params": {
+          "enabled": true,
+          "amount": 0,
+          "fixed": false
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "6422484ac4ed435b950e4707d89dc88e",
+        "type": "noise",
+        "params": {
+          "noise_mode": 2,
+          "noise_general": 100,
+          "noise_spatial": 100,
+          "noise_temporal": 100
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "3bb23452949b49e5ab372eb540f6903f",
+        "type": "preset",
+        "params": {
+          "value": "balanced"
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "software": [
+      {
+        "id": "7e5ee323b5ec4eff9bcc862219628745",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "427064fad32649f7bfa52c298091a3e4",
+        "type": "colors",
+        "params": {
+          "palette": "black_hot"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "dcdc9097a65c442f95bc0c07c171ca2a",
+        "type": "antialiasing",
+        "params": {
+          "amount": 0.35
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "2c93387d78a94041a4505a2b41fca321",
+        "type": "combine",
+        "params": {
+          "tab": "D",
+          "mode": "screen",
+          "opacity": 1,
+          "mask_source": "C",
+          "mask_kind": "luminance",
+          "mask_threshold": 127,
+          "mask_invert": false,
+          "raw_low": 15,
+          "raw_high": 45,
+          "base_weight": 1,
+          "input_weight": 1,
+          "offset": 0,
+          "threshold": 127,
+          "invert": false,
+          "interpolation": "linear"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "d90ec59bd78f456aabe1989705635ef8",
+        "type": "combine",
+        "params": {
+          "tab": "B",
+          "mode": "and",
+          "opacity": 0.5,
+          "mask_source": "input",
+          "mask_kind": "threshold",
+          "mask_threshold": 127,
+          "mask_invert": false,
+          "raw_low": 15,
+          "raw_high": 45,
+          "base_weight": 1,
+          "input_weight": 1,
+          "offset": 0,
+          "threshold": 127,
+          "invert": false,
+          "interpolation": "linear"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "f6076223dd24491b9b7a104bf95b1ba7",
+        "type": "enhance",
+        "params": {
+          "model": "acnet",
+          "denoise": 0,
+          "noise": 15,
+          "input": "native",
+          "amount": 1,
+          "passes": 1,
+          "backend": "coreml",
+          "apple_compute": "ALL"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "3396c6b82f9949998b5e30355afad02d",
+        "type": "output",
+        "params": {},
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "branches": {
+      "B": [
+        {
+          "id": "79c5bc08256d49c2af089271160806b4",
+          "type": "source",
+          "params": {
+            "source": "raw"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "e39ec4e5940040c49ce228e328c3da1f",
+          "type": "filter",
+          "params": {
+            "filter": "laplacian",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 0.8,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 0.2,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 0.7
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "b1c44c1de86a4b779cd7cfd4e88a60b0",
+          "type": "antialiasing",
+          "params": {
+            "amount": 1
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "f4cd8f6d4d7c433cb2ab7c2dec16bf41",
+          "type": "filter",
+          "params": {
+            "filter": "sharpen",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 1.5,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 1,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 3
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "611f169f03d1456d8e53879900b37b3e",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": false
+        }
+      ],
+      "C": [
+        {
+          "id": "4ed18ddc9b7e4798bd2e291046a78ce1",
+          "type": "source",
+          "params": {
+            "source": "raw"
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "22e61683fda5478e939e41ca7e0c86f4",
+          "type": "contrast",
+          "params": {
+            "amount": 3
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "6bfd78976d0942e8bc02750b83c710dd",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": true
+        }
+      ],
+      "D": [
+        {
+          "id": "ff9a5f60812b4473a5ca4a620c2e87f3",
+          "type": "source",
+          "params": {
+            "source": "preview"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "081a595f61d1489b87b7236662e035bf",
+          "type": "colors",
+          "params": {
+            "palette": "camera_19"
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "861039472bd046ae9b4c8e914de59619",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": true
+        }
+      ]
+    }
+  },
+  "Yautja GPU": {
+    "version": 4,
+    "hardware": [
+      {
+        "id": "1332b0f7fa7943e4abb19034822924ee",
+        "type": "detail",
+        "params": {
+          "enabled": true,
+          "amount": 0,
+          "fixed": false
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "6422484ac4ed435b950e4707d89dc88e",
+        "type": "noise",
+        "params": {
+          "noise_mode": 2,
+          "noise_general": 100,
+          "noise_spatial": 100,
+          "noise_temporal": 100
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "3bb23452949b49e5ab372eb540f6903f",
+        "type": "preset",
+        "params": {
+          "value": "balanced"
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "software": [
+      {
+        "id": "7e5ee323b5ec4eff9bcc862219628745",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "427064fad32649f7bfa52c298091a3e4",
+        "type": "colors",
+        "params": {
+          "palette": "black_hot"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "dcdc9097a65c442f95bc0c07c171ca2a",
+        "type": "antialiasing",
+        "params": {
+          "amount": 0.35
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "2c93387d78a94041a4505a2b41fca321",
+        "type": "combine",
+        "params": {
+          "tab": "D",
+          "mode": "screen",
+          "opacity": 1,
+          "mask_source": "C",
+          "mask_kind": "luminance",
+          "mask_threshold": 127,
+          "mask_invert": false,
+          "raw_low": 15,
+          "raw_high": 45,
+          "base_weight": 1,
+          "input_weight": 1,
+          "offset": 0,
+          "threshold": 127,
+          "invert": false,
+          "interpolation": "linear"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "d90ec59bd78f456aabe1989705635ef8",
+        "type": "combine",
+        "params": {
+          "tab": "B",
+          "mode": "and",
+          "opacity": 0.5,
+          "mask_source": "input",
+          "mask_kind": "threshold",
+          "mask_threshold": 127,
+          "mask_invert": false,
+          "raw_low": 15,
+          "raw_high": 45,
+          "base_weight": 1,
+          "input_weight": 1,
+          "offset": 0,
+          "threshold": 127,
+          "invert": false,
+          "interpolation": "linear"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "f6076223dd24491b9b7a104bf95b1ba7",
+        "type": "enhance",
+        "params": {
+          "model": "realesr-general-x4v3",
+          "denoise": 0,
+          "noise": 15,
+          "input": "native",
+          "amount": 1,
+          "passes": 1,
+          "backend": "coreml",
+          "apple_compute": "ALL"
+        },
+        "bypass": false,
+        "expanded": true
+      },
+      {
+        "id": "3396c6b82f9949998b5e30355afad02d",
+        "type": "output",
+        "params": {},
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "branches": {
+      "B": [
+        {
+          "id": "79c5bc08256d49c2af089271160806b4",
+          "type": "source",
+          "params": {
+            "source": "raw"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "e39ec4e5940040c49ce228e328c3da1f",
+          "type": "filter",
+          "params": {
+            "filter": "laplacian",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 0.8,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 0.2,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 0.7
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "b1c44c1de86a4b779cd7cfd4e88a60b0",
+          "type": "antialiasing",
+          "params": {
+            "amount": 1
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "f4cd8f6d4d7c433cb2ab7c2dec16bf41",
+          "type": "filter",
+          "params": {
+            "filter": "sharpen",
+            "mix": 1,
+            "kernel": 0,
+            "sigma": 1.5,
+            "sigma_color": 21,
+            "sigma_space": 3,
+            "channels": "color",
+            "border": "reflect",
+            "direction": "magnitude",
+            "gain": 1,
+            "edge_low": 50,
+            "edge_high": 150,
+            "l2_gradient": false,
+            "clip_limit": 2,
+            "tile_size": 8,
+            "threshold": 127,
+            "threshold_type": "binary",
+            "maximum": 255,
+            "block_size": 11,
+            "adaptive_method": "gaussian",
+            "adaptive_c": 2,
+            "invert": false,
+            "morph_operation": "open",
+            "shape": "ellipse",
+            "iterations": 1,
+            "emboss_direction": "se",
+            "offset": 128,
+            "amount": 3
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "611f169f03d1456d8e53879900b37b3e",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": false
+        }
+      ],
+      "C": [
+        {
+          "id": "4ed18ddc9b7e4798bd2e291046a78ce1",
+          "type": "source",
+          "params": {
+            "source": "raw"
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "22e61683fda5478e939e41ca7e0c86f4",
+          "type": "contrast",
+          "params": {
+            "amount": 3
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "6bfd78976d0942e8bc02750b83c710dd",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": true
+        }
+      ],
+      "D": [
+        {
+          "id": "ff9a5f60812b4473a5ca4a620c2e87f3",
+          "type": "source",
+          "params": {
+            "source": "preview"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "081a595f61d1489b87b7236662e035bf",
+          "type": "colors",
+          "params": {
+            "palette": "camera_19"
+          },
+          "bypass": false,
+          "expanded": true
+        },
+        {
+          "id": "861039472bd046ae9b4c8e914de59619",
+          "type": "preview",
+          "params": {},
+          "bypass": false,
+          "expanded": true
+        }
+      ]
+    }
+  }
+}

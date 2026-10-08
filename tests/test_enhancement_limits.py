@@ -48,6 +48,26 @@ def test_bypassed_upstream_scales_and_thermal_range_are_accounted_for():
     assert enhancement_pass_limits(document)[ai["id"]] == 3
 
 
+@pytest.mark.parametrize("model,factor", [
+    ("espcn", 3), ("mewzoom-v1-2x", 2), ("realesr-general-x4v3", 4),
+    ("dncnn-25", 1), ("ffdnet-gray", 1),
+])
+def test_regular_ai_onnx_limits_account_fixed_scale_and_ignore_hidden_passes(model, factor):
+    from topdon_duo.onnx_models import MODELS
+
+    document = default_pipeline()
+    ai = node("software", "enhance", model=model, input="native", passes=5)
+    following = node("software", "enhance", model="acnet", passes=5)
+    document["software"].insert(-1, ai)
+    document["software"].insert(-1, following)
+    limits = enhancement_pass_limits(document, clamp=True)
+    width, height = (512, 384) if factor == 1 else (256, 192)
+    assert limits[ai["id"]] == 1
+    assert ai["params"]["passes"] == 5  # Hidden and ignored, not multiplied.
+    assert limits[following["id"]] == acnet_pass_limit(width * factor, height * factor)
+    assert MODELS[model]["factor"] == factor
+
+
 def test_preview_control_pass_bounds_update_and_save_clamped_value(tmp_path):
     import subprocess
     import sys

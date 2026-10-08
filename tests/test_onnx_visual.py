@@ -17,7 +17,7 @@ from topdon_duo.pipeline import node, validate_pipeline
 from topdon_duo.pipeline_titles import node_title
 
 
-def fake_runtime(monkeypatch, bad_output=False, fixed_shape=False):
+def fake_runtime(monkeypatch, bad_output=False, fixed_shape=False, invert_style=False):
     calls = []
     monkeypatch.setattr("topdon_duo.onnx_upsampling.verified_model", lambda model: model.encode())
     monkeypatch.setattr("topdon_duo.onnx_upsampling.explicit_coreml_padding", lambda data: data)
@@ -62,6 +62,10 @@ def fake_runtime(monkeypatch, bad_output=False, fixed_shape=False):
                 calls[-1] = (blob.copy(), feed["sigma"].copy())
             factor = onnx_models.MODELS[self.model]["factor"]
             output = np.repeat(np.repeat(blob, factor, axis=2), factor, axis=3)
+            if onnx_models.MODELS[self.model].get("output_channels") == 1:
+                output = output.mean(axis=1, keepdims=True)
+            if invert_style and onnx_models.MODELS[self.model].get("task") == "style":
+                output = 255 - output
             if bad_output:
                 output[:] = np.nan
             return [output]
@@ -79,7 +83,8 @@ def fake_runtime(monkeypatch, bad_output=False, fixed_shape=False):
 
 
 @pytest.mark.parametrize(
-    "model,factor", [(name, spec["factor"]) for name, spec in onnx_models.MODELS.items()]
+    "model,factor", [(name, spec["factor"]) for name, spec in onnx_models.MODELS.items()
+                     if spec.get("output_channels", 3) != 1]
 )
 @pytest.mark.parametrize("color", [False, True])
 def test_inference_shapes_color_order_session_reuse_and_input_ownership(
@@ -100,7 +105,10 @@ def test_inference_shapes_color_order_session_reuse_and_input_ownership(
         <= 2
     )
     if onnx_models.MODELS[model]["rgb"] and color:
-        assert np.allclose(calls[1][0, :, 0, 0], [200, 70, 10] / np.array(255.0))
+        pixel_range = onnx_models.MODELS[model].get("pixel_range", 1)
+        pixel = calls[1][0, 0, 0, :] if onnx_models.MODELS[model].get("layout") == "nhwc" else calls[1][0, :, 0, 0]
+        assert np.allclose(pixel, np.array([200, 70, 10]) * pixel_range / 255.0
+                           + onnx_models.MODELS[model].get("input_offset", 0))
     runtime.apply(image, model)
     assert len(calls) == 3  # One session, two inferences.
 
@@ -112,6 +120,142 @@ def test_fixed_espcn_tiles_preserve_rectangular_geometry_and_cover_seams(monkeyp
     assert np.array_equal(output, np.repeat(np.repeat(image, 3, axis=0), 3, axis=1))
     assert len(calls) == 3  # Session plus two overlapping 224x224 tiles.
     assert all(blob.shape == (1, 1, 224, 224) for blob in calls[1:])
+
+
+@pytest.mark.parametrize("model", ["style-mosaic", "style-candy", "style-rain-princess",
+                                 "style-udnie", "style-pointillism"])
+@pytest.mark.parametrize("shape", [(168, 224), (224, 168)])
+def test_style_rgb_range_letterboxing_and_rectangular_geometry(monkeypatch, model, shape):
+    calls = fake_runtime(monkeypatch)
+    height, width = shape
+    image = np.zeros((height, width, 3), np.uint8)
+    image[: height // 2, : width // 2] = (10, 40, 200)
+    image[height // 2 :, width // 2 :] = (170, 20, 50)
+    original = image.copy()
+    runtime = ONNXRuntime()
+    result = runtime.apply(image, model)
+    assert result.shape == image.shape
+    assert np.array_equal(result, original)  # Identity inference must not shift/crop/stretch.
+    assert np.array_equal(image, original)
+    blob = calls[1]
+    assert blob.shape == (1, 3, 224, 224)
+    top, left = (224 - height) // 2, (224 - width) // 2
+    assert np.array_equal(blob[0, :, top, left], [200, 40, 10])
+    assert blob.max() == 200  # Style models consume raw RGB 0..255, not normalized 0..1.
+    fake_runtime(monkeypatch, bad_output=True)
+    with pytest.raises(ValueError, match="style output"):
+        ONNXRuntime().apply(image, model)
+
+
+def test_style_blend_and_zero_amount_do_not_change_baseline_or_load_models(monkeypatch):
+    calls = fake_runtime(monkeypatch, invert_style=True)
+    image = np.full((192, 256, 3), (10, 40, 200), np.uint8)
+    runtime = ONNXRuntime()
+    assert runtime.apply(image, "style-candy", amount=0) is image
+    assert calls == []
+    styled = runtime.apply(image, "style-candy", amount=1)
+    assert np.array_equal(styled, 255 - image)
+    blended = runtime.apply(image, "style-candy", amount=0.35)
+    assert np.array_equal(blended, cv2.addWeighted(255 - image, 0.35, image, 0.65, 0))
+
+
+def test_line_art_normalized_rgb_input_and_single_channel_output(monkeypatch):
+    calls = fake_runtime(monkeypatch)
+    image = np.full((192, 256, 3), (30, 90, 180), np.uint8)
+    original = image.copy()
+    output = ONNXRuntime().apply(image, "style-line-art")
+    assert calls[1].shape == (1, 3, 256, 256)
+    assert np.allclose(calls[1][0, :, 32, 0], np.array([180, 90, 30]) / 255)
+    assert output.shape == image.shape
+    assert np.all(output == 100)  # Fake one-channel output is replicated to RGB.
+    assert np.array_equal(image, original)
+    fake_runtime(monkeypatch, bad_output=True)
+    with pytest.raises(ValueError, match="style output"):
+        ONNXRuntime().apply(image, "style-line-art")
+
+
+def test_animegan_signed_nhwc_letterboxing_and_inverse_range(monkeypatch):
+    calls = fake_runtime(monkeypatch)
+    image = np.zeros((384, 512, 3), np.uint8)
+    image[:192, :256] = (0, 127, 255)
+    image[192:, 256:] = (255, 40, 0)
+    original = image.copy()
+    output = ONNXRuntime().apply(image, "style-animegan-sketch")
+    assert calls[1].shape == (1, 512, 512, 3)
+    assert np.allclose(calls[1][0, 64, 0], [1, 127 / 127.5 - 1, -1], atol=1e-7)
+    assert np.array_equal(output, original)
+    assert np.array_equal(image, original)
+    fake_runtime(monkeypatch, bad_output=True)
+    with pytest.raises(ValueError, match="style output"):
+        ONNXRuntime().apply(image, "style-animegan-sketch")
+
+
+@pytest.mark.parametrize("model", [name for name, spec in onnx_models.MODELS.items()
+                                 if spec.get("task") == "style"])
+def test_every_style_is_selectable_and_round_trips_saved_settings(model):
+    from test_pipeline import raw_pipeline
+
+    style = node("software", "onnx_style", model=model, backend="coreml", amount=0.75)
+    document = raw_pipeline(style)
+    assert validate_pipeline(deepcopy(document)) == document
+
+
+@pytest.mark.parametrize("apple_available", [False, True])
+def test_style_pipeline_preserves_size_radiometry_settings_and_releases_helper(
+    monkeypatch, apple_available
+):
+    from test_pipeline import raw_pipeline
+    from test_render import frame_with_preview
+
+    from topdon_duo.camera import decode_duo_frame
+    from topdon_duo.pipeline_processing import PipelineProcessor
+
+    calls, engines = [], []
+
+    class Engine:
+        def __init__(self):
+            self.closed = False
+            engines.append(self)
+
+        def apply(self, image, model, backend, compute, amount):
+            calls.append((image.shape, model, backend, compute, amount))
+            return image.copy()
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("topdon_duo.pipeline_processing.ONNXUpsampler", Engine)
+    style = node("software", "onnx_style", model="style-candy", backend="coreml", amount=0.35)
+    document = raw_pipeline(style)
+    original = deepcopy(document)
+    assert validate_pipeline(document) == document
+    assert "Candy" in node_title("software", style)
+    assert "35%" in node_title("software", style)
+    frame, _ = frame_with_preview()
+    _, raw, _ = decode_duo_frame(frame)
+    measurements = raw.astype(np.float32)
+    before = measurements.copy()
+    processor = PipelineProcessor(apple_available=apple_available)
+    try:
+        output, _ = processor.process(frame, measurements, document, scale=4)
+        assert output.shape == (768, 1024, 3)
+        assert calls[0] == (
+            (192, 256, 3),
+            "style-candy",
+            "coreml" if apple_available else "cpu",
+            "CPUAndGPU",
+            0.35,
+        )
+        assert np.array_equal(before, measurements)
+        assert document == original
+        processor.process(frame, measurements, document)
+        assert len(processor.onnx_models) == 1
+        style["params"]["amount"] = 0
+        processor.process(frame, measurements, document)
+        assert engines[0].closed
+        assert len(calls) == 2
+    finally:
+        processor.close()
 
 
 def test_ffdnet_odd_geometry_noise_normalization_and_session_reuse(monkeypatch):
@@ -149,6 +293,83 @@ def test_denoiser_download_needs_export_and_no_network(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="export_visual_denoisers.py ffdnet-gray"):
         onnx_models.verified_model("ffdnet-gray")
     opener.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "model", [name for name, spec in onnx_models.MODELS.items() if spec.get("task") != "style"]
+)
+@pytest.mark.parametrize("apple_available", [False, True])
+def test_regular_ai_dispatch_single_pass_fallback_measurements_and_cleanup(
+    monkeypatch, model, apple_available
+):
+    from test_pipeline import raw_pipeline
+    from test_render import frame_with_preview
+
+    from topdon_duo.camera import decode_duo_frame
+    from topdon_duo.pipeline_processing import PipelineProcessor
+
+    calls, engines = [], []
+    factor = onnx_models.MODELS[model]["factor"]
+
+    class Engine:
+        def __init__(self):
+            self.closed = False
+            engines.append(self)
+
+        def apply(self, image, selected, backend, compute, amount, noise=15):
+            calls.append((image.shape, selected, backend, compute, amount, noise))
+            return cv2.resize(image, (image.shape[1] * factor, image.shape[0] * factor))
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("topdon_duo.pipeline_processing.ONNXUpsampler", Engine)
+    ai = node(
+        "software",
+        "enhance",
+        model=model,
+        backend="coreml",
+        noise=32,
+        passes=5,
+        input="preview" if factor == 1 else "native",
+    )
+    document = raw_pipeline(ai)
+    original = deepcopy(document)
+    assert validate_pipeline(document) == original
+    assert "pass" not in node_title("software", ai).lower()
+    frame, _ = frame_with_preview()
+    _, raw, _ = decode_duo_frame(frame)
+    measurements = raw.astype(np.float32)
+    before = measurements.copy()
+    processor = PipelineProcessor(apple_available=apple_available)
+    try:
+        output, _ = processor.process(frame, measurements, document, scale=factor)
+        assert output.shape == (192 * factor, 256 * factor, 3)
+        assert calls[0][0][:2] == (192, 256)
+        assert calls[0][1] == model
+        assert calls[0][2] == ("coreml" if apple_available else "cpu")
+        assert calls[0][-1] == (32 if factor == 1 else 15)
+        processor.process(frame, measurements, document, scale=1)
+        assert len(processor.onnx_models) == 1
+        assert document == original
+        assert np.array_equal(measurements, before)
+        ai["params"]["model"] = "off"
+        processor.process(frame, measurements, document)
+        assert engines[0].closed
+        assert len(calls) == 2
+    finally:
+        processor.close()
+
+
+def test_old_ai_preset_migrates_noise_without_changing_saved_choices():
+    from test_pipeline import raw_pipeline
+
+    ai = node("software", "enhance", model="acnet", passes=2, backend="coreml")
+    del ai["params"]["noise"]
+    original = deepcopy(ai)
+    restored = validate_pipeline(raw_pipeline(ai))["software"][2]
+    assert restored["params"].pop("noise") == 15
+    assert restored == original
 
 
 @pytest.mark.parametrize("apple_available,expected", [(False, "cpu"), (True, "coreml")])
@@ -421,6 +642,7 @@ def test_pipeline_cpu_fallback_retains_preferences_and_measurements(
 
 
 def test_helper_crash_is_contained_and_configuration_change_clears_error(monkeypatch):
+    monkeypatch.setattr("topdon_duo.onnx_upsampling.MODEL_DOWNLOADS.request", lambda *args, **kwargs: True)
     process = Mock()
     process.is_alive.return_value = False
     connection = Mock()
@@ -526,6 +748,45 @@ assert rows["noise"].isHidden()
 assert rows["backend"].isHidden()
 assert denoise["params"]["backend"] == "coreml"
 assert denoise["params"]["noise"] == 42
+ai = node("software", "enhance", model="realesr-general-x4v3", backend="coreml", input="native", noise=37)
+editor.document["software"].insert(-1, ai)
+editor.rebuild()
+editor.update_state({"pipeline": editor.document, "apple_acceleration": {"available": True}}, False)
+rows = editor.widgets[ai["id"]][1]
+assert not rows["backend"].isHidden() and rows["backend"].input.isEnabled()
+assert rows["passes"].isHidden() and rows["noise"].isHidden()
+assert rows["denoise"].isHidden() and not rows["input"].isHidden()
+editor.change(ai, "backend", "cpu")
+assert ai["params"]["model"] == "realesr-general-x4v3"
+editor.change(ai, "model", "ffdnet-gray")
+editor.update_state({"pipeline_serial": editor.edit_serial}, False)
+assert not rows["noise"].isHidden() and rows["noise"].input.isEnabled()
+assert rows["input"].isHidden() and rows["passes"].isHidden()
+editor.change(ai, "backend", "coreml")
+editor.update_state({"apple_acceleration": {"available": False}}, False)
+assert rows["backend"].isHidden() and ai["params"]["backend"] == "coreml"
+assert ai["params"]["noise"] == 37
+editor.change(ai, "model", "dncnn-25")
+editor.update_state({"pipeline_serial": editor.edit_serial}, False)
+assert rows["noise"].isHidden()
+editor.change(ai, "model", "acnet")
+editor.update_state({"pipeline_serial": editor.edit_serial}, False)
+assert not rows["passes"].isHidden() and not rows["denoise"].isHidden()
+editor.change(ai, "model", "anime4k09")
+editor.update_state({"apple_acceleration": {"available": True}, "pipeline_serial": editor.edit_serial}, False)
+assert rows["backend"].isHidden()
+assert rows["passes"].input.maximum() == 5
+assert ai["params"]["noise"] == 37
+style = node("software", "onnx_style", model="style-candy", backend="coreml", amount=0.35)
+editor.document["software"].insert(-1, style)
+editor.rebuild()
+editor.update_state({"pipeline": editor.document, "apple_acceleration": {"available": True}}, False)
+rows = editor.widgets[style["id"]][1]
+assert not rows["backend"].isHidden() and rows["backend"].input.isEnabled()
+assert "passes" not in rows and "noise" not in rows and "input" not in rows
+editor.update_state({"apple_acceleration": {"available": False}}, False)
+assert rows["backend"].isHidden()
+assert style["params"] == {"model": "style-candy", "backend": "coreml", "apple_compute": "CPUAndGPU", "amount": 0.35}
 window.close()
 """
     env = popup_environment()

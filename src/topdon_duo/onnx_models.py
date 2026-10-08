@@ -11,6 +11,75 @@ import urllib.request
 from pathlib import Path
 
 MODELS = {
+    "style-mosaic": {
+        "factor": 1,
+        "rgb": True,
+        "task": "style",
+        "pixel_range": 255,
+        "url": "https://huggingface.co/onnxmodelzoo/mosaic-9/resolve/main/mosaic-9.onnx",
+        "sha256": "fa646dedade881243f8d5a2ceb7de2b93675b21fc24f7482894ac4851a9a0a47",
+        "fixed_input": (224, 224),
+    },
+    "style-candy": {
+        "factor": 1,
+        "rgb": True,
+        "task": "style",
+        "pixel_range": 255,
+        "url": "https://huggingface.co/onnxmodelzoo/candy-9/resolve/main/candy-9.onnx",
+        "sha256": "9d11a3529d1e547da6ae07201d93484dbab2ec0a3614535752c8f40f0fe2968a",
+        "fixed_input": (224, 224),
+    },
+    "style-rain-princess": {
+        "factor": 1,
+        "rgb": True,
+        "task": "style",
+        "pixel_range": 255,
+        "fixed_input": (224, 224),
+        "url": "https://huggingface.co/onnxmodelzoo/rain-princess-9/resolve/main/rain-princess-9.onnx",
+        "sha256": "4162912e6f75fedef6f810ae989b9e10d3d5d43308dab34b027c850cf255e152",
+    },
+    "style-udnie": {
+        "factor": 1,
+        "rgb": True,
+        "task": "style",
+        "pixel_range": 255,
+        "fixed_input": (224, 224),
+        "url": "https://huggingface.co/onnxmodelzoo/udnie-9/resolve/main/udnie-9.onnx",
+        # Resolve and retain the publisher's Git LFS checksum at installation.
+        "sha256": None,
+    },
+    "style-pointillism": {
+        "factor": 1,
+        "rgb": True,
+        "task": "style",
+        "pixel_range": 255,
+        "fixed_input": (224, 224),
+        # The upstream filename is spelled "pointilism".
+        "url": "https://huggingface.co/onnxmodelzoo/pointilism-9/resolve/main/pointilism-9.onnx",
+        "sha256": "5ee2b8d4d6bc60a777f54e0fe96a1b717360a004b79d56c67390d4a975b14d98",
+    },
+    "style-line-art": {
+        "factor": 1,
+        "rgb": True,
+        "task": "style",
+        "output_channels": 1,
+        # Bounded working resolution for the dynamic Informative Drawings export.
+        "fixed_input": (256, 256),
+        "url": "https://huggingface.co/rocca/informative-drawings-line-art-onnx/resolve/main/model.onnx",
+        "sha256": "1fef40b8f7126d827e30fbebccf95ae9b0b391795df926bf9366a821bad4f498",
+    },
+    "style-animegan-sketch": {
+        "factor": 1,
+        "rgb": True,
+        "task": "style",
+        "layout": "nhwc",
+        "pixel_range": 2,
+        "input_offset": -1,
+        "fixed_input": (512, 512),
+        "noncommercial": True,
+        "url": "https://github.com/TachibanaYoshino/AnimeGANv3_Portrait_Inference/releases/download/1.0/AnimeGANv3_PortraitSketch_25.onnx",
+        "sha256": "86de643d216a387ae94d6881fc4197e3427e9dca31a030386a1526f8077c55d8",
+    },
     "realesr-general-x4v3": {
         "factor": 4,
         "rgb": True,
@@ -128,7 +197,7 @@ def download_ssl_context():
     return context
 
 
-def download_model(model):
+def download_model(model, progress=None):
     path = model_path(model)
     if path.exists():
         try:
@@ -170,6 +239,11 @@ def download_model(model):
         ):
             temporary = Path(target.name)
             total = 0
+            headers = getattr(source, "headers", {})
+            try:
+                length = int(headers.get("Content-Length", 0))
+            except (TypeError, ValueError):
+                length = 0
             while chunk := source.read(1024 * 1024):
                 total += len(chunk)
                 if total > maximum:
@@ -178,6 +252,10 @@ def download_model(model):
                     )
                 digest.update(chunk)
                 target.write(chunk)
+                if progress is not None:
+                    progress(total, length)
+        if progress is not None:
+            progress(total, total)
         if digest.hexdigest() != checksum:
             raise ValueError("Model download checksum mismatch; not installed")
         if MODELS[model]["sha256"] is None:
@@ -201,6 +279,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         for model in args.models:
+            if MODELS[model].get("noncommercial"):
+                print("Note: AnimeGANv3 weights are for non-commercial use only; see README for upstream terms.", flush=True)
             print(f"Installing/verifying {model}...", flush=True)
             print(f"{model}: {download_model(model)}")
     except (OSError, ValueError) as exc:

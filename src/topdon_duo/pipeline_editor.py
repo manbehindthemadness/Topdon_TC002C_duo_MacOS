@@ -30,6 +30,7 @@ from .dialog_preferences import load_dialog_directory, remember_dialog_directory
 from .enhancement_limits import enhancement_pass_limits
 from .feature_processing import feature_fields
 from .image_filters import allowed_kernels, filter_fields
+from .onnx_models import MODELS as ONNX_MODELS
 from .pipeline import (
     CATALOG,
     default_pipeline,
@@ -316,6 +317,10 @@ class PipelineEditor(QWidget):
         self.apple_status = QLabel()
         self.apple_status.setWordWrap(True)
         layout.addWidget(self.apple_status)
+        self.download_status = QLabel()
+        self.download_status.setWordWrap(True)
+        self.download_status.hide()
+        layout.addWidget(self.download_status)
         self.stacks = {}
         for stack, title in (
             ("hardware", "Camera hardware · order organizes controls"),
@@ -518,7 +523,8 @@ class PipelineEditor(QWidget):
     def change(self, item, key, value):
         if self.locked:
             return
-        if item["type"] == "enhance" and key == "model" and value != item["params"][key]:
+        if (item["type"] == "enhance" and key == "model" and value != item["params"][key]
+                and value in ("acnet", "anime4k09")):
             item["params"]["passes"] = 1 if value == "acnet" else 3
             row = self.widgets.get(item["id"], (None, {}))[1].get("passes")
             if row is not None:
@@ -655,14 +661,22 @@ class PipelineEditor(QWidget):
                         unit=spec.unit,
                     )
                     row.update_state(item["params"][key])
-                    if item["type"] in ("onnx_superresolution", "onnx_denoise") and key in ("backend", "apple_compute"):
+                    if item["type"] in ("onnx_superresolution", "onnx_denoise", "onnx_style") and key in ("backend", "apple_compute"):
                         row.setVisible(bool(
                             getattr(self, "last_state", {}).get("apple_acceleration", {}).get("available")
                         ))
                     if item["type"] == "enhance" and key in ("backend", "apple_compute"):
                         row.setVisible(bool(
                             getattr(self, "last_state", {}).get("apple_acceleration", {}).get("available")
-                        ) and item["params"]["model"] == "acnet")
+                        ) and (item["params"]["model"] == "acnet" or item["params"]["model"] in ONNX_MODELS))
+                    if item["type"] == "enhance" and key in ("noise", "denoise", "passes", "input"):
+                        model = item["params"]["model"]
+                        row.setVisible(
+                            model == "ffdnet-gray" if key == "noise"
+                            else model == "acnet" if key == "denoise"
+                            else model in ("acnet", "anime4k09") if key == "passes"
+                            else model not in ("dncnn-25", "ffdnet-gray")
+                        )
                     controls[key] = row
                     if item["type"] == "filter":
                         row.setVisible(key in filter_fields(item["params"]))
@@ -754,6 +768,9 @@ class PipelineEditor(QWidget):
 
     def update_state(self, state, locked):
         self.last_state = state
+        download_status = state.get("model_download_status", "")
+        self.download_status.setText(download_status)
+        self.download_status.setVisible(bool(download_status))
         capability = state.get("apple_acceleration", {})
         self.apple_status.setText(
             "Apple acceleration ready · Metal + Core ML" if capability.get("available")
@@ -839,8 +856,9 @@ class PipelineEditor(QWidget):
                     else "Bypassed"
                     if item["bypass"]
                     else "CPU execution · saved Apple settings retained"
-                    if (item["type"] in ("onnx_superresolution", "onnx_denoise") or
-                        item["type"] == "enhance" and item["params"]["model"] == "acnet")
+                    if (item["type"] in ("onnx_superresolution", "onnx_denoise", "onnx_style") or
+                        item["type"] == "enhance" and (item["params"]["model"] == "acnet"
+                            or item["params"]["model"] in ONNX_MODELS))
                     and item["params"]["backend"] == "coreml"
                     and not state.get("apple_acceleration", {}).get("available", False)
                     else state.get("apple_acceleration", {}).get("reason", "")
@@ -874,7 +892,7 @@ class PipelineEditor(QWidget):
                                 row.input.model().item(index).setEnabled(
                                     row.input.itemData(index) in allowed
                                 )
-                    if item["type"] in ("onnx_superresolution", "onnx_denoise") and key in ("backend", "apple_compute"):
+                    if item["type"] in ("onnx_superresolution", "onnx_denoise", "onnx_style") and key in ("backend", "apple_compute"):
                         detected = bool(state.get("apple_acceleration", {}).get("available"))
                         row.setVisible(detected)
                         available &= detected
@@ -885,11 +903,11 @@ class PipelineEditor(QWidget):
                         available &= relevant
                     if item["type"] == "enhance" and key in ("backend", "apple_compute"):
                         detected = bool(state.get("apple_acceleration", {}).get("available"))
-                        supported = item["params"]["model"] == "acnet"
+                        supported = item["params"]["model"] == "acnet" or item["params"]["model"] in ONNX_MODELS
                         row.setVisible(detected and supported)
                         available &= detected and supported
                         help_text = (
-                            "ACNet execution backend; this does not change the Upsampler. "
+                            "Execution backend; this does not change the selected model. "
                             "Anime4K09 is CPU-only. No --extra flag is needed."
                             if key == "backend"
                             else "Apple device preference is saved even while CPU execution is selected."
@@ -920,8 +938,17 @@ class PipelineEditor(QWidget):
                         )
                         available &= key not in ("threshold", "invert") or mode == "mask"
                     if item["type"] == "enhance":
-                        available &= key != "denoise" or item["params"]["model"] == "acnet"
-                        if key == "passes":
+                        model = item["params"]["model"]
+                        if key in ("noise", "denoise", "passes", "input"):
+                            relevant = (
+                                model == "ffdnet-gray" if key == "noise"
+                                else model == "acnet" if key == "denoise"
+                                else model in ("acnet", "anime4k09") if key == "passes"
+                                else model not in ("dncnn-25", "ffdnet-gray")
+                            )
+                            row.setVisible(relevant)
+                            available &= relevant
+                        if key == "passes" and model in ("acnet", "anime4k09"):
                             maximum = pass_limits[item["id"]]
                             row.set_numeric_limits(1, max(1, maximum))
                             available &= maximum > 0

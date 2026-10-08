@@ -51,6 +51,7 @@ from .hardware_controls import (
     HardwareProtocolError,
     camera_operation_title,
 )
+from .model_downloads import MODEL_DOWNLOADS
 from .pipeline import (
     collapse_previews,
     default_pipeline,
@@ -1550,6 +1551,7 @@ def main(argv: list[str] | None = None) -> int:
             **renderer.view_settings(),
             "pipeline": pipeline,
             "apple_acceleration": apple_capability,
+            "model_download_status": MODEL_DOWNLOADS.status(),
             "pipeline_serial": pipeline_serial,
             "pipeline_previews": pipeline_worker.latest_previews(pipeline_revision) if pipeline_worker is not None else {},
             "pipeline_preview_timings": pipeline_worker.latest_preview_timings(pipeline_revision) if pipeline_worker is not None else {},
@@ -2384,6 +2386,8 @@ def main(argv: list[str] | None = None) -> int:
                 status = distance_calibration.message
             elif time.monotonic() < status_until:
                 status = status_message
+            elif MODEL_DOWNLOADS.status():
+                status = MODEL_DOWNLOADS.status()
             else:
                 status = "Ready"
             capture_panel.update(capture_state())
