@@ -147,24 +147,6 @@ def test_macos_grayscale_preview_is_not_decoded_as_yuy2_stripes():
     assert np.unique(image[30, 20:220], axis=0).shape[0] == 1
 
 
-def test_macos_corridor_ordering_does_not_reach_pipeline_as_stripes():
-    frame, preview = frame_with_preview(preview_scale=1)
-    words = np.frombuffer(frame, dtype="<u2").copy()
-    yy, xx = np.indices((192, 256))
-    raw = (18_000 + yy * 7 + xx * 3).astype("<u2")
-    words[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS] = raw.ravel()
-    baseline, _ = PipelineProcessor().process(
-        words.tobytes(), None, default_pipeline(), scale=1
-    )
-    words[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS] = np.rot90(raw, -1).ravel()
-    words[HEADER_U16 + SENSOR_PIXELS :] = np.rot90(preview, -1).ravel()
-    image, source = PipelineProcessor().process(
-        words.tobytes(), None, default_pipeline(), scale=1
-    )
-    assert source == "preview"
-    assert np.array_equal(image, baseline)
-
-
 def test_filters_interpolation_aa_are_real_cumulative_operations():
     document = raw_pipeline(
         node("software", "interpolation", method="nearest", scale=2),

@@ -69,20 +69,6 @@ def test_decode_and_temperature_conversion():
     assert temperatures[100, 100] == pytest.approx(23.0)
 
 
-def test_decode_recovers_camera_corridor_pixel_ordering():
-    yy, xx = np.indices((SENSOR_HEIGHT, SENSOR_WIDTH))
-    expected_raw = (18_000 + yy * 7 + xx * 3).astype("<u2")
-    expected_preview = ((yy + xx) % 256).astype(np.uint8)
-    values = np.frombuffer(make_frame(), dtype="<u2").copy()
-    values[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS] = np.rot90(
-        expected_raw, -1
-    ).ravel()
-    values[HEADER_U16 + SENSOR_PIXELS :] = np.rot90(expected_preview, -1).ravel()
-    _, raw, preview = decode_duo_frame(values.tobytes())
-    assert np.array_equal(raw, expected_raw)
-    assert np.array_equal(preview, expected_preview)
-
-
 def test_decode_rejects_wrong_magic():
     with pytest.raises(ValueError, match="invalid Duo frame magic"):
         decode_duo_frame(bytes(FRAME_BYTES))

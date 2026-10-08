@@ -168,32 +168,6 @@ def has_yuy2_preview(frame: bytes) -> bool:
     return len(frame) == YUY2_FRAME_BYTES
 
 
-def _spatial_roughness(plane: np.ndarray) -> float:
-    """Measure adjacent-pixel discontinuity without letting bad pixels dominate."""
-    values = plane.astype(np.int32, copy=False)
-    horizontal = np.minimum(np.abs(np.diff(values, axis=1)), 4096)
-    vertical = np.minimum(np.abs(np.diff(values, axis=0)), 4096)
-    return float(horizontal.mean() + vertical.mean())
-
-
-def _corridor_ordered(values: np.ndarray) -> bool:
-    """Recognize the camera's portrait storage with unchanged UVC dimensions."""
-    landscape = values.reshape(SENSOR_HEIGHT, SENSOR_WIDTH)
-    portrait = values.reshape(SENSOR_WIDTH, SENSOR_HEIGHT)
-    landscape_roughness = _spatial_roughness(landscape)
-    portrait_roughness = _spatial_roughness(portrait)
-    return landscape_roughness > max(1.0, portrait_roughness * 2.5)
-
-
-def _reshape_sensor_plane(values: np.ndarray, corridor: bool) -> np.ndarray:
-    if not corridor:
-        return values.reshape(SENSOR_HEIGHT, SENSOR_WIDTH).copy()
-    # Corridor mode stores a clockwise portrait image but leaves the advertised
-    # dimensions at 256x192. Restore the ordinary sensor orientation.
-    portrait = values.reshape(SENSOR_WIDTH, SENSOR_HEIGHT)
-    return np.rot90(portrait, 1).copy()
-
-
 def decode_duo_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return the telemetry, raw temperature, and preview planes."""
     if len(frame) < FRAME_BYTES:
@@ -203,21 +177,21 @@ def decode_duo_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if magic != FRAME_MAGIC:
         raise ValueError(f"invalid Duo frame magic: 0x{magic:08x}")
     telemetry = values[:HEADER_U16].copy()
-    temperature_values = values[TEMPERATURE_OFFSET : TEMPERATURE_OFFSET + SENSOR_PIXELS]
-    corridor = _corridor_ordered(temperature_values)
-    temperatures = _reshape_sensor_plane(temperature_values, corridor)
+    temperatures = (
+        values[TEMPERATURE_OFFSET : TEMPERATURE_OFFSET + SENSOR_PIXELS]
+        .reshape(SENSOR_HEIGHT, SENSOR_WIDTH)
+        .copy()
+    )
     # Linux also exposes a complete 512x384 YUY2 grayscale preview. Each
     # little-endian word contains luminance in its low byte and chroma above.
     preview_pixels = YUY2_PREVIEW_PIXELS if has_yuy2_preview(frame) else SENSOR_PIXELS
     preview_scale = 2 if preview_pixels == YUY2_PREVIEW_PIXELS else 1
     preview_words = np.frombuffer(frame, dtype="<u2", count=preview_pixels, offset=IMAGE_OFFSET * 2)
-    preview_values = (preview_words & 0xFF).astype(np.uint8)
-    if corridor and preview_scale == 1:
-        preview = _reshape_sensor_plane(preview_values, True)
-    else:
-        preview = preview_values.reshape(
-            SENSOR_HEIGHT * preview_scale, SENSOR_WIDTH * preview_scale
-        )
+    preview = (
+        (preview_words & 0xFF)
+        .astype(np.uint8)
+        .reshape(SENSOR_HEIGHT * preview_scale, SENSOR_WIDTH * preview_scale)
+    )
     return telemetry, temperatures, preview
 
 
