@@ -37,7 +37,7 @@ sensor pixels through mirror changes and rotation.
 | | Edge features: selected connected edges, overlays and masks |
 | | Contour regions: selected shapes, outlines, fills and masks |
 
-Auto calibrate, camera measurement overlay, measurement units, ambient
+Auto calibrate, measurement units, ambient
 and reflected temperatures, optical transmission, distance, emissivity, and the calibration tools
 remain separate. Optical transmission is directly below Reflected temperature.
 An active transmission node in older saved preferences migrates to this control;

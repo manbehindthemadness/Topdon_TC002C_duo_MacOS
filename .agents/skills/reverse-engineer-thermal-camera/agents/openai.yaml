@@ -1,0 +1,3 @@
+interface:
+  display_name: "Thermal Camera Reverse Engineering"
+  short_description: "Discover camera protocols and integrate verified controls"

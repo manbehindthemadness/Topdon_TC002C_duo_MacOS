@@ -86,9 +86,6 @@ HARDWARE_CONTROLS = {
     ),
     "transmission": HardwareControl("Optical transmission", 3, 1, 40, 1, 100, fmt="I", unit="%"),
     "humidity": HardwareControl("Relative humidity", 3, 1, 69, 0, 100, 0.1, 10, fmt="I", unit="%"),
-    "center_overlay": HardwareControl(
-        "Camera center overlay", 3, 1, 44, 0, 1, options=((0, "Off"), (1, "On"))
-    ),
     "brightness": HardwareControl("Brightness", 2, 1, 1, 0, 100),
     "contrast": HardwareControl("Contrast", 2, 2, 1, 0, 100),
     "noise_mode": HardwareControl(
@@ -614,11 +611,7 @@ class HardwareControls:
 
     @property
     def measurement_active(self) -> bool:
-        return any(
-            HARDWARE_CONTROLS[name].selector == 3
-            for name in self.enabled
-            if name != "center_overlay"
-        )
+        return any(HARDWARE_CONTROLS[name].selector == 3 for name in self.enabled)
 
     @property
     def preview_active(self) -> bool:

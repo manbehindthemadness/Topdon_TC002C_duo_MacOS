@@ -576,7 +576,7 @@ class ViewWindow(QWidget):
         self.rows["temperature_unit"] = units
         self.controls = {"temperature_unit": units.input}
         rows.addWidget(units)
-        for name in ("center_overlay", "ambient", "distance", "emissivity", "reflected", "transmission"):
+        for name in ("ambient", "distance", "emissivity", "reflected", "transmission"):
             spec = HARDWARE_CONTROLS[name]
             row = ControlRow(spec.title, lambda value, name=name: self._send({"action": "hardware", "name": name, "value": value, "enabled": True}), minimum=spec.minimum, maximum=spec.maximum, step=spec.step, options=spec.options, unit=spec.unit, preserve_input=name == "ambient")
             self.hardware_rows[name] = row
@@ -678,8 +678,6 @@ class ViewWindow(QWidget):
             row.set_display_unit(unit)
             setting = state.get("hardware", {}).get(name, {})
             available = setting.get("available", False) and not locked
-            if name == "center_overlay":
-                available &= state.get("actual_image_source", "preview") == "preview"
             row.update_state(setting.get("value", HARDWARE_CONTROLS[name].minimum), available)
         for tool, key in ((self.distance_calibration, "distance_calibration"), (self.emissivity_calibration, "emissivity_calibration"), (self.reflected_calibration, "reflected_calibration")):
             tool.update_state(state.get(key, {}), unit, locked)

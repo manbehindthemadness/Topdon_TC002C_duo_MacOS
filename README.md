@@ -321,7 +321,7 @@ optional hardware nodes are singletons. Software processing nodes run top to bot
 and can be repeated. Headers expand/collapse, grips drag, and right-click menus
 add, insert, remove, or clear nodes. All inputs ignore wheel edits.
 
-Auto calibrate, overlay, units, ambient/reflected temperature, optical transmission,
+Auto calibrate, units, ambient/reflected temperature, optical transmission,
 distance, emissivity and calibration tools remain separate. Optical transmission
 appears directly below Reflected temperature. Fixed detail mode is a checkbox
 inside Detail enhancement. It requires enabled detail enhancement, Balanced,
@@ -707,3 +707,18 @@ This project began as a macOS adaptation of
 PyThermalCamera and P2Pro-Viewer. The direct UVC handling builds on published
 TC001N/`2bdf:0102` descriptor and streaming analysis by Samuel Loury. The
 original BSD 2-Clause license is retained.
+
+## Researching another thermal camera
+
+The repository includes the Codex skill
+[reverse-engineer-thermal-camera](.agents/skills/reverse-engineer-thermal-camera/SKILL.md)
+for discovering another camera's capture format, radiometry, telemetry and safe
+controls, then integrating verified capabilities into this viewer. It includes
+our Duo case study, failed leads, restoration constraints, program integration
+map, experiment/handoff guidance and an offline evidence-manifest helper.
+
+Invoke `$reverse-engineer-thermal-camera` in a future Codex session working in
+this repository. The folder uses the repository-local `.agents/skills` layout
+supported by [Codex skill discovery](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
+The skill does not perform camera probes when loaded; live experiments require
+the actual target's protocol evidence and the session's authorized scope.
