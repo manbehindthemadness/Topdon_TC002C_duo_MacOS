@@ -1,5 +1,7 @@
 """Camera and display controls in a separate Qt process."""
 
+import sys
+
 from PySide6.QtCore import QPoint, QSettings, QSignalBlocker, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
@@ -618,9 +620,13 @@ class ViewWindow(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         # Recompute after the window manager supplies title-bar/frame dimensions.
-        QTimer.singleShot(0, self._position_top_right)
+        if sys.platform != "darwin":
+            QTimer.singleShot(0, self._position_top_right)
 
     def _position_top_right(self):
+        # Keep macOS's native placement; delayed Qt moves cause a visible jump.
+        if sys.platform == "darwin":
+            return
         point = self._anchor_top_right
         screen = QApplication.screenAt(point) if point is not None else self.screen()
         screen = screen or QApplication.primaryScreen()
@@ -658,7 +664,12 @@ class ViewWindow(QWidget):
 
     def update_state(self, state):
         anchor = state.get("anchor_top_right")
-        if isinstance(anchor, list) and len(anchor) == 2 and all(type(value) is int for value in anchor):
+        if (
+            sys.platform != "darwin"
+            and isinstance(anchor, list)
+            and len(anchor) == 2
+            and all(type(value) is int for value in anchor)
+        ):
             self._anchor_top_right = QPoint(*anchor)
             QTimer.singleShot(0, self._position_top_right)
         tone_busy = bool(state.get("tone_busy", False))

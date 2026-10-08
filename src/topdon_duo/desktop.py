@@ -1590,7 +1590,7 @@ def main(argv: list[str] | None = None) -> int:
             state = view_state()
             try:
                 x, y, width, height = cv2.getWindowImageRect(WINDOW_NAME)
-                if width > 0 and height > 0:
+                if sys.platform != "darwin" and width > 0 and height > 0:
                     state["anchor_top_right"] = [x + width - 1, y]
             except cv2.error:
                 pass
