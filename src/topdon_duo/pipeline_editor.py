@@ -509,6 +509,12 @@ class PipelineEditor(QWidget):
     def change(self, item, key, value):
         if self.locked:
             return
+        if item["type"] == "enhance" and key == "model" and value != item["params"][key]:
+            item["params"]["passes"] = 1 if value == "acnet" else 3
+            row = self.widgets.get(item["id"], (None, {}))[1].get("passes")
+            if row is not None:
+                row.timer.stop()
+                row.update_state(item["params"]["passes"], True)
         item["params"][key] = value
         if (
             item["type"] == "filter"

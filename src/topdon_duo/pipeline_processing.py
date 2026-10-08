@@ -443,6 +443,14 @@ class PipelineProcessor:
                 upsampler = self.models.setdefault((item["id"], model), VisionUpsampler())
                 # Anime passes refine one 2× output; ACNet passes repeatedly upscale.
                 repetitions = 1 if model == "anime4k09" else int(p["passes"])
+                factor = 2 ** repetitions
+                width, height = image.shape[1] * factor, image.shape[0] * factor
+                if width * height > MAX_PIXELS:
+                    raise ValueError(
+                        f"{p['model']} {int(p['passes'])} passes would produce "
+                        f"{width}x{height} ({width * height / 1_000_000:.1f} megapixels). "
+                        "Limit is 4 megapixels; reduce passes or select Native sensor input."
+                    )
                 for _ in range(repetitions):
                     check_size(image.shape[1] * 2, image.shape[0] * 2)
                     image = upsampler.apply(

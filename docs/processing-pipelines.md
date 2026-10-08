@@ -23,6 +23,12 @@ Software nodes run from top to bottom. Rotation still runs last, using the main
 window's existing Rotate button. Spots continue to measure the same physical
 sensor pixels through mirror changes and rotation.
 
+Selecting ACNet starts with one pass (2× output). Each extra ACNet pass doubles
+both dimensions again; Anime4K09's three default passes refine one 2× output.
+For a 512×384 input, three ACNet passes exceed the 4-megapixel processing limit.
+Use one or two passes, or choose Native sensor input for three passes. Saved
+pipelines retain their explicitly configured pass counts.
+
 ## Available nodes
 
 | Camera hardware (one each) | Software (repeatable) |

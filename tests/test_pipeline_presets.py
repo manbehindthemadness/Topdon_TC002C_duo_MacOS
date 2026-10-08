@@ -15,6 +15,13 @@ messages = []
 window = ViewWindow(messages.append)
 editor = window.pipeline_editor
 assert editor.presets == {} and editor.preset_combo.count() == 2
+editor.insert("software", "enhance", 1)
+enhance = editor.document["software"][1]
+assert enhance["params"]["passes"] == 3
+editor.change(enhance, "model", "acnet")
+assert enhance["params"]["passes"] == 1
+assert editor.widgets[enhance["id"]][1]["passes"].input.value() == 1
+editor.remove("software", 1)
 editor.document["software"].insert(1, node("software", "gamma", amount=1.7))
 editor.document["branches"]["B"].append(node("software", "brightness", amount=12))
 QInputDialog.getText = lambda *_: ("My test preset", True)

@@ -505,6 +505,10 @@ CATALOG = {"hardware": HARDWARE_NODES, "software": SOFTWARE_NODES}
 
 def node(stack, kind, **params):
     definitions = CATALOG[stack][kind][1]
+    if stack == "software" and kind == "enhance" and params.get("model") == "acnet":
+        # Each ACNet pass doubles both dimensions; Anime4K passes instead
+        # refine a single 2x image. Keep explicit saved pass counts intact.
+        params.setdefault("passes", 1)
     if stack == "software" and kind == "filter" and "amount" in params:
         if params.get("filter") == "gaussian" and "sigma" not in params:
             params["sigma"] = max(0.1, params["amount"])

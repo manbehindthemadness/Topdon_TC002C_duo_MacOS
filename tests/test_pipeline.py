@@ -230,6 +230,35 @@ def test_cap_precedes_expensive_allocation():
         process(document)
 
 
+@pytest.mark.parametrize("denoise", range(4))
+def test_acnet_default_runs_on_full_camera_preview(denoise):
+    frame, _ = frame_with_preview(preview_scale=2)
+    document = default_pipeline()
+    document["software"].insert(-1, node("software", "enhance", model="acnet", denoise=denoise))
+    processor = PipelineProcessor()
+    try:
+        image, source = processor.process(frame, None, document, scale=2)
+        assert image.shape == (384, 512, 3)
+        assert source == "preview"
+    finally:
+        processor.close()
+
+
+def test_acnet_explicit_pass_limit_reports_dimensions_before_inference(monkeypatch):
+    frame, _ = frame_with_preview(preview_scale=2)
+    document = default_pipeline()
+    document["software"].insert(-1, node("software", "enhance", model="acnet", passes=3))
+    calls = Mock()
+    monkeypatch.setattr("topdon_duo.pipeline_processing.VisionUpsampler.apply", calls)
+    processor = PipelineProcessor()
+    try:
+        with pytest.raises(ValueError, match="4096x3072.*12.6 megapixels"):
+            processor.process(frame, None, document)
+        calls.assert_not_called()
+    finally:
+        processor.close()
+
+
 def fake_hardware():
     hw = Mock(
         original={"baseline": True},
