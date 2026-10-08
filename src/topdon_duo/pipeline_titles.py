@@ -65,6 +65,16 @@ def node_title(stack, item, temperature_unit="C"):
         suffix = f"{option('method')} · {option('scale')}"
     elif kind == "coreml_acnet":
         suffix = f"{option('compute')} · 2× · {option('denoise')} denoise"
+    elif kind == "onnx_superresolution":
+        suffix = f"{option('model')} · {option('input')}"
+        if p["backend"] == "coreml":
+            suffix += " · Apple preferred (CPU fallback)"
+    elif kind == "onnx_denoise":
+        suffix = option("model")
+        if p["model"] == "ffdnet-gray":
+            suffix += f" · sigma {p['noise']:g}"
+        if p["backend"] == "coreml":
+            suffix += " · Apple preferred (CPU fallback)"
     elif kind == "enhance":
         suffix = option("model")
         if p["model"] != "off":

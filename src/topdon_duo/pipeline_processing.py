@@ -17,6 +17,8 @@ from .coreml_upsampling import CoreMLUpsampler
 from .enhancement_limits import MAX_PIXELS, acnet_pass_limit
 from .feature_processing import apply_features
 from .image_filters import apply_filter
+from .onnx_models import MODELS as ONNX_MODELS
+from .onnx_upsampling import ONNXUpsampler
 from .pipeline import (
     active_nodes,
     execution_dependencies,
@@ -170,6 +172,7 @@ class PipelineProcessor:
         )
         self.models = {}
         self.coreml_models = {}
+        self.onnx_models = {}
         self.executors = {}
         self.branches = {}
         self.last_previews = {}
@@ -181,6 +184,8 @@ class PipelineProcessor:
     def close(self):
         for engine in self.coreml_models.values():
             engine.close()
+        for engine in self.onnx_models.values():
+            engine.close()
         for branch in self.branches.values():
             branch.close()
         for executor in self.executors.values():
@@ -189,6 +194,7 @@ class PipelineProcessor:
         self.branches.clear()
         self.models = {}
         self.coreml_models = {}
+        self.onnx_models = {}
         self.last_previews = {}
         self.last_preview_timings = {}
 
@@ -276,6 +282,7 @@ class PipelineProcessor:
         }
         self.models = self.branches["A"].models
         self.coreml_models = self.branches["A"].coreml_models
+        self.onnx_models = self.branches["A"].onnx_models
         image, source = outputs["A"]
         if rotation:
             image = np.rot90(image, -(rotation // 90)).copy()
@@ -446,6 +453,18 @@ class PipelineProcessor:
                     (image.shape[1] * p["scale"], image.shape[0] * p["scale"]),
                     INTERPOLATIONS[p["method"]],
                 )
+            elif kind in ("onnx_superresolution", "onnx_denoise") and p["amount"]:
+                if kind == "onnx_superresolution" and p["input"] != "current":
+                    image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
+                factor = ONNX_MODELS[p["model"]]["factor"]
+                check_size(image.shape[1] * factor, image.shape[0] * factor)
+                backend = "coreml" if p["backend"] == "coreml" and self.apple_available else "cpu"
+                key = item["id"], p["model"], backend, p["apple_compute"]
+                upsampler = self.onnx_models.setdefault(key, ONNXUpsampler())
+                image = upsampler.apply(
+                    bytes_image(image), p["model"], backend, p["apple_compute"], p["amount"],
+                    **({"noise": p["noise"]} if kind == "onnx_denoise" else {}),
+                ).astype(np.float32)
             elif kind == "coreml_acnet" and p["amount"]:
                 if p["input"] != "current":
                     image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
@@ -500,6 +519,17 @@ class PipelineProcessor:
                     if upsampler.error:
                         raise ValueError(upsampler.error)
                 image = image.astype(np.float32)
+        onnx_live = {
+            (item["id"], item["params"]["model"],
+             "coreml" if item["params"]["backend"] == "coreml" and self.apple_available else "cpu",
+             item["params"]["apple_compute"])
+            for item in software
+            if item["type"] in ("onnx_superresolution", "onnx_denoise") and not item["bypass"] and item["params"]["amount"]
+        }
+        for key, engine in self.onnx_models.items():
+            if key not in onnx_live:
+                engine.close()
+        self.onnx_models = {key: value for key, value in self.onnx_models.items() if key in onnx_live}
         live = {
             (
                 item["id"],

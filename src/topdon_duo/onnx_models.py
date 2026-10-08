@@ -1,0 +1,213 @@
+"""Opt-in, checksum-verified visual models; no network access during capture."""
+
+import argparse
+import hashlib
+import os
+import re
+import ssl
+import sys
+import tempfile
+import urllib.request
+from pathlib import Path
+
+MODELS = {
+    "realesr-general-x4v3": {
+        "factor": 4,
+        "rgb": True,
+        "url": "https://huggingface.co/skillsafe-ai/realesr-general-x4v3/resolve/main/model.onnx",
+        "sha256": "a946f7a9397021b9b6b7e71df3d2821b04cc09ff244423b7ca79cb191ce4a00e",
+        "static_coreml": True,
+        "input_name": "input",
+    },
+    "dncnn-25": {
+        "factor": 1,
+        "rgb": False,
+        "sha256": None,
+        "local_export": True,
+        "static_coreml": True,
+    },
+    "ffdnet-gray": {
+        "factor": 1,
+        "rgb": False,
+        "sha256": None,
+        "local_export": True,
+        "static_coreml": True,
+    },
+    "espcn": {
+        "factor": 3,
+        "rgb": False,
+        "url": "https://huggingface.co/onnxmodelzoo/super-resolution-10/resolve/main/super-resolution-10.onnx",
+        "sha256": "85f36ff88cc504a24af5e0602148bc56a8aa09a58eca8c0da2756f3e8186035e",
+    },
+    "mewzoom": {
+        "factor": 4,
+        "rgb": True,
+        "url": "https://huggingface.co/andrewdalpino/MewZoom-V0-4X/resolve/main/model.onnx",
+        "sha256": "bb8a67cf943a430ecd6600cc68258491dfea38122361b312e3fe47c259d6e465",
+    },
+    "mewzoom-v0-2x": {
+        "factor": 2,
+        "rgb": True,
+        "url": "https://huggingface.co/andrewdalpino/MewZoom-V0-2X/resolve/main/model.onnx",
+        "sha256": "a297702366f69fa919deeea14b47396c4091fd9e780080675ecfa3144aeadeba",
+    },
+    "mewzoom-v1-2x": {
+        "factor": 2,
+        "rgb": True,
+        "url": "https://huggingface.co/andrewdalpino/MewZoom-V1-2X/resolve/main/model.onnx",
+        # Fetch the publisher's SHA256 LFS pointer over verified HTTPS at install.
+        "sha256": None,
+    },
+    "mewzoom-v1-4x": {
+        "factor": 4,
+        "rgb": True,
+        "url": "https://huggingface.co/andrewdalpino/MewZoom-V1-4X/resolve/main/model.onnx",
+        "sha256": None,
+        "max_bytes": 120_000_000,
+    },
+}
+
+
+def model_path(model):
+    override = os.environ.get("TOPDON_MODEL_DIR")
+    if override:
+        base = Path(override)
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Caches" / "topdon-duo" / "models"
+    else:
+        base = (
+            Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "topdon-duo" / "models"
+        )
+    checksum = MODELS[model]["sha256"]
+    filename = f"{model}-{checksum[:12]}.onnx" if checksum else f"{model}.onnx"
+    return base / filename
+
+
+def installed_checksum(model):
+    checksum = MODELS[model]["sha256"]
+    if checksum is None:
+        checksum = model_path(model).with_suffix(".sha256").read_text().strip()
+    if not re.fullmatch(r"[0-9a-f]{64}", checksum):
+        raise ValueError("Invalid model checksum metadata; reinstall " + model)
+    return checksum
+
+
+def verified_model(model):
+    path = model_path(model)
+    try:
+        data = path.read_bytes()
+        checksum = installed_checksum(model)
+    except OSError as exc:
+        raise ValueError("Model not installed; run " + install_command(model)) from exc
+    if hashlib.sha256(data).hexdigest() != checksum:
+        raise ValueError("Model checksum mismatch; reinstall with " + install_command(model))
+    return data
+
+
+def install_command(model):
+    if MODELS[model].get("local_export"):
+        return "uv run scripts/export_visual_denoisers.py " + model
+    return "uv run topdon-duo-models " + model
+
+
+def download_ssl_context():
+    """Supplement framework Python's missing roots with macOS's system bundle.
+
+    Retain secure SSL defaults and explicit SSL_CERT_FILE/SSL_CERT_DIR overrides.
+    Do not change global SSL configuration or Linux's normal trust configuration.
+    """
+    context = ssl.create_default_context()
+    system_bundle = Path("/etc/ssl/cert.pem")
+    if (
+        sys.platform == "darwin"
+        and not os.environ.get("SSL_CERT_FILE")
+        and not os.environ.get("SSL_CERT_DIR")
+        and system_bundle.is_file()
+    ):
+        context.load_verify_locations(cafile=str(system_bundle))
+    return context
+
+
+def download_model(model):
+    path = model_path(model)
+    if path.exists():
+        try:
+            verified_model(model)
+        except ValueError:
+            pass  # Replace a corrupt cache only after the new download verifies.
+        else:
+            return path
+    if MODELS[model].get("local_export"):
+        raise ValueError("This model needs a one-time export; run " + install_command(model))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    checksum_temporary = None
+    try:
+        context = download_ssl_context()
+        checksum = MODELS[model]["sha256"]
+        maximum = MODELS[model].get("max_bytes", 70_000_000)
+        if checksum is None:
+            pointer_url = MODELS[model]["url"].replace("/resolve/", "/raw/")
+            with urllib.request.urlopen(pointer_url, timeout=30, context=context) as source:
+                pointer = source.read(1025).decode("ascii")
+            match = re.fullmatch(
+                r"version https://git-lfs.github.com/spec/v1\noid sha256:([0-9a-f]{64})\nsize ([0-9]+)\n?",
+                pointer,
+            )
+            if not match:
+                raise ValueError(
+                    "Invalid publisher model pointer; not downloading unverified weights"
+                )
+            checksum, advertised = match.group(1), int(match.group(2))
+            if advertised > maximum:
+                raise ValueError(
+                    f"Publisher model exceeds the {maximum // 1_000_000} MB safety limit"
+                )
+        digest = hashlib.sha256()
+        with (
+            urllib.request.urlopen(MODELS[model]["url"], timeout=30, context=context) as source,
+            tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as target,
+        ):
+            temporary = Path(target.name)
+            total = 0
+            while chunk := source.read(1024 * 1024):
+                total += len(chunk)
+                if total > maximum:
+                    raise ValueError(
+                        f"Model download exceeds the {maximum // 1_000_000} MB safety limit"
+                    )
+                digest.update(chunk)
+                target.write(chunk)
+        if digest.hexdigest() != checksum:
+            raise ValueError("Model download checksum mismatch; not installed")
+        if MODELS[model]["sha256"] is None:
+            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False, mode="w") as target:
+                checksum_temporary = Path(target.name)
+                target.write(checksum + "\n")
+        temporary.replace(path)
+        if checksum_temporary is not None:
+            checksum_temporary.replace(path.with_suffix(".sha256"))
+        return path
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        if checksum_temporary is not None:
+            checksum_temporary.unlink(missing_ok=True)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Install optional visual-only ONNX models")
+    parser.add_argument("models", nargs="+", choices=tuple(MODELS))
+    args = parser.parse_args(argv)
+    try:
+        for model in args.models:
+            print(f"Installing/verifying {model}...", flush=True)
+            print(f"{model}: {download_model(model)}")
+    except (OSError, ValueError) as exc:
+        print(f"Model installation failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -655,6 +655,10 @@ class PipelineEditor(QWidget):
                         unit=spec.unit,
                     )
                     row.update_state(item["params"][key])
+                    if item["type"] in ("onnx_superresolution", "onnx_denoise") and key in ("backend", "apple_compute"):
+                        row.setVisible(bool(
+                            getattr(self, "last_state", {}).get("apple_acceleration", {}).get("available")
+                        ))
                     if item["type"] == "enhance" and key in ("backend", "apple_compute"):
                         row.setVisible(bool(
                             getattr(self, "last_state", {}).get("apple_acceleration", {}).get("available")
@@ -835,7 +839,8 @@ class PipelineEditor(QWidget):
                     else "Bypassed"
                     if item["bypass"]
                     else "CPU execution · saved Apple settings retained"
-                    if item["type"] == "enhance" and item["params"]["model"] == "acnet"
+                    if (item["type"] in ("onnx_superresolution", "onnx_denoise") or
+                        item["type"] == "enhance" and item["params"]["model"] == "acnet")
                     and item["params"]["backend"] == "coreml"
                     and not state.get("apple_acceleration", {}).get("available", False)
                     else state.get("apple_acceleration", {}).get("reason", "")
@@ -869,6 +874,15 @@ class PipelineEditor(QWidget):
                                 row.input.model().item(index).setEnabled(
                                     row.input.itemData(index) in allowed
                                 )
+                    if item["type"] in ("onnx_superresolution", "onnx_denoise") and key in ("backend", "apple_compute"):
+                        detected = bool(state.get("apple_acceleration", {}).get("available"))
+                        row.setVisible(detected)
+                        available &= detected
+                        row.setToolTip("Visual-only ONNX inference; saved Apple preferences use CPU on systems without Apple acceleration.")
+                    if item["type"] == "onnx_denoise" and key == "noise":
+                        relevant = item["params"]["model"] == "ffdnet-gray"
+                        row.setVisible(relevant)
+                        available &= relevant
                     if item["type"] == "enhance" and key in ("backend", "apple_compute"):
                         detected = bool(state.get("apple_acceleration", {}).get("available"))
                         supported = item["params"]["model"] == "acnet"

@@ -502,6 +502,43 @@ SOFTWARE_NODES = {
             "amount": Parameter("Enhancement amount", 1.0, 0, 1, 0.01),
         },
     ),
+    "onnx_superresolution": (
+        "ONNX super-resolution (experimental)",
+        {
+            "model": choice("Model", "espcn", (
+                ("espcn", "ESPCN 3×"), ("mewzoom", "MewZoom V0 4× (legacy)"),
+                ("mewzoom-v0-2x", "MewZoom V0 2× (legacy)"),
+                ("mewzoom-v1-2x", "MewZoom V1 2× (TrunkNet)"),
+                ("mewzoom-v1-4x", "MewZoom V1 4× (TrunkNet)"),
+                ("realesr-general-x4v3", "Real-ESRGAN general 4× v3"),
+            )),
+            "input": choice("Input size", "native", (
+                ("current", "Current image"), ("native", "Native sensor"), ("preview", "Full preview"),
+            )),
+            "amount": Parameter("Enhancement amount", 1.0, 0, 1, 0.01),
+            "backend": choice("Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))),
+            "apple_compute": choice("Apple compute devices", "CPUAndGPU", (
+                ("CPUAndGPU", "CPU + GPU"), ("ALL", "CPU + GPU + Neural Engine"),
+                ("CPUAndNeuralEngine", "CPU + Neural Engine"),
+            )),
+        },
+    ),
+    "onnx_denoise": (
+        "ONNX denoising (experimental)",
+        {
+            "model": choice("Model", "ffdnet-gray", (
+                ("ffdnet-gray", "FFDNet luminance (adjustable noise)"),
+                ("dncnn-25", "DnCNN luminance (fixed noise 25)"),
+            )),
+            "noise": Parameter("FFDNet noise sigma (not temperature)", 15, 0, 75, 1),
+            "amount": Parameter("Denoising blend", 1.0, 0, 1, 0.01),
+            "backend": choice("Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))),
+            "apple_compute": choice("Apple compute devices", "CPUAndGPU", (
+                ("CPUAndGPU", "CPU + GPU"), ("ALL", "CPU + GPU + Neural Engine"),
+                ("CPUAndNeuralEngine", "CPU + Neural Engine"),
+            )),
+        },
+    ),
     "enhance": (
         "AI enhancement",
         {

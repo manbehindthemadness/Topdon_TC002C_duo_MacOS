@@ -4,7 +4,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from topdon_duo.coreml_model import _fields, explicit_coreml_padding
+from topdon_duo.coreml_model import _bytes_field, _fields, explicit_coreml_padding
+
+
+@pytest.mark.parametrize("mode", [b"SAME_UPPER", b"SAME_LOWER", b"VALID"])
+def test_automatic_padding_is_not_overridden(mode):
+    attr = _bytes_field(1, b"auto_pad") + _bytes_field(4, mode)
+    conv = _bytes_field(4, b"Conv") + _bytes_field(5, attr)
+    model = _bytes_field(7, _bytes_field(1, conv))
+    assert explicit_coreml_padding(model) == model
 
 
 @pytest.mark.parametrize("level", range(4))

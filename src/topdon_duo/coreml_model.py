@@ -69,7 +69,7 @@ def _rewrite(data, field, transform):
 
 
 def explicit_coreml_padding(model):
-    """Return a semantically identical bundled ACNet with explicit convolution padding."""
+    """Make default 2D convolution padding explicit without overriding auto_pad."""
 
     def patch_node(node):
         fields = list(_fields(node))
@@ -78,6 +78,12 @@ def explicit_coreml_padding(model):
         ):
             return node
         for number, attr, _ in fields:
+            if number == 5 and attr is not None:
+                attributes = list(_fields(attr))
+                if any(n == 1 and name == b"auto_pad" for n, name, _ in attributes) and any(
+                    n == 4 and value not in (b"NOTSET", b"") for n, value, _ in attributes
+                ):
+                    return node
             if (
                 number == 5
                 and attr is not None
@@ -90,3 +96,33 @@ def explicit_coreml_padding(model):
 
     # ModelProto.graph=7; GraphProto.node=1; NodeProto.attribute=5.
     return _rewrite(model, 7, lambda graph: _rewrite(graph, 1, patch_node))
+
+
+def coreml_input_shape_overrides(model, shape, input_name="x"):
+    """Specialize V1's symbolic NCHW dimensions without changing its weights.
+
+    Core ML's MLProgram layout conversion fails with the V1 dynamic-shape export.
+    ORT's free-dimension overrides let shape inference resolve the Apple graph.
+    """
+    graph = next(payload for n, payload, _ in _fields(model) if n == 7)
+    for number, info, _ in _fields(graph):
+        if number != 11 or not any(
+            n == 1 and payload == input_name.encode() for n, payload, _ in _fields(info)
+        ):
+            continue
+        value_type = next(p for n, p, _ in _fields(info) if n == 2)
+        tensor_type = next(p for n, p, _ in _fields(value_type) if n == 1)
+        tensor_shape = next(p for n, p, _ in _fields(tensor_type) if n == 2)
+        dimensions = [p for n, p, _ in _fields(tensor_shape) if n == 1]
+        if len(dimensions) != len(shape):
+            raise ValueError("Unexpected MewZoom V1 input rank")
+        overrides = {}
+        for dim, value in zip(dimensions, shape, strict=True):
+            symbol = next((p for n, p, _ in _fields(dim) if n == 2), None)
+            if symbol is not None:
+                name = symbol.decode()
+                if name in overrides and overrides[name] != value:
+                    raise ValueError("Conflicting MewZoom input dimensions")
+                overrides[name] = value
+        return overrides
+    raise ValueError("MewZoom V1 input metadata missing")

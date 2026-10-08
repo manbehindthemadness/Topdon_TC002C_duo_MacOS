@@ -1,5 +1,7 @@
 """Shared ACNet size budget for CPU/GPU execution and pipeline controls."""
 
+from .onnx_models import MODELS as ONNX_MODELS
+
 MAX_PIXELS = 4_000_000
 
 
@@ -47,6 +49,11 @@ def enhancement_pass_limits(document, *, clamp=False):
                 continue
             elif kind == "interpolation":
                 width, height = width * p["scale"], height * p["scale"]
+            elif kind == "onnx_superresolution" and p["amount"]:
+                if p["input"] != "current":
+                    width, height = (256, 192) if p["input"] == "native" else (512, 384)
+                factor = ONNX_MODELS[p["model"]]["factor"]
+                width, height = width * factor, height * factor
             elif kind == "coreml_acnet" and p["amount"]:
                 if p["input"] != "current":
                     width, height = (256, 192) if p["input"] == "native" else (512, 384)
