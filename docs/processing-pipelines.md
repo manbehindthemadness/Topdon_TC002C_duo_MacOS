@@ -10,6 +10,13 @@ to insert above/below or remove it. Image source stays first in every tab and
 cannot be removed or bypassed. A also has a fixed Output → viewer node at the
 bottom. Hardware controls can appear once; processing and Combine nodes repeat.
 
+The **Pipeline presets…** dropdown beside Import, Export, and Restore defaults
+starts empty. Choose **Save current pipeline…** to name and save your own preset;
+select its name to apply it later. Presets include the hardware stack and all
+four software tabs, persist across restarts, and can still be exported as JSON.
+Saving under an existing name asks before replacing it. Presets are locked
+during logging and calibration measurements, like the other pipeline controls.
+
 Hardware order only organizes the menu. Hardware commands run in an audited,
 fixed order, and bypass/removal restores the affected original camera fields.
 Software nodes run from top to bottom. Rotation still runs last, using the main

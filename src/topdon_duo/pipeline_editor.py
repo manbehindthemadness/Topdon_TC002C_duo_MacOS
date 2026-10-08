@@ -10,8 +10,10 @@ from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QImage, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -37,6 +39,7 @@ from .pipeline import (
     validate_pipeline,
 )
 from .pipeline_hardware import desired_hardware
+from .pipeline_presets import load_presets, save_presets
 from .pipeline_titles import node_title
 
 
@@ -332,8 +335,59 @@ class PipelineEditor(QWidget):
         self.defaults_button.clicked.connect(self.defaults)
         for button in (self.import_button, self.export_button, self.defaults_button):
             buttons.addWidget(button)
+        self.presets = load_presets()
+        self.preset_combo = QComboBox()
+        self.preset_combo.setAccessibleName("Pipeline presets")
+        self.preset_combo.setToolTip("Save your current pipeline or apply a named preset.")
+        self.refresh_presets()
+        self.preset_combo.activated.connect(self.select_preset)
+        buttons.addWidget(self.preset_combo)
         layout.addLayout(buttons)
         self.rebuild()
+
+    def refresh_presets(self):
+        self.preset_combo.clear()
+        self.preset_combo.addItem("Pipeline presets…", None)
+        self.preset_combo.addItem("Save current pipeline…", ("save", ""))
+        if self.presets:
+            self.preset_combo.insertSeparator(self.preset_combo.count())
+        for name in sorted(self.presets, key=str.casefold):
+            self.preset_combo.addItem(name, ("load", name))
+
+    def select_preset(self, index):
+        choice = self.preset_combo.itemData(index)
+        self.preset_combo.setCurrentIndex(0)
+        if self.locked or choice is None:
+            return
+        action, name = choice
+        if action == "load":
+            self.document = validate_pipeline(self.presets[name])
+            self.rebuild()
+            self.publish()
+            return
+        name, accepted = QInputDialog.getText(self, "Save pipeline preset", "Preset name:")
+        name = name.strip()
+        if not accepted or not name:
+            return
+        if name in self.presets and QMessageBox.question(
+            self, "Replace preset", f'Replace the saved preset "{name}"?'
+        ) != QMessageBox.Yes:
+            return
+        # Include spinbox edits that are still waiting on their debounce timer.
+        for _, controls, *_ in list(self.widgets.values()):
+            for row in controls.values():
+                if hasattr(row.input, "interpretText"):
+                    row.input.interpretText()
+                if row.timer.isActive():
+                    row._emit()
+        candidate = {**self.presets, name: validate_pipeline(self.document)}
+        try:
+            save_presets(candidate)
+        except (OSError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Could not save preset", str(exc))
+            return
+        self.presets = candidate
+        self.refresh_presets()
 
     def nodes(self, stack, document=None):
         document = self.document if document is None else document
@@ -814,6 +868,7 @@ class PipelineEditor(QWidget):
             listing.fit_contents()
         for button in (self.import_button, self.export_button, self.defaults_button):
             button.setEnabled(not locked)
+        self.preset_combo.setEnabled(not locked)
 
     def import_file(self):
         if self.locked:
