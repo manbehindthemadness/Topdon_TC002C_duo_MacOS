@@ -131,7 +131,13 @@ class FrameAssembler:
             self.rejected["partial"] += 1
             self._data.clear()
             return None
-        frame = bytes(self._data[: self.frame_size])
+        # The macOS path historically clipped every frame to FRAME_BYTES.
+        # Firmware can send the full 512x384 preview there too. Preserve that
+        # known layout even when the probe advertises the legacy smaller size.
+        size = self.frame_size
+        if size == FRAME_BYTES and len(self._data) >= YUY2_FRAME_BYTES:
+            size = YUY2_FRAME_BYTES
+        frame = bytes(self._data[:size])
         self._data.clear()
         return frame
 
@@ -159,12 +165,7 @@ class LinuxFrameAssembler(FrameAssembler):
 
 
 def has_yuy2_preview(frame: bytes) -> bool:
-    """Return whether *frame* contains the Ubuntu 512x384 YUY2 preview.
-
-    The shorter macOS layout has the same 256x192 radiometric data followed by
-    one 16-bit grayscale sample per pixel.  Treating those samples as pairs of
-    YUY2 bytes produces the distinctive one-pixel vertical stripe corruption.
-    """
+    """Return whether *frame* contains the complete 512x384 YUY2 preview."""
     return len(frame) == YUY2_FRAME_BYTES
 
 
@@ -417,9 +418,8 @@ class TC002CDuoCamera:
                 raise CameraError(f"invalid negotiated frame size: {self.mode.max_frame_size}")
             assembler = LinuxFrameAssembler(self.mode.max_frame_size)
         else:
-            # Preserve the proven macOS framing behavior. The device can append
-            # padding beyond the radiometric frame; queued requests prevent the
-            # host gaps that previously caused it to become desynchronized.
+            # Preserve tolerant macOS framing, including complete large
+            # previews when present. Queued requests prevent host gaps.
             assembler = FrameAssembler()
         assembler.rejected_frame_observer = self.rejected_frame_observer
         read_size = max(16_384, self.mode.max_payload_size)
@@ -430,6 +430,7 @@ class TC002CDuoCamera:
         packet_headers = {}
         longest_read = longest_gap = 0.0
         last_read_finished = None
+        last_frame_size = None
 
         def report():
             nonlocal next_report, longest_read, longest_gap
@@ -498,6 +499,14 @@ class TC002CDuoCamera:
                     totals["frames"] += int(frame is not None)
                     report()
                 if frame is not None:
+                    if len(frame) != last_frame_size:
+                        LOG.info(
+                            "Received %d-byte frame (probe advertised %d): %s",
+                            len(frame), self.mode.max_frame_size,
+                            "512x384 processed camera preview"
+                            if has_yuy2_preview(frame) else "short frame; radiometric fallback",
+                        )
+                        last_frame_size = len(frame)
                     yield frame
 
     def close(self) -> None:

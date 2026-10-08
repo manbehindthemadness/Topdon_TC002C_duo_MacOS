@@ -14,6 +14,7 @@ from topdon_duo.camera import (
     SENSOR_HEIGHT,
     SENSOR_PIXELS,
     SENSOR_WIDTH,
+    YUY2_FRAME_BYTES,
     CameraAccessError,
     CameraError,
     FrameAssembler,
@@ -175,9 +176,13 @@ def test_supported_platforms_default_to_queued_usb(monkeypatch, platform, expect
     assert TC002CDuoCamera().usb_queue_depth == expected
 
 
-def test_macos_queued_capture_preserves_tolerant_framing(monkeypatch):
+@pytest.mark.parametrize("full_preview", [False, True])
+def test_macos_queued_capture_preserves_tolerant_framing(monkeypatch, full_preview):
     monkeypatch.setattr(camera_module.sys, "platform", "darwin")
-    padded_frame = make_frame() + b"padding"
+    expected = make_frame()
+    if full_preview:
+        expected += bytes(YUY2_FRAME_BYTES - FRAME_BYTES)
+    padded_frame = expected + b"padding"
     packets = iter((b"\x02\x82" + padded_frame,))
 
     class Reader:
@@ -201,7 +206,7 @@ def test_macos_queued_capture_preserves_tolerant_framing(monkeypatch):
     camera._running.set()
     frames = camera.frames()
     try:
-        assert next(frames) == make_frame()
+        assert next(frames) == expected
     finally:
         frames.close()
     camera.device.read.assert_not_called()

@@ -5,12 +5,20 @@ from threading import Event
 from time import monotonic, sleep
 from unittest.mock import Mock
 
+import cv2
 import numpy as np
 import pytest
 from test_desktop_recording import viewer as viewer_fixture
 from test_render import frame_with_preview
 
-from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS, CameraError, decode_duo_frame
+from topdon_duo.camera import (
+    HEADER_U16,
+    IMAGE_OFFSET,
+    SENSOR_PIXELS,
+    CameraError,
+    FrameAssembler,
+    decode_duo_frame,
+)
 from topdon_duo.hardware_controls import HARDWARE_CONTROLS
 from topdon_duo.pipeline import (
     default_pipeline,
@@ -143,6 +151,31 @@ def test_macos_unverified_preview_falls_back_to_radiometric_image():
     image, source = PipelineProcessor().process(frame, None, default_pipeline(), scale=1)
     assert source == "raw"
     assert image.shape == (192, 256, 3)
+
+
+def test_tolerant_capture_keeps_full_processed_camera_preview():
+    frame, _ = frame_with_preview(preview_scale=2)
+    # Retain real chroma, so a raw or grayscale fallback cannot pass this check.
+    packed = np.frombuffer(frame, np.uint8, offset=IMAGE_OFFSET * 2).copy()
+    packed[1::4] = 90
+    packed[3::4] = 170
+    frame = frame[:IMAGE_OFFSET * 2] + packed.tobytes()
+    assembler = FrameAssembler()
+    captured = None
+    for offset in range(0, len(frame), 16266):
+        captured = assembler.feed(b"\x02\x80" + frame[offset:offset + 16266]) or captured
+    captured = assembler.feed(b"\x02\x82") or captured
+    assert captured == frame
+    document = default_pipeline()
+    document["software"] = [document["software"][0], document["software"][-1]]
+    processor = PipelineProcessor()
+    try:
+        image, source = processor.process(captured, None, document, scale=2)
+    finally:
+        processor.close()
+    expected = cv2.cvtColor(packed.reshape(384, 512, 2), cv2.COLOR_YUV2BGR_YUY2)
+    assert source == "preview"
+    assert np.array_equal(image, expected)
 
 
 def test_filters_interpolation_aa_are_real_cumulative_operations():

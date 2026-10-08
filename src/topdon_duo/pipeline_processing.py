@@ -292,9 +292,8 @@ class PipelineProcessor:
         _, raw, preview = decode_duo_frame(frame)
         software = active_nodes(document, "software")
         ranges = [item for item in software if item["type"] == "range"]
-        # Only Ubuntu's complete 512x384 plane has a verified preview layout.
-        # The short macOS plane varies by firmware and can appear interleaved or
-        # blank, so render its trustworthy radiometric plane instead.
+        # A complete 512x384 plane has a verified preview layout on either host.
+        # Short frames retain the radiometric fallback.
         thermal = thermal_source(document) or not has_yuy2_preview(frame) or not np.any(preview)
         mapping = None
         if thermal:
