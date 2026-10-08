@@ -22,6 +22,7 @@ from topdon_duo.camera import (
     TC002CDuoCamera,
     build_probe,
     decode_duo_frame,
+    has_yuy2_preview,
     parse_probe,
     raw_temperatures,
 )
@@ -85,6 +86,8 @@ def test_linux_larger_preview_keeps_complete_radiometric_frame():
     assert result == source
     _, raw, _ = decode_duo_frame(result)
     assert np.all(raw == 20_000)
+    assert has_yuy2_preview(result)
+    assert not has_yuy2_preview(make_frame())
 
 
 def test_linux_rejects_dropped_payload_and_recovers_next_frame():

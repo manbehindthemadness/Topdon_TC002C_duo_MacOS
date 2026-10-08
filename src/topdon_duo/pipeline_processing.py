@@ -11,7 +11,7 @@ from time import perf_counter
 import cv2
 import numpy as np
 
-from .camera import IMAGE_OFFSET, decode_duo_frame, raw_temperatures
+from .camera import IMAGE_OFFSET, decode_duo_frame, has_yuy2_preview, raw_temperatures
 from .feature_processing import apply_features
 from .image_filters import apply_filter
 from .pipeline import (
@@ -320,10 +320,15 @@ class PipelineProcessor:
             if palette in ("white_hot", "camera_1"):
                 image = np.repeat(gray[..., None], 3, axis=2)
         else:
-            yuyv = np.frombuffer(frame, np.uint8, offset=IMAGE_OFFSET * 2).reshape(
-                *preview.shape, 2
-            )
-            image = cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2).astype(np.float32)
+            if has_yuy2_preview(frame):
+                yuyv = np.frombuffer(frame, np.uint8, offset=IMAGE_OFFSET * 2).reshape(
+                    *preview.shape, 2
+                )
+                image = cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2).astype(np.float32)
+            else:
+                # macOS receives a 16-bit grayscale sample per preview pixel,
+                # not a byte-packed YUY2 image.
+                image = np.repeat(preview[..., None], 3, axis=2).astype(np.float32)
             hardware = active_nodes(document, "hardware")
             # Preserve the legacy unconfigured, app-colored preview normalization.
             if any(n["type"] == "colors" for n in software) and not any(
@@ -342,10 +347,17 @@ class PipelineProcessor:
                 if direct_preview is None:
                     if not np.any(preview):
                         raise ValueError("Camera preview is unavailable for the combine input/mask")
-                    yuyv = np.frombuffer(frame, np.uint8, offset=IMAGE_OFFSET * 2).reshape(
-                        *preview.shape, 2
-                    )
-                    direct_preview = cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2).astype(np.float32)
+                    if has_yuy2_preview(frame):
+                        yuyv = np.frombuffer(frame, np.uint8, offset=IMAGE_OFFSET * 2).reshape(
+                            *preview.shape, 2
+                        )
+                        direct_preview = cv2.cvtColor(
+                            yuyv, cv2.COLOR_YUV2BGR_YUY2
+                        ).astype(np.float32)
+                    else:
+                        direct_preview = np.repeat(preview[..., None], 3, axis=2).astype(
+                            np.float32
+                        )
                 return direct_preview
             if source == "raw":
                 plane = raw_temperatures(averaged if averaged is not None else raw, offset=50)

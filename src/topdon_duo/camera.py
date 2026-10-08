@@ -42,6 +42,8 @@ HEADER_U16 = 2_320
 SENSOR_PIXELS = SENSOR_WIDTH * SENSOR_HEIGHT
 TEMPERATURE_OFFSET = HEADER_U16
 IMAGE_OFFSET = TEMPERATURE_OFFSET + SENSOR_PIXELS
+YUY2_PREVIEW_PIXELS = SENSOR_PIXELS * 4
+YUY2_FRAME_BYTES = (IMAGE_OFFSET + YUY2_PREVIEW_PIXELS) * 2
 
 FORMAT_INDEX = 1
 FRAME_INDEX = 10
@@ -156,6 +158,16 @@ class LinuxFrameAssembler(FrameAssembler):
         return super()._finish()
 
 
+def has_yuy2_preview(frame: bytes) -> bool:
+    """Return whether *frame* contains the Ubuntu 512x384 YUY2 preview.
+
+    The shorter macOS layout has the same 256x192 radiometric data followed by
+    one 16-bit grayscale sample per pixel.  Treating those samples as pairs of
+    YUY2 bytes produces the distinctive one-pixel vertical stripe corruption.
+    """
+    return len(frame) == YUY2_FRAME_BYTES
+
+
 def decode_duo_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return the telemetry, raw temperature, and preview planes."""
     if len(frame) < FRAME_BYTES:
@@ -172,11 +184,8 @@ def decode_duo_frame(frame: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     )
     # Linux also exposes a complete 512x384 YUY2 grayscale preview. Each
     # little-endian word contains luminance in its low byte and chroma above.
-    large_pixels = SENSOR_PIXELS * 4
-    preview_pixels = (
-        large_pixels if len(frame) == (IMAGE_OFFSET + large_pixels) * 2 else SENSOR_PIXELS
-    )
-    preview_scale = 2 if preview_pixels == large_pixels else 1
+    preview_pixels = YUY2_PREVIEW_PIXELS if has_yuy2_preview(frame) else SENSOR_PIXELS
+    preview_scale = 2 if preview_pixels == YUY2_PREVIEW_PIXELS else 1
     preview_words = np.frombuffer(frame, dtype="<u2", count=preview_pixels, offset=IMAGE_OFFSET * 2)
     preview = (
         (preview_words & 0xFF)

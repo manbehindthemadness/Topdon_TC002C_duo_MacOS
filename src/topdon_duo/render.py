@@ -7,7 +7,13 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from .camera import IMAGE_OFFSET, decode_duo_frame, measurement_frame_status, raw_temperatures
+from .camera import (
+    IMAGE_OFFSET,
+    decode_duo_frame,
+    has_yuy2_preview,
+    measurement_frame_status,
+    raw_temperatures,
+)
 from .pipeline import geometry, thermal_source, validate_pipeline
 from .pipeline_processing import PipelineProcessor
 from .upsampling import VisionUpsampler
@@ -339,7 +345,7 @@ class ThermalRenderer:
                 )
         if use_preview and self.camera_preview:
             # Keep actual camera intensities so brightness/contrast remain visible.
-            if self.camera_color:
+            if self.camera_color and has_yuy2_preview(frame):
                 yuyv = np.frombuffer(frame, dtype=np.uint8, offset=IMAGE_OFFSET * 2).reshape(
                     *preview.shape, 2
                 )
