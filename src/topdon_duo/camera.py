@@ -30,6 +30,7 @@ SENSOR_WIDTH = 256
 SENSOR_HEIGHT = 192
 FRAME_RATE = 25
 FRAME_INTERVAL = 400_000
+DEFAULT_USB_QUEUE_DEPTH = 32
 
 # Frame index 10 is advertised as the intentionally odd 8x12578 YUY2 mode.
 # It is actually a flat array of 100624 little-endian uint16 values:
@@ -251,7 +252,11 @@ class TC002CDuoCamera:
         self._running = threading.Event()
         self.stream_observer = None
         self.rejected_frame_observer = None
-        self.usb_queue_depth = 0
+        self.usb_queue_depth = (
+            DEFAULT_USB_QUEUE_DEPTH
+            if sys.platform == "darwin" or sys.platform.startswith("linux")
+            else 0
+        )
 
     @staticmethod
     def find():
@@ -402,6 +407,11 @@ class TC002CDuoCamera:
             if self.mode.max_frame_size < FRAME_BYTES:
                 raise CameraError(f"invalid negotiated frame size: {self.mode.max_frame_size}")
             assembler = LinuxFrameAssembler(self.mode.max_frame_size)
+        elif self.usb_queue_depth:
+            # Queued reads prevent Darwin's synchronous host gaps from dropping
+            # UVC payloads. Strict framing rejects stale partial frames instead
+            # of briefly displaying a shifted thermal plane.
+            assembler = LinuxFrameAssembler(FRAME_BYTES)
         else:
             assembler = FrameAssembler()
         assembler.rejected_frame_observer = self.rejected_frame_observer

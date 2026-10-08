@@ -25,7 +25,7 @@ from topdon_duo.desktop import (
 from topdon_duo.render import READOUT_HEIGHT, ThermalRenderer, draw_temperature_readout
 
 
-@pytest.mark.parametrize("platform,expected", [("linux", 32), ("darwin", 0)])
+@pytest.mark.parametrize("platform,expected", [("linux", 32), ("darwin", 32), ("win32", 0)])
 def test_usb_queue_default_and_synchronous_override(monkeypatch, platform, expected):
     from topdon_duo import desktop
 

@@ -134,6 +134,7 @@ def test_stream_diagnostics_distinguish_timeouts_from_rejected_frames(monkeypatc
     read_clock = iter((0.0, 2.0, 2.25, 2.26, 2.27, 2.28))
     monkeypatch.setattr(camera_module.time, "perf_counter", lambda: next(read_clock))
     camera = TC002CDuoCamera()
+    camera.usb_queue_depth = 0
     camera.mode = NegotiatedMode(1, 10, 400_000, FRAME_BYTES, 5020)
     camera.device = Mock()
     camera.device.read.side_effect = [
@@ -163,6 +164,43 @@ def test_stream_diagnostics_distinguish_timeouts_from_rejected_frames(monkeypatc
     assert events[2]["frames"] == 1
     assert events[2]["bytes"] == (FRAME_BYTES + 2) * 2
     assert events[2]["packet_headers"] == {"0283": 1}
+
+
+@pytest.mark.parametrize("platform,expected", [("linux", 32), ("darwin", 32), ("win32", 0)])
+def test_supported_platforms_default_to_queued_usb(monkeypatch, platform, expected):
+    monkeypatch.setattr(camera_module.sys, "platform", platform)
+    assert TC002CDuoCamera().usb_queue_depth == expected
+
+
+def test_macos_queued_capture_rejects_stale_frame_and_recovers(monkeypatch):
+    monkeypatch.setattr(camera_module.sys, "platform", "darwin")
+    packets = iter((b"\x02\x82" + bytes(FRAME_BYTES), b"\x02\x83" + make_frame()))
+
+    class Reader:
+        def __init__(self, _device, _endpoint, _size, _timeout, depth):
+            assert depth == 32
+            self.statuses = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def read(self):
+            return next(packets)
+
+    monkeypatch.setattr(camera_module, "QueuedBulkReader", Reader)
+    camera = TC002CDuoCamera()
+    camera.device = Mock()
+    camera.mode = NegotiatedMode(1, 10, 400_000, FRAME_BYTES, 5020)
+    camera._running.set()
+    frames = camera.frames()
+    try:
+        assert next(frames) == make_frame()
+    finally:
+        frames.close()
+    camera.device.read.assert_not_called()
 
 
 @pytest.mark.parametrize("platform", ["linux", "darwin"])

@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from .camera import (
+    DEFAULT_USB_QUEUE_DEPTH,
     FRAME_RATE,
     SENSOR_HEIGHT,
     SENSOR_WIDTH,
@@ -1115,8 +1116,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--diagnostics", type=Path, help="Write UI timings and stall thread stacks")
     parser.add_argument(
         "--usb-queue-depth", type=int, choices=(0, *range(2, 129)),
-        default=32 if sys.platform.startswith("linux") else 0,
-        help="Queued USB requests (2-128; 0: synchronous; default: 32 on Linux, 0 elsewhere)",
+        default=(
+            DEFAULT_USB_QUEUE_DEPTH
+            if sys.platform == "darwin" or sys.platform.startswith("linux")
+            else 0
+        ),
+        help="Queued USB requests (2-128; 0: synchronous; default: 32 on macOS/Linux)",
     )
     args = parser.parse_args(argv)
     if args.timelapse_fpm is not None and not 1 <= args.timelapse_fpm <= TIMELAPSE_MAX_FPM:

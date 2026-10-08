@@ -9,8 +9,6 @@ from pathlib import Path
 
 import cv2
 
-from .pointer import PointerMonitor, Rect
-
 QT_STYLESHEET = b"""
 QWidget { background-color: #000000; color: #eeeeee; }
 QSlider { background-color: #000000; }
@@ -67,34 +65,6 @@ def window_resize_size(window_name: str) -> tuple[int, int] | None:
                     rect = bounds(widget)
                     return rect.right - rect.left + 1, rect.bottom - rect.top + 1
                 return None  # Retain the last full size while another window covers it.
-        elif sys.platform == "darwin":
-            monitor = PointerMonitor(window_name)
-            pool = None
-            try:
-                if monitor._objc is not None:
-                    message = monitor._message
-                    pool = message(monitor._objc.objc_getClass(b"NSAutoreleasePool"), "new")
-                    app = message(
-                        monitor._objc.objc_getClass(b"NSApplication"), "sharedApplication"
-                    )
-                    windows = message(app, "windows")
-                    for index in range(message(windows, "count", C.c_ulong)):
-                        window = message(
-                            windows, "objectAtIndex:", arguments=(C.c_ulong,), values=(index,)
-                        )
-                        if (
-                            message(message(window, "title"), "UTF8String", C.c_char_p)
-                            != window_name.encode()
-                        ):
-                            continue
-                        content = message(window, "contentView")
-                        rect = message(content, "bounds", Rect)
-                        slider_height = message(content, "sliderHeight", C.c_int)
-                        return round(rect.size.width), round(rect.size.height - slider_height)
-            finally:
-                if pool is not None:
-                    monitor._message(pool, "drain", None)
-                monitor.close()
         return width, height
     except (cv2.error, OSError, AttributeError, ValueError):
         return None
@@ -143,61 +113,13 @@ def _qt_black_backgrounds() -> bool:
     return False
 
 
-def _cocoa_black_backgrounds(window_name: str) -> bool:
-    monitor = PointerMonitor(window_name)
-    if monitor._objc is None:
-        return False
-    message = monitor._message
-    get_class = monitor._objc.objc_getClass
-    pool = message(get_class(b"NSAutoreleasePool"), "new")
-    try:
-        black = message(get_class(b"NSColor"), "blackColor")
-        white = message(get_class(b"NSColor"), "whiteColor")
-        cg_black = message(black, "CGColor")
-        windows = message(message(get_class(b"NSApplication"), "sharedApplication"), "windows")
-        for index in range(message(windows, "count", C.c_ulong)):
-            window = message(windows, "objectAtIndex:", arguments=(C.c_ulong,), values=(index,))
-            if message(message(window, "title"), "UTF8String", C.c_char_p) != window_name.encode():
-                continue
-            message(window, "setBackgroundColor:", arguments=(C.c_void_p,), values=(black,))
-            views = [message(window, "contentView")]
-            while views:
-                view = views.pop()
-                message(view, "setWantsLayer:", arguments=(C.c_bool,), values=(True,))
-                message(
-                    message(view, "layer"),
-                    "setBackgroundColor:",
-                    arguments=(C.c_void_p,),
-                    values=(cg_black,),
-                )
-                for selector, color in (("setBackgroundColor:", black), ("setTextColor:", white)):
-                    native_selector = monitor._objc.sel_registerName(selector.encode())
-                    if message(
-                        view,
-                        "respondsToSelector:",
-                        C.c_bool,
-                        arguments=(C.c_void_p,),
-                        values=(native_selector,),
-                    ):
-                        message(view, selector, arguments=(C.c_void_p,), values=(color,))
-                children = message(view, "subviews")
-                views.extend(
-                    message(children, "objectAtIndex:", arguments=(C.c_ulong,), values=(i,))
-                    for i in range(message(children, "count", C.c_ulong))
-                )
-            return True
-        return False
-    finally:
-        message(pool, "drain", None)
-        monitor.close()
-
-
 def set_black_window_backgrounds(window_name: str) -> bool:
     try:
         if sys.platform.startswith("linux"):
             return _qt_black_backgrounds()
-        if sys.platform == "darwin":
-            return _cocoa_black_backgrounds(window_name)
+        # OpenCV's Cocoa widgets are intentionally left to their native style.
+        # Reaching through them with raw Objective-C messages is ABI-fragile and
+        # can abort the process before the first camera frame is displayed.
     except (OSError, AttributeError, ValueError):
         return False
     return False

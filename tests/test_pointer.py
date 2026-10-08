@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import cv2
 import pytest
 
-from topdon_duo.pointer import Point, PointerMonitor, Rect, Size
+from topdon_duo.pointer import Point, PointerMonitor
 
 
 @pytest.fixture
@@ -46,30 +46,16 @@ def test_native_pointer_unavailable_preserves_event_bounds_checks(monitor, monke
     monitor.close()
 
 
-@pytest.mark.parametrize("flipped", [False, True])
-def test_cocoa_pointer_checks_actual_image_view_bounds(monitor, monkeypatch, flipped):
-    monitor._objc = Mock()
-    point = Point(100, 100)
-
-    def message(_receiver, selector, _result=None, arguments=(), values=()):
-        if selector == "count":
-            return 1
-        if selector == "UTF8String":
-            return b"test viewer"
-        if selector == "convertPoint:fromView:":
-            return point
-        if selector == "bounds":
-            return Rect(Point(0, 0), Size(384, 315))
-        if selector == "isFlipped":
-            return flipped
-        return 1
-
-    monkeypatch.setattr(monitor, "_message", message)
+def test_macos_coregraphics_pointer_uses_safe_c_api(monitor, monkeypatch):
+    coregraphics = Mock()
+    coregraphics.CGEventCreate.return_value = 123
+    coregraphics.CGEventGetLocation.return_value = Point(200, 350)
+    monitor._coregraphics = coregraphics
+    monkeypatch.setattr(
+        "topdon_duo.pointer.cv2.getWindowImageRect",
+        lambda _name: (100, 200, 384, 315),
+    )
     assert monitor.over_image(576, 54) is True
-    point.x = -1
+    coregraphics.CGEventGetLocation.return_value = Point(90, 350)
     assert monitor.over_image(576, 54) is False
-    point.x = 100
-    point.y = 0 if flipped else 315
-    assert monitor.over_image(576, 54) is False  # Toolbar.
-    point.y = 315 if flipped else -1
-    assert monitor.over_image(576, 54) is False  # Outside image view.
+    coregraphics.CFRelease.assert_called_with(123)
