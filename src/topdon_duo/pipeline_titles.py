@@ -63,12 +63,16 @@ def node_title(stack, item, temperature_unit="C"):
         suffix = f"{low:.1f}–{high:.1f} °{temperature_unit}"
     elif kind == "interpolation":
         suffix = f"{option('method')} · {option('scale')}"
+    elif kind == "coreml_acnet":
+        suffix = f"{option('compute')} · 2× · {option('denoise')} denoise"
     elif kind == "enhance":
         suffix = option("model")
         if p["model"] != "off":
             suffix += f" · {int(p['passes'])} pass{'es' if p['passes'] != 1 else ''}"
             if p["model"] == "acnet" and p["denoise"]:
                 suffix += f" · {option('denoise')} denoise"
+            if p["model"] == "acnet" and p["backend"] == "coreml":
+                suffix += " · Apple preferred (CPU fallback)"
     elif kind == "combine":
         suffix = f"{option('tab')} · {option('mode')} · {p['opacity'] * 100:g}%"
         if p["mask_source"] != "none":

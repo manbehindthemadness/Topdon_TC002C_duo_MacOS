@@ -11,7 +11,10 @@ from time import perf_counter
 import cv2
 import numpy as np
 
+from .apple_acceleration import apple_acceleration
 from .camera import IMAGE_OFFSET, decode_duo_frame, has_yuy2_preview, raw_temperatures
+from .coreml_upsampling import CoreMLUpsampler
+from .enhancement_limits import MAX_PIXELS, acnet_pass_limit
 from .feature_processing import apply_features
 from .image_filters import apply_filter
 from .pipeline import (
@@ -24,7 +27,6 @@ from .pipeline import (
 )
 from .upsampling import VisionUpsampler
 
-MAX_PIXELS = 4_000_000
 INTERPOLATIONS = {
     "nearest": cv2.INTER_NEAREST,
     "linear": cv2.INTER_LINEAR,
@@ -162,8 +164,12 @@ def encode_thumbnail(image):
 
 
 class PipelineProcessor:
-    def __init__(self):
+    def __init__(self, apple_available=None):
+        self.apple_available = (
+            apple_acceleration()["available"] if apple_available is None else apple_available
+        )
         self.models = {}
+        self.coreml_models = {}
         self.executors = {}
         self.branches = {}
         self.last_previews = {}
@@ -173,11 +179,16 @@ class PipelineProcessor:
         self.last_preview_errors = {}
 
     def close(self):
+        for engine in self.coreml_models.values():
+            engine.close()
+        for branch in self.branches.values():
+            branch.close()
         for executor in self.executors.values():
             executor.shutdown(wait=False, cancel_futures=True)
         self.executors.clear()
         self.branches.clear()
         self.models = {}
+        self.coreml_models = {}
         self.last_previews = {}
         self.last_preview_timings = {}
 
@@ -194,13 +205,13 @@ class PipelineProcessor:
         # Stop idle branch threads and release their model caches after disconnection.
         for tab in set(self.executors) - set(retained_dependencies):
             self.executors.pop(tab).shutdown(wait=True)
-            self.branches.pop(tab)
+            self.branches.pop(tab).close()
         for tab in dependencies:
             if tab not in self.executors:
                 self.executors[tab] = ThreadPoolExecutor(
                     max_workers=1, thread_name_prefix=f"pipeline-{tab}"
                 )
-                self.branches[tab] = PipelineProcessor()
+                self.branches[tab] = PipelineProcessor(apple_available=self.apple_available)
         outputs, pending, submitted, errors = {}, {}, set(), {}
         try:
             while len(outputs) < len(dependencies):
@@ -264,6 +275,7 @@ class PipelineProcessor:
             if n["type"] == "preview" and n["expanded"] and not n["bypass"]
         }
         self.models = self.branches["A"].models
+        self.coreml_models = self.branches["A"].coreml_models
         image, source = outputs["A"]
         if rotation:
             image = np.rot90(image, -(rotation // 90)).copy()
@@ -434,15 +446,39 @@ class PipelineProcessor:
                     (image.shape[1] * p["scale"], image.shape[0] * p["scale"]),
                     INTERPOLATIONS[p["method"]],
                 )
+            elif kind == "coreml_acnet" and p["amount"]:
+                if p["input"] != "current":
+                    image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
+                check_size(image.shape[1] * 2, image.shape[0] * 2)
+                key = item["id"], p["denoise"], p["compute"]
+                upsampler = self.coreml_models.setdefault(key, CoreMLUpsampler())
+                image = upsampler.apply(
+                    bytes_image(image), p["denoise"], p["compute"], p["amount"]
+                ).astype(np.float32)
             elif kind == "enhance" and p["model"] != "off" and p["amount"]:
                 if p["input"] != "current":
                     image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
                 model = (
                     "anime4k09" if p["model"] == "anime4k09" else f"acnet-legacy-hdn{p['denoise']}"
                 )
-                upsampler = self.models.setdefault((item["id"], model), VisionUpsampler())
+                use_apple = (
+                    model != "anime4k09" and p["backend"] == "coreml" and self.apple_available
+                )
+                if use_apple:
+                    key = item["id"], p["denoise"], p["apple_compute"]
+                    upsampler = self.coreml_models.setdefault(key, CoreMLUpsampler())
+                else:
+                    upsampler = self.models.setdefault((item["id"], model), VisionUpsampler())
                 # Anime passes refine one 2× output; ACNet passes repeatedly upscale.
                 repetitions = 1 if model == "anime4k09" else int(p["passes"])
+                if model != "anime4k09":
+                    maximum = acnet_pass_limit(image.shape[1], image.shape[0])
+                    if not maximum:
+                        raise ValueError(
+                            "No ACNet upscale fits the 4 megapixel limit; "
+                            "select Native sensor input or reduce preceding scales."
+                        )
+                    repetitions = min(repetitions, maximum)
                 factor = 2 ** repetitions
                 width, height = image.shape[1] * factor, image.shape[0] * factor
                 if width * height > MAX_PIXELS:
@@ -453,9 +489,14 @@ class PipelineProcessor:
                     )
                 for _ in range(repetitions):
                     check_size(image.shape[1] * 2, image.shape[0] * 2)
-                    image = upsampler.apply(
-                        bytes_image(image), model, p["amount"], int(p["passes"])
-                    )
+                    if use_apple:
+                        image = upsampler.apply(
+                            bytes_image(image), p["denoise"], p["apple_compute"], p["amount"]
+                        )
+                    else:
+                        image = upsampler.apply(
+                            bytes_image(image), model, p["amount"], int(p["passes"])
+                        )
                     if upsampler.error:
                         raise ValueError(upsampler.error)
                 image = image.astype(np.float32)
@@ -470,13 +511,30 @@ class PipelineProcessor:
             if item["type"] == "enhance"
         }
         self.models = {key: value for key, value in self.models.items() if key in live}
+        coreml_live = {
+            (item["id"], item["params"]["denoise"], item["params"]["compute"])
+            for item in software
+            if item["type"] == "coreml_acnet"
+        }
+        coreml_live.update(
+            (item["id"], item["params"]["denoise"], item["params"]["apple_compute"])
+            for item in software
+            if item["type"] == "enhance" and item["params"]["model"] == "acnet"
+            and item["params"]["backend"] == "coreml" and self.apple_available
+        )
+        for key, engine in self.coreml_models.items():
+            if key not in coreml_live:
+                engine.close()
+        self.coreml_models = {
+            key: value for key, value in self.coreml_models.items() if key in coreml_live
+        }
         return image, "raw" if thermal else "preview"
 
 
 class PipelineWorker:
     """Single image worker with an overwritten pending slot and revision guard."""
 
-    def __init__(self):
+    def __init__(self, apple_available=None):
         self.condition = Condition()
         self.pending = None
         self.result = None
@@ -486,7 +544,7 @@ class PipelineWorker:
         self.preview_enabled = False
         self.last_preview_at = 0.0
         self.closed = False
-        self.processor = PipelineProcessor()
+        self.processor = PipelineProcessor(apple_available=apple_available)
         self.thread = Thread(target=self._run, name="image-pipeline", daemon=True)
         self.thread.start()
 

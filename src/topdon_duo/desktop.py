@@ -16,6 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .apple_acceleration import apple_acceleration
 from .camera import (
     DEFAULT_USB_QUEUE_DEPTH,
     FRAME_RATE,
@@ -1167,6 +1168,8 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(message)s",
     )
+    apple_capability = apple_acceleration()
+    LOG.info("Apple acceleration: %s", apple_capability["reason"])
     renderer = ThermalRenderer(
         scale=args.scale,
         ambient_celsius=None,
@@ -1541,6 +1544,7 @@ def main(argv: list[str] | None = None) -> int:
         return {
             **renderer.view_settings(),
             "pipeline": pipeline,
+            "apple_acceleration": apple_capability,
             "pipeline_serial": pipeline_serial,
             "pipeline_previews": pipeline_worker.latest_previews(pipeline_revision) if pipeline_worker is not None else {},
             "pipeline_preview_timings": pipeline_worker.latest_preview_timings(pipeline_revision) if pipeline_worker is not None else {},
@@ -1693,7 +1697,7 @@ def main(argv: list[str] | None = None) -> int:
         cv2.setMouseCallback(WINDOW_NAME, picker.callback)
         set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
-        pipeline_worker = PipelineWorker()
+        pipeline_worker = PipelineWorker(apple_available=apple_capability["available"])
         last_frame = None
         last_frame_at = None
         for frame in diagnostics.frames(frame_pump):

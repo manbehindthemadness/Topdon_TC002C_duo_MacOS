@@ -244,17 +244,22 @@ def test_acnet_default_runs_on_full_camera_preview(denoise):
         processor.close()
 
 
-def test_acnet_explicit_pass_limit_reports_dimensions_before_inference(monkeypatch):
+def test_acnet_excess_passes_are_clamped_before_inference(monkeypatch):
     frame, _ = frame_with_preview(preview_scale=2)
     document = default_pipeline()
     document["software"].insert(-1, node("software", "enhance", model="acnet", passes=3))
-    calls = Mock()
-    monkeypatch.setattr("topdon_duo.pipeline_processing.VisionUpsampler.apply", calls)
+    calls = []
+
+    def upscale(self, image, model, amount, passes):
+        calls.append(image.shape[:2])
+        return cv2.resize(image, None, fx=2, fy=2)
+
+    monkeypatch.setattr("topdon_duo.pipeline_processing.VisionUpsampler.apply", upscale)
     processor = PipelineProcessor()
     try:
-        with pytest.raises(ValueError, match="4096x3072.*12.6 megapixels"):
-            processor.process(frame, None, document)
-        calls.assert_not_called()
+        image, _ = processor.process(frame, None, document)
+        assert image.shape == (576, 768, 3)
+        assert calls == [(384, 512), (768, 1024)]
     finally:
         processor.close()
 

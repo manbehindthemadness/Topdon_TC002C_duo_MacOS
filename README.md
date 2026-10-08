@@ -337,9 +337,19 @@ case. Bounds follow the selected temperature units and never change measurements
 [Static board analysis examples](docs/processing-pipelines.md#static-board-analysis)
 show a useful starting pipeline.
 
+An optional **Apple Core ML ACNet (experimental)** node keeps Apple inference
+separate from the portable CPU nodes. `uv sync` installs its prebuilt runtime
+automatically on macOS only. Startup detection enables the node when Metal and
+Core ML are available; saved pipelines remain unchanged. Launch with
+`uv run topdon-duo-desktop`; no OpenCV rebuild is needed.
+See [Apple node setup and limitations](docs/processing-pipelines.md#experimental-apple-core-ml-node).
+
 AI enhancement nodes offer Anime4K09 and bundled ACNet ONNX models, with amount,
-passes, ACNet denoising and Current/Native/Preview input sizes. They need no
-compilation or downloads. Image processing runs independently from measurements
+passes, ACNet denoising and Current/Native/Preview input sizes. They expose an
+ACNet Apple backend selector when Metal/Core ML are detected.
+Apple preferences stay in saved presets but are ignored on CPU-only systems,
+where the normal node uses OpenCV ACNet instead. Models need no compilation
+or additional weight downloads. Image processing runs independently from measurements
 and graphs; slow chains report latency rather than blocking sampling. A four
 megapixel intermediate-image limit reports oversize chains. Sharpening and AI
 can change shapes; they do not add measured sensor pixels.

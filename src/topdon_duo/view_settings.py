@@ -19,7 +19,7 @@ IMAGE_FILTERS = {
 }
 UPSCALING_MODES = {
     "off": "Off",
-    "anime4k09": "Anime4K09 2× — phone algorithm",
+    "anime4k09": "Anime4K09 2× (CPU only) — phone algorithm",
     "acnet-legacy-hdn0": "ACNet 2× — no denoise",
     "acnet-legacy-hdn1": "ACNet 2× — light denoise",
     "acnet-legacy-hdn2": "ACNet 2× — medium denoise",

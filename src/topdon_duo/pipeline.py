@@ -475,13 +475,40 @@ SOFTWARE_NODES = {
             "scale": choice("Scale", 2, ((1, "1×"), (2, "2×"), (4, "4×"))),
         },
     ),
+    "coreml_acnet": (
+        "Apple Core ML ACNet (experimental)",
+        {
+            "compute": choice(
+                "Compute devices",
+                "CPUAndGPU",
+                (
+                    ("CPUAndGPU", "CPU + GPU"),
+                    ("ALL", "CPU + GPU + Neural Engine"),
+                    ("CPUAndNeuralEngine", "CPU + Neural Engine"),
+                ),
+            ),
+            "denoise": choice(
+                "ACNet denoising", 0, ((0, "None"), (1, "Light"), (2, "Medium"), (3, "Strong"))
+            ),
+            "input": choice(
+                "Input size",
+                "native",
+                (
+                    ("current", "Current image"),
+                    ("native", "Native sensor"),
+                    ("preview", "Full preview"),
+                ),
+            ),
+            "amount": Parameter("Enhancement amount", 1.0, 0, 1, 0.01),
+        },
+    ),
     "enhance": (
         "AI enhancement",
         {
             "model": choice(
                 "Upsampler",
                 "anime4k09",
-                (("off", "Off"), ("anime4k09", "Anime4K09"), ("acnet", "ACNet")),
+                (("off", "Off"), ("anime4k09", "Anime4K09 (CPU only)"), ("acnet", "ACNet")),
             ),
             "denoise": choice(
                 "ACNet denoising", 0, ((0, "None"), (1, "Light"), (2, "Medium"), (3, "Strong"))
@@ -497,6 +524,18 @@ SOFTWARE_NODES = {
             ),
             "amount": Parameter("Enhancement amount", 1.0, 0, 1, 0.01),
             "passes": Parameter("Passes", 3, 1, 5),
+            "backend": choice(
+                "ACNet execution", "cpu", (("cpu", "CPU (OpenCV)"), ("coreml", "Apple Core ML"))
+            ),
+            "apple_compute": choice(
+                "Apple compute devices",
+                "CPUAndGPU",
+                (
+                    ("CPUAndGPU", "CPU + GPU"),
+                    ("ALL", "CPU + GPU + Neural Engine"),
+                    ("CPUAndNeuralEngine", "CPU + Neural Engine"),
+                ),
+            ),
         },
     ),
 }
@@ -620,6 +659,11 @@ def validate_pipeline(document):
             if type(item["bypass"]) is not bool or type(item["expanded"]) is not bool:
                 raise ValueError("Invalid node state")
             definitions = catalog[kind][1]
+            if stack == "software" and kind == "enhance" and isinstance(item["params"], dict):
+                # Read existing version-4 presets without changing model/pass choices.
+                # Hardware-specific preferences remain serialized on every platform.
+                for key in ("backend", "apple_compute"):
+                    item["params"].setdefault(key, definitions[key].default)
             if (
                 legacy_filters
                 and stack == "software"

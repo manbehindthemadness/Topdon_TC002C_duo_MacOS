@@ -300,6 +300,64 @@ and [Canny edge detection](https://docs.opencv.org/4.x/da/d22/tutorial_py_canny.
 
 ## Enhancement and performance
 
+The normal **AI enhancement** node exposes **ACNet execution** and **Apple compute
+devices** only when startup detects Metal plus the Core ML runtime. The detected
+GPU controls are shown only for ACNet; Anime4K09 is CPU-only and hides them.
+Changing the execution backend never changes the selected model. Apple device
+choices can be saved before enabling Apple execution, and remain stored but
+inactive when switching to Anime4K09. Returning to ACNet restores these preferences.
+The same input, denoising, amount and pass controls work with either ACNet backend.
+Each pass doubles both dimensions. ACNet passes are clamped to the 4-megapixel
+budget: up to two passes for 512×384 input, three for 256×192, fewer after earlier
+upscaling. The spinbox and slider follow the input/model; Anime4K09 retains 1–5
+refinement passes. Execution also clamps older/imported excessive ACNet requests.
+If even one pass cannot fit, reduce preceding scales or choose Native input.
+
+Execution defaults to CPU for new nodes and older presets. Backend and Apple
+device preferences are always saved/exported, including on Ubuntu. Without the
+detected GPU/runtime, the Apple controls are hidden and those preferences are
+ignored during execution: the normal node uses CPU ACNet without altering the
+saved preferences. Returning the same preset to a capable Mac restores the Apple
+choice. Actual Apple runtime errors still appear in Camera status rather than
+silently switching backends. The older standalone Apple node remains supported.
+
+### Experimental Apple Core ML node
+
+On macOS, `uv sync` automatically installs the prebuilt Apple runtime; Linux does
+not install it. Launch with `uv run topdon-duo-desktop`. At startup a short,
+isolated probe checks `MTLCreateSystemDefaultDevice` and the Core ML provider.
+The Apple node is enabled in the Add menu only when both are available; Camera
+controls show readiness or the reason it is unavailable. Detection does not
+rewrite saved pipelines or presets, and model loading stays lazy until the node
+is used. The older `--extra apple` commands remain supported. In the software pipeline,
+add **Apple Core ML ACNet (experimental)**. No custom OpenCV build is required.
+The existing AI enhancement node and every other CPU node are unchanged.
+
+This separate node performs one 2× ACNet pass, defaults to Native sensor input,
+and offers denoising, strength, and CPU + GPU / CPU + Neural Engine / all-device
+choices. It uses a persistent spawned helper process with its own lazily loaded
+ONNX Runtime session and does not alter OpenCV backend settings. Native runtime
+crashes become a Camera status error rather than terminating the viewer. Bypass
+the node to continue with CPU processing. Compilation/inference has a 45-second
+timeout. MLProgram requires macOS 12 or newer.
+
+The Apple node materializes the model's default zero Conv and ConvTranspose padding
+in memory to work around ONNX Runtime 1.30's missing-padding crash and missing
+Core ML `pad` parameter during compilation. Bundled CPU model
+files are untouched; regression tests compare the transformed model against the
+original model and upstream ACNet reference output.
+
+Core ML chooses the actual hardware; enabling its provider does not prove GPU
+execution or a speedup. Unsupported operators may execute on this node's CPU
+provider. Initialization can be slow, so compare warm-frame pipeline timings
+against the existing CPU ACNet node. This is an experimental path, not a verified
+performance improvement. See the [Core ML provider documentation](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html).
+
+Without the runtime, or on Linux, an active saved Apple node reports an error
+instead of silently becoming a CPU node. Bypass/delete it to use the portable
+pipeline. Presets containing it require the runtime on macOS or bypassing the node
+on Ubuntu. Display enhancement never changes saved radiometric measurements.
+
 AI nodes default to their current input image. Native or Preview explicitly
 resizes the preceding result to 256×192 or 512×384 before enhancement.
 Anime4K09's 1–5 passes refine one 2× output; each ACNet pass produces another

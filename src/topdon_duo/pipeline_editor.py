@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from .dialog_preferences import load_dialog_directory, remember_dialog_directory
+from .enhancement_limits import enhancement_pass_limits
 from .feature_processing import feature_fields
 from .image_filters import allowed_kernels, filter_fields
 from .pipeline import (
@@ -283,6 +284,10 @@ class StackList(QListWidget):
                 lambda _checked=False, kind=kind: self.editor.insert(self.stack, kind, position),
             )
             action.setEnabled(self.stack != "hardware" or kind not in existing)
+            if kind == "coreml_acnet":
+                capability = getattr(self.editor, "last_state", {}).get("apple_acceleration", {})
+                action.setEnabled(bool(capability.get("available")))
+                action.setToolTip(capability.get("reason", "Waiting for startup capability check"))
 
 
 class PipelineEditor(QWidget):
@@ -308,6 +313,9 @@ class PipelineEditor(QWidget):
         )
         instruction.setWordWrap(True)
         layout.addWidget(instruction)
+        self.apple_status = QLabel()
+        self.apple_status.setWordWrap(True)
+        layout.addWidget(self.apple_status)
         self.stacks = {}
         for stack, title in (
             ("hardware", "Camera hardware · order organizes controls"),
@@ -426,6 +434,7 @@ class PipelineEditor(QWidget):
             self.rebuild()
             self.send({"action": "pipeline_refresh"})
             return
+        enhancement_pass_limits(self.document, clamp=True)
         self.accepted_document = deepcopy(self.document)
         self.update_tab_status()
         self.update_titles()
@@ -646,6 +655,10 @@ class PipelineEditor(QWidget):
                         unit=spec.unit,
                     )
                     row.update_state(item["params"][key])
+                    if item["type"] == "enhance" and key in ("backend", "apple_compute"):
+                        row.setVisible(bool(
+                            getattr(self, "last_state", {}).get("apple_acceleration", {}).get("available")
+                        ) and item["params"]["model"] == "acnet")
                     controls[key] = row
                     if item["type"] == "filter":
                         row.setVisible(key in filter_fields(item["params"]))
@@ -737,6 +750,12 @@ class PipelineEditor(QWidget):
 
     def update_state(self, state, locked):
         self.last_state = state
+        capability = state.get("apple_acceleration", {})
+        self.apple_status.setText(
+            "Apple acceleration ready · Metal + Core ML" if capability.get("available")
+            else capability.get("reason", "")
+        )
+        self.apple_status.setVisible(bool(capability))
         self.hardware_state = state.get("hardware", {})
         incoming = state.get("pipeline")
         if incoming is not None and state.get("pipeline_serial", 0) >= self.edit_serial:
@@ -770,6 +789,7 @@ class PipelineEditor(QWidget):
         self.update_tab_status()
         self.update_titles()
         self.locked = locked
+        pass_limits = enhancement_pass_limits(self.document, clamp=True)
         current = state.get("pipeline_serial", 0) >= self.edit_serial
         for item in self.nodes("software"):
             if item["type"] == "preview":
@@ -814,6 +834,13 @@ class PipelineEditor(QWidget):
                     if inactive
                     else "Bypassed"
                     if item["bypass"]
+                    else "CPU execution · saved Apple settings retained"
+                    if item["type"] == "enhance" and item["params"]["model"] == "acnet"
+                    and item["params"]["backend"] == "coreml"
+                    and not state.get("apple_acceleration", {}).get("available", False)
+                    else state.get("apple_acceleration", {}).get("reason", "")
+                    if item["type"] == "coreml_acnet"
+                    and not state.get("apple_acceleration", {}).get("available", False)
                     else ""
                 )
                 badge.setVisible(bool(badge.text()))
@@ -842,6 +869,19 @@ class PipelineEditor(QWidget):
                                 row.input.model().item(index).setEnabled(
                                     row.input.itemData(index) in allowed
                                 )
+                    if item["type"] == "enhance" and key in ("backend", "apple_compute"):
+                        detected = bool(state.get("apple_acceleration", {}).get("available"))
+                        supported = item["params"]["model"] == "acnet"
+                        row.setVisible(detected and supported)
+                        available &= detected and supported
+                        help_text = (
+                            "ACNet execution backend; this does not change the Upsampler. "
+                            "Anime4K09 is CPU-only. No --extra flag is needed."
+                            if key == "backend"
+                            else "Apple device preference is saved even while CPU execution is selected."
+                        )
+                        row.setToolTip(help_text)
+                        row.input.setToolTip(help_text)
                     if item["type"] in ("edges", "contours"):
                         relevant = key in feature_fields(item["type"], item["params"])
                         row.setVisible(relevant)
@@ -867,6 +907,17 @@ class PipelineEditor(QWidget):
                         available &= key not in ("threshold", "invert") or mode == "mask"
                     if item["type"] == "enhance":
                         available &= key != "denoise" or item["params"]["model"] == "acnet"
+                        if key == "passes":
+                            maximum = pass_limits[item["id"]]
+                            row.set_numeric_limits(1, max(1, maximum))
+                            available &= maximum > 0
+                            row.setToolTip(
+                                f"Maximum {maximum} ACNet passes for this input (4 megapixel limit)."
+                                if item["params"]["model"] == "acnet" and maximum
+                                else "No upscale fits; choose Native input or reduce preceding scales."
+                                if not maximum
+                                else "Anime4K09 allows 1–5 refinement passes with one 2× output."
+                            )
                     row.update_state(item["params"][key], available)
                 # Child size changes (badges) need a refreshed item height.
         for listing in self.stacks.values():

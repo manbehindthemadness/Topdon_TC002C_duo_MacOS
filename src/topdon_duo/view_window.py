@@ -184,6 +184,15 @@ class ControlRow(QWidget):
         if self.slider is not None:
             self.slider.setEnabled(enabled)
 
+    def set_numeric_limits(self, minimum, maximum):
+        """Change a live control's bounds without generating a user edit."""
+        self.minimum, self.maximum = minimum, maximum
+        with QSignalBlocker(self.input):
+            self.input.setRange(self._display_value(minimum), self._display_value(maximum))
+        if self.slider is not None:
+            with QSignalBlocker(self.slider):
+                self.slider.setRange(0, round((maximum - minimum) / self.step))
+
     def _input_changed(self, *_args):
         self._set_value(self.value())
         if self.input.isEnabled():
