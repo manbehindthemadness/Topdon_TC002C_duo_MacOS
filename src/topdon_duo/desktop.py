@@ -1656,6 +1656,11 @@ def main(argv: list[str] | None = None) -> int:
         camera.stream_observer = diagnostics.stream if args.diagnostics else None
         camera.rejected_frame_observer = diagnostics.rejected_frame if args.diagnostics else None
         camera.open()
+        # Submit bulk reads immediately after UVC COMMIT. In particular, macOS
+        # can stop delivering this mode if the SDK/settings handshake occupies
+        # the control endpoint before the first stream requests are pending.
+        diagnostics.stage("stream_start")
+        frame_pump = CameraFramePump(camera)
         diagnostics.stage("hardware_setup")
         display_awake.start()
         hardware_setup_pending = not initialize_hardware()
@@ -1666,7 +1671,6 @@ def main(argv: list[str] | None = None) -> int:
         set_black_window_backgrounds(WINDOW_NAME)
         initial_window_size_set = False
         pipeline_worker = PipelineWorker()
-        frame_pump = CameraFramePump(camera)
         last_frame = None
         last_frame_at = None
         for frame in diagnostics.frames(frame_pump):

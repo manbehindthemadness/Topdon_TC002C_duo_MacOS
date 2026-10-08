@@ -388,6 +388,7 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
 ):
     from topdon_duo import desktop
 
+    startup = []
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     graphs = Mock(logging=False)
     graphs.take_logging_error.return_value = None
@@ -395,14 +396,17 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
     hardware = Mock(original={}, enabled=set(), error="", preview_active=False,
                     gamma=50, boost=0, tone_busy=False, _tone_sent=0)
     hardware.state.return_value = {}
+    hardware.load.side_effect = lambda: startup.append("hardware")
     monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
     camera = Mock()
     camera.frames.return_value = [make_frame()] * 8
+    camera.open.side_effect = lambda: startup.append("camera")
     monkeypatch.setattr(desktop, "TC002CDuoCamera", lambda: camera)
 
     class FramePump:
         def __init__(self, source):
             self._source = source
+            startup.append("stream")
 
         def __iter__(self):
             return iter(self._source.frames())
@@ -463,6 +467,7 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
 
     monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
     assert desktop.main([]) == 0
+    assert startup[:3] == ["camera", "stream", "hardware"]
     assert states == [
         (False, []),
         (False, []),
