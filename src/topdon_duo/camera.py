@@ -407,12 +407,10 @@ class TC002CDuoCamera:
             if self.mode.max_frame_size < FRAME_BYTES:
                 raise CameraError(f"invalid negotiated frame size: {self.mode.max_frame_size}")
             assembler = LinuxFrameAssembler(self.mode.max_frame_size)
-        elif self.usb_queue_depth:
-            # Queued reads prevent Darwin's synchronous host gaps from dropping
-            # UVC payloads. Strict framing rejects stale partial frames instead
-            # of briefly displaying a shifted thermal plane.
-            assembler = LinuxFrameAssembler(FRAME_BYTES)
         else:
+            # Preserve the proven macOS framing behavior. The device can append
+            # padding beyond the radiometric frame; queued requests prevent the
+            # host gaps that previously caused it to become desynchronized.
             assembler = FrameAssembler()
         assembler.rejected_frame_observer = self.rejected_frame_observer
         read_size = max(16_384, self.mode.max_payload_size)

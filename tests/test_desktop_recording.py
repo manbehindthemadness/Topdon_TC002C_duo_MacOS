@@ -1057,6 +1057,18 @@ def test_hardware_startup_retries_are_bounded_and_do_not_send_calibration(viewer
     viewer.hardware.calibrate_now.assert_not_called()
 
 
+def test_unsupported_hardware_protocol_does_not_retry_or_block_stream(viewer, monkeypatch):
+    viewer.hardware.load.side_effect = desktop.HardwareProtocolError(
+        "Unsupported camera protocol version layout (length reply 0002)"
+    )
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events([-1, -1, "q"]))
+    assert desktop.main([]) == 0
+    viewer.hardware.load.assert_called_once()
+    assert len(viewer.displayed) == 3
+    viewer.hardware.set_auto_calibrate.assert_not_called()
+
+
 def test_startup_calibration_failure_keeps_viewer_running_without_retries(
     viewer, monkeypatch, caplog
 ):

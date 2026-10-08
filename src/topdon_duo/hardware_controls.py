@@ -16,6 +16,10 @@ from uuid import uuid4
 import usb.core
 
 from .camera import CameraError
+
+
+class HardwareProtocolError(CameraError):
+    """The optional settings protocol is unavailable or has an unknown layout."""
 from .tone_curves import composite_curve
 
 LOG = logging.getLogger(__name__)
@@ -425,12 +429,15 @@ class HardwareControls:
             return
         length = bytes(self._transfer(0xA1, 0x85, 4, 4))
         if len(length) not in (2, 4) or int.from_bytes(length, "little") != 4:
-            raise CameraError("Unsupported camera protocol version layout")
+            raise HardwareProtocolError(
+                "Unsupported camera protocol version layout "
+                f"(length reply {length.hex() or 'empty'})"
+            )
         # The version getter also enables SDK 2.0 dispatch in the firmware.
         # Without it a freshly powered camera reports legacy 512-byte blocks.
         version = bytes(self._transfer(0xA1, 0x81, 4, 4))
         if version != b"2.0\x00":
-            raise CameraError(f"Unsupported camera protocol version: {version!r}")
+            raise HardwareProtocolError(f"Unsupported camera protocol version: {version!r}")
         self._protocol_device = self.camera.device
 
     def _select(self, selector, command, delay=0) -> int:
@@ -449,7 +456,7 @@ class HardwareControls:
                 self._protocol_device = None
                 self._ensure_protocol()
                 continue
-            raise CameraError(
+            raise HardwareProtocolError(
                 "Camera returned an unsupported control layout "
                 f"for {selector}:{command}: expected {expected} bytes, "
                 f"received length {size} ({response.hex()})"

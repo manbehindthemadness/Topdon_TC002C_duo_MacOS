@@ -44,7 +44,12 @@ from .graphs import (
     graph_log_button_rect,
     graph_reset_rect,
 )
-from .hardware_controls import HARDWARE_CONTROLS, HardwareControls, camera_operation_title
+from .hardware_controls import (
+    HARDWARE_CONTROLS,
+    HardwareControls,
+    HardwareProtocolError,
+    camera_operation_title,
+)
 from .pipeline import (
     collapse_previews,
     default_pipeline,
@@ -1623,6 +1628,14 @@ def main(argv: list[str] | None = None) -> int:
                 except (CameraError, ValueError, TypeError) as exc:
                     hardware.error = f"Could not restore saved {name}: {exc}"
                     LOG.warning("%s", hardware.error)
+        except HardwareProtocolError as exc:
+            # Hardware controls are optional. An unknown protocol layout will
+            # not become compatible by retrying it every second, and those
+            # control transfers can interfere with Darwin's newly started UVC
+            # stream. Leave live capture running with the settings unavailable.
+            hardware.error = str(exc)
+            LOG.warning("Hardware controls unavailable: %s", exc)
+            return True
         except CameraError as exc:
             hardware.error = str(exc)
             LOG.warning("Could not read hardware settings: %s", exc)

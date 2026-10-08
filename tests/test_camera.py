@@ -172,9 +172,10 @@ def test_supported_platforms_default_to_queued_usb(monkeypatch, platform, expect
     assert TC002CDuoCamera().usb_queue_depth == expected
 
 
-def test_macos_queued_capture_rejects_stale_frame_and_recovers(monkeypatch):
+def test_macos_queued_capture_preserves_tolerant_framing(monkeypatch):
     monkeypatch.setattr(camera_module.sys, "platform", "darwin")
-    packets = iter((b"\x02\x82" + bytes(FRAME_BYTES), b"\x02\x83" + make_frame()))
+    padded_frame = make_frame() + b"padding"
+    packets = iter((b"\x02\x82" + padded_frame,))
 
     class Reader:
         def __init__(self, _device, _endpoint, _size, _timeout, depth):
