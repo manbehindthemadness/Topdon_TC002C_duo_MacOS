@@ -104,6 +104,34 @@ def thermal_scene(temperature=30, hot_edge=False):
     return words.tobytes()
 
 
+@pytest.mark.parametrize("image_source", ["raw", "analyze"])
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_raw_visual_uses_latest_frame_while_temperature_measurements_stay_averaged(image_source, rotation):
+    from topdon_duo.camera import raw_temperatures
+
+    renderer = ThermalRenderer(scale=1, smoothing=0.25, image_source=image_source, rotation=rotation)
+    renderer.native_temperatures = True
+    renderer.antialiasing = False
+    renderer.raw_upsampling = "off"
+    renderer.render_detailed(thermal_scene())
+    current = thermal_scene(hot_edge=True)
+    result = renderer.render_detailed(current)
+    instantaneous = ThermalRenderer(scale=1, smoothing=1, image_source=image_source, rotation=rotation)
+    instantaneous.native_temperatures = True
+    instantaneous.antialiasing = False
+    instantaneous.raw_upsampling = "off"
+    expected = instantaneous.render_detailed(current)
+    assert np.array_equal(result.image, expected.image)
+    assert np.array_equal(result.raw_counts, expected.raw_counts)
+    before = decode_duo_frame(thermal_scene())[1].astype(np.float32)
+    latest = decode_duo_frame(current)[1].astype(np.float32)
+    averaged = 0.75 * before + 0.25 * latest
+    assert np.array_equal(renderer._average_raw, averaged)
+    temperatures = np.rot90(raw_temperatures(averaged, offset=50), -(rotation // 90))
+    np.testing.assert_allclose(result.temperatures_celsius, temperatures)
+    assert result.stats.maximum < expected.stats.maximum
+
+
 def test_analyze_fixed_colors_do_not_follow_scene_or_display_units():
     renderer = ThermalRenderer(scale=1, smoothing=1, image_source='analyze')
     renderer.native_temperatures = True

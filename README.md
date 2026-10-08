@@ -184,6 +184,11 @@ provider availability is not a performance guarantee. Preferences survive on CPU
 
 ### Pipeline presets
 
+Raw thermal display pixels (including raw blend/mask inputs and branches) use
+the latest valid sensor frame, independently of temporal measurement averaging.
+Temperature readouts, spots and graphs retain their averaged measurement plane;
+calibration/invalid frames still hold the last valid image and readings.
+
 **Yautja** preserves the black-hot preview, thermal-detail branch B, raw contrast
 mask in C and camera-palette overlay in D, with single-pass Apple Core ML ACNet
 and the saved hardware detail/noise configuration.

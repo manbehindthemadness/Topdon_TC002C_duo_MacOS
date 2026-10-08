@@ -316,7 +316,8 @@ class PipelineProcessor:
         thermal = thermal_source(document) or not has_yuy2_preview(frame) or not np.any(preview)
         mapping = None
         if thermal:
-            plane = raw_temperatures(averaged if averaged is not None else raw, offset=50)
+            # Temporal averaging is reserved for measurements, not display pixels.
+            plane = raw_temperatures(raw, offset=50)
             if ranges:
                 mapping = ranges[0]["params"]["low"], ranges[0]["params"]["high"]
             else:
@@ -381,7 +382,7 @@ class PipelineProcessor:
                         )
                 return direct_preview
             if source == "raw":
-                plane = raw_temperatures(averaged if averaged is not None else raw, offset=50)
+                plane = raw_temperatures(raw, offset=50)
                 gray = np.clip(
                     (plane - params["raw_low"]) * 255 / (params["raw_high"] - params["raw_low"]),
                     0,

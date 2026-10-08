@@ -47,6 +47,37 @@ def raw_pipeline(*nodes):
     return document
 
 
+@pytest.mark.parametrize("input_kind", ["source", "blend", "mask", "branch"])
+def test_raw_visual_inputs_ignore_measurement_average(input_kind):
+    document = raw_pipeline()
+    if input_kind in ("blend", "mask"):
+        document["software"][0]["params"]["source"] = "preview"
+        document["software"].insert(1, node(
+            "software", "combine", tab="raw", mode="opacity", opacity=0.75,
+            mask_source="raw" if input_kind == "mask" else "none",
+        ))
+    elif input_kind == "branch":
+        document["software"][0]["params"]["source"] = "preview"
+        document["branches"]["B"] = [node("software", "source", source="raw")]
+        document["software"].insert(1, node("software", "combine", tab="B", mode="opacity"))
+    frame, _ = frame_with_preview()
+    words = np.frombuffer(frame, dtype="<u2").copy()
+    raw = words[HEADER_U16:HEADER_U16 + SENSOR_PIXELS].reshape(192, 256)
+    raw[:] = (20 + 50) * 64
+    raw[:, :64] = (45 + 50) * 64
+    frame = words.tobytes()
+    averaged = np.full(raw.shape, (30 + 50) * 64, np.float32)
+    snapshot = averaged.copy()
+    processor = PipelineProcessor()
+    try:
+        instantaneous, _ = processor.process(frame, None, document, scale=1)
+        with_average, _ = processor.process(frame, averaged, document, scale=1)
+        assert np.array_equal(with_average, instantaneous)
+        assert np.array_equal(averaged, snapshot)
+    finally:
+        processor.close()
+
+
 def process(document, scale=1):
     frame, _ = frame_with_preview()
     words = np.frombuffer(frame, dtype="<u2").copy()

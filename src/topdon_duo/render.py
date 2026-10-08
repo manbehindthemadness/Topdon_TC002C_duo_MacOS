@@ -301,7 +301,6 @@ class ThermalRenderer:
                 )
             )
         oriented_raw = self._orient(raw)
-        oriented_average = self._orient(averaged)
         native_size = (oriented_raw.shape[1], oriented_raw.shape[0])
         center_y, center_x = celsius.shape[0] // 2, celsius.shape[1] // 2
         stats = TemperatureStats(
@@ -333,7 +332,9 @@ class ThermalRenderer:
             and has_yuy2_preview(frame)
             and (self.camera_preview or bool(np.any(preview)))
         )
-        image_plane = self._orient(preview) if use_preview else oriented_average
+        # The latest valid sensor image stays responsive; only measurements use
+        # the temporal average. Calibration still holds the last valid frame.
+        image_plane = self._orient(preview) if use_preview else oriented_raw
         if not self.analyze_mode:
             low, high = np.percentile(image_plane, (1.0, 99.0))
             if high <= low:
@@ -363,7 +364,7 @@ class ThermalRenderer:
                 self._enhance_image(self._filter_image(normalized), native_size)
             )
         elif self.analyze_mode:
-            heatmap = self._render_raw(oriented_average)
+            heatmap = self._render_raw(oriented_raw)
         else:
             heatmap = self._colorize(
                 self._enhance_image(self._filter_image(normalized), native_size)
