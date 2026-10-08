@@ -138,7 +138,7 @@ def test_camera_preview_range_recolors_thermal_and_keeps_previous_filters():
     assert source == "preview"
 
 
-def test_macos_grayscale_preview_is_not_decoded_as_yuy2_stripes():
+def test_macos_uyvy_chroma_is_not_displayed_as_vertical_stripes():
     frame, _ = frame_with_preview(preview_scale=1)
     image, source = PipelineProcessor().process(frame, None, default_pipeline(), scale=1)
     assert source == "preview"
