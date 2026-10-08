@@ -1,0 +1,187 @@
+{
+  "version": 4,
+  "hardware": [
+    {
+      "id": "3bb23452949b49e5ab372eb540f6903f",
+      "type": "preset",
+      "params": {
+        "value": "balanced"
+      },
+      "bypass": false,
+      "expanded": true
+    }
+  ],
+  "software": [
+    {
+      "id": "7e5ee323b5ec4eff9bcc862219628745",
+      "type": "source",
+      "params": {
+        "source": "preview"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "427064fad32649f7bfa52c298091a3e4",
+      "type": "colors",
+      "params": {
+        "palette": "inferno"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "dcdc9097a65c442f95bc0c07c171ca2a",
+      "type": "antialiasing",
+      "params": {
+        "amount": 0.35
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "d90ec59bd78f456aabe1989705635ef8",
+      "type": "combine",
+      "params": {
+        "tab": "B",
+        "mode": "and",
+        "opacity": 0.5,
+        "mask_source": "input",
+        "mask_kind": "luminance",
+        "mask_threshold": 127,
+        "mask_invert": true,
+        "raw_low": 15,
+        "raw_high": 45,
+        "base_weight": 1,
+        "input_weight": 1,
+        "offset": 0,
+        "threshold": 127,
+        "invert": false,
+        "interpolation": "linear"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "3396c6b82f9949998b5e30355afad02d",
+      "type": "output",
+      "params": {},
+      "bypass": false,
+      "expanded": false
+    }
+  ],
+  "branches": {
+    "B": [
+      {
+        "id": "79c5bc08256d49c2af089271160806b4",
+        "type": "source",
+        "params": {
+          "source": "raw"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "e39ec4e5940040c49ce228e328c3da1f",
+        "type": "filter",
+        "params": {
+          "filter": "laplacian",
+          "mix": 1,
+          "kernel": 0,
+          "sigma": 0.8,
+          "sigma_color": 21,
+          "sigma_space": 3,
+          "channels": "color",
+          "border": "reflect",
+          "direction": "magnitude",
+          "gain": 1,
+          "edge_low": 50,
+          "edge_high": 150,
+          "l2_gradient": false,
+          "clip_limit": 2,
+          "tile_size": 8,
+          "threshold": 127,
+          "threshold_type": "binary",
+          "maximum": 255,
+          "block_size": 11,
+          "adaptive_method": "gaussian",
+          "adaptive_c": 2,
+          "invert": false,
+          "morph_operation": "open",
+          "shape": "ellipse",
+          "iterations": 1,
+          "emboss_direction": "se",
+          "offset": 128,
+          "amount": 0.7
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "126a900c23ac48c1865988067d0bd46d",
+        "type": "contours",
+        "params": {
+          "resolution": 512,
+          "blur": 3,
+          "region": "full",
+          "region_size": 75,
+          "exclude_border": true,
+          "max_count": 100,
+          "color": "white",
+          "thickness": 1,
+          "mix": 1,
+          "lower": 50,
+          "upper": 150,
+          "segmentation": "otsu",
+          "threshold": 127,
+          "invert": false,
+          "block_size": 11,
+          "adaptive_c": 0,
+          "close_kernel": 3,
+          "min_area": 0.05,
+          "max_area": 80,
+          "shape": "any",
+          "min_aspect": 1,
+          "max_aspect": 20,
+          "solidity": 0,
+          "circularity": 0,
+          "simplify": 2,
+          "rank": "largest",
+          "geometry": "contour",
+          "output": "overlay"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "611f169f03d1456d8e53879900b37b3e",
+        "type": "preview",
+        "params": {},
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "C": [
+      {
+        "id": "4ed18ddc9b7e4798bd2e291046a78ce1",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "D": [
+      {
+        "id": "ff9a5f60812b4473a5ca4a620c2e87f3",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ]
+  }
+}
