@@ -8,14 +8,13 @@ from time import monotonic, sleep
 
 import cv2
 import numpy as np
+from support.desktop_recording import viewer_fixture
 from test_capture_panel import popup_environment
-from test_desktop_recording import viewer as viewer_fixture
 from test_render import frame_with_preview
 
 from topdon_duo.pipeline import default_pipeline, node
 from topdon_duo.pipeline_processing import PipelineProcessor, PipelineWorker
-
-viewer = viewer_fixture
+from topdon_duo.processing.branch import BranchProcessor
 
 
 def preview_document():
@@ -58,7 +57,7 @@ def test_node_snapshots_are_at_their_position_and_preserve_final_image():
 
 
 def test_collapsed_bypassed_and_closed_window_previews_do_no_thumbnail_work(monkeypatch):
-    import topdon_duo.pipeline_processing as processing
+    import topdon_duo.processing.branch as processing
 
     document, before, after = preview_document()
     frame, _ = frame_with_preview()
@@ -298,14 +297,14 @@ def test_disconnected_preview_failure_does_not_break_viewer(monkeypatch):
     preview["expanded"] = True
     document["branches"]["B"].append(preview)
     source_id = document["branches"]["B"][0]["id"]
-    original = PipelineProcessor._process_single
+    original = BranchProcessor.process
 
     def fail_preview(self, *args):
         if args[2]["software"][0]["id"] == source_id:
             raise ValueError("Preview branch failed")
         return original(self, *args)
 
-    monkeypatch.setattr(PipelineProcessor, "_process_single", fail_preview)
+    monkeypatch.setattr(BranchProcessor, "process", fail_preview)
     processor = PipelineProcessor()
     processor.collect_previews = True
     frame, _ = frame_with_preview()
@@ -324,14 +323,14 @@ def test_preview_failure_propagates_to_preview_consumers_without_blocking_A(monk
     preview["expanded"] = True
     document["branches"]["B"] += [node("software", "combine", tab="C"), preview]
     source_id = document["branches"]["C"][0]["id"]
-    original = PipelineProcessor._process_single
+    original = BranchProcessor.process
 
     def fail_preview(self, *args):
         if args[2]["software"][0]["id"] == source_id:
             raise ValueError("bad input")
         return original(self, *args)
 
-    monkeypatch.setattr(PipelineProcessor, "_process_single", fail_preview)
+    monkeypatch.setattr(BranchProcessor, "process", fail_preview)
     processor = PipelineProcessor()
     processor.collect_previews = True
     frame, _ = frame_with_preview()
@@ -463,7 +462,7 @@ preview.close()
 
 
 def test_preview_timings_measure_prefix_work_and_exclude_all_thumbnail_encoding(monkeypatch):
-    import topdon_duo.pipeline_processing as processing
+    import topdon_duo.processing.branch as processing
 
     clock = [0.0]
     original_decode = processing.decode_duo_frame
@@ -499,3 +498,6 @@ def test_preview_timings_measure_prefix_work_and_exclude_all_thumbnail_encoding(
         assert processor.last_preview_timings == {}
     finally:
         processor.close()
+
+
+__all__ = ["viewer_fixture"]

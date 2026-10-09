@@ -30,7 +30,7 @@ def test_cpu_system_ignores_but_retains_saved_apple_preferences(monkeypatch):
     def no_apple():
         raise AssertionError("Apple helper must not load on CPU-only system")
 
-    monkeypatch.setattr("topdon_duo.pipeline_processing.CoreMLUpsampler", no_apple)
+    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", no_apple)
     document = raw_pipeline(
         node(
             "software",
@@ -69,7 +69,7 @@ def test_gpu_node_uses_isolated_engine_and_preserves_passes(monkeypatch):
         def close(self):
             calls.append("closed")
 
-    monkeypatch.setattr("topdon_duo.pipeline_processing.CoreMLUpsampler", Engine)
+    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", Engine)
     document = raw_pipeline(
         node(
             "software",
@@ -97,7 +97,7 @@ def test_anime_ignores_saved_apple_backend_even_on_gpu_system(monkeypatch):
     def no_apple():
         raise AssertionError("Anime4K09 must not use Core ML")
 
-    monkeypatch.setattr("topdon_duo.pipeline_processing.CoreMLUpsampler", no_apple)
+    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", no_apple)
     document = raw_pipeline(
         node(
             "software",

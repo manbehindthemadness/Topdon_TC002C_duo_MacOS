@@ -604,6 +604,14 @@ class HardwareControls:
         for name in tuple(self.enabled):
             self.set(name, self.values[name], False)
 
+    @property
+    def tone_progress(self) -> int:
+        """
+        Return the percentage of the current tone upload already sent.
+        """
+        progress = round(self._tone_sent * 100 / 257)
+        return progress
+
     def state(self) -> dict:
         return {
             name: {

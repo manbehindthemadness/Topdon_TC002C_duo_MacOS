@@ -1,19 +1,11 @@
 import cv2
 import numpy as np
 import pytest
-from test_camera import make_frame
+from support.frames import frame_with_preview, make_frame
 
 from topdon_duo.camera import IMAGE_OFFSET, SENSOR_HEIGHT, SENSOR_WIDTH, decode_duo_frame
 from topdon_duo.desktop import MousePicker, SampleSpots, draw_picker, draw_sample_spots
 from topdon_duo.render import ThermalRenderer
-
-
-def frame_with_preview(preview_scale=2):
-    preview = np.zeros((SENSOR_HEIGHT * preview_scale, SENSOR_WIDTH * preview_scale), np.uint8)
-    # Place detail beyond the first 256x192 pixels of the large preview.
-    preview[preview.shape[0] // 2 :, preview.shape[1] // 2 :] = 200
-    words = preview.astype("<u2") | 0x8000
-    return make_frame()[: IMAGE_OFFSET * 2] + words.tobytes(), preview
 
 
 @pytest.mark.parametrize("preview_scale", [1, 2])

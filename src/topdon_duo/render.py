@@ -97,6 +97,9 @@ def draw_temperature_readout(
 
 
 class ThermalRenderer:
+    raw_temperature_low: float
+    raw_temperature_high: float
+
     def __init__(
         self,
         scale: int = 3,
@@ -167,6 +170,33 @@ class ThermalRenderer:
         if self.pipeline is not None:
             settings["pipeline"] = self.pipeline
         return settings
+
+    @property
+    def last_valid_frame(self) -> bytes | None:
+        """
+        Return the latest valid sensor frame for display processing.
+        """
+        return self._last_valid_frame
+
+    @property
+    def averaged_raw_counts(self) -> np.ndarray | None:
+        """
+        Expose the current measurement average for a worker-owned copy.
+        """
+        return self._average_raw
+
+    def reset_measurement_average(self) -> None:
+        """
+        Restart averaging with the next valid frame after a hardware change.
+        """
+        self._average_raw = None
+        self._recover_measurements = True
+
+    def request_measurement_restart(self) -> None:
+        """
+        Restart on the next valid frame while preserving held calibration readings.
+        """
+        self._recover_measurements = True
 
     def set_pipeline(self, document):
         self.pipeline = validate_pipeline(document)

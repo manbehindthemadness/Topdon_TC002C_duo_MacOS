@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from test_capture_panel import popup_environment
 
 
@@ -16,15 +17,21 @@ def test_predefined_redneck_combat_matches_original_export():
     assert predefined_presets()["Redneck Combat"] == validate_pipeline(exported)
 
 
-def test_predefined_redneck_gpu_retains_current_enhancement_and_branch_settings():
+def test_predefined_redneck_gpu_retains_current_enhancement_and_branch_settings() -> None:
+    """
+    Retain the tuned GPU enhancement and threshold-mask edge branch.
+    """
     from topdon_duo.pipeline_presets import predefined_presets
 
     document = predefined_presets()["Redneck Combat GPU"]
     enhance = next(n for n in document["software"] if n["type"] == "enhance")
-    assert enhance["params"]["model"] == "realesr-general-x4v3"
-    assert enhance["params"]["backend"] == "coreml"
-    assert enhance["params"]["apple_compute"] == "ALL"
-    assert enhance["params"]["input"] == "native"
+    expected_gpu = {
+        "model": "realesr-general-x4v3",
+        "backend": "coreml",
+        "apple_compute": "ALL",
+        "input": "native",
+    }
+    assert {key: enhance["params"][key] for key in expected_gpu} == expected_gpu
     combine = next(n for n in document["software"] if n["type"] == "combine")
     assert combine["params"]["mask_kind"] == "threshold"
     branch = document["branches"]["B"]
@@ -74,21 +81,30 @@ def test_predefined_yautja_gpu_preserves_compositing_and_realesr_settings():
     assert enhance["params"]["amount"] == 1.0
 
 
-def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(monkeypatch, tmp_path):
+def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    Keep the captured current enhancement node and edge branch in the bundled preset.
+    """
     from topdon_duo.pipeline_presets import load_presets, predefined_presets, save_presets
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     name = "Detail Enhanced GPU Upscale"
     original = predefined_presets()[name]
     assert load_presets()[name] == original
-    upscale = next(n for n in original["software"] if n["type"] == "onnx_superresolution")
+    assert not any(n["type"] == "onnx_superresolution" for n in original["software"])
+    upscale = next(n for n in original["software"] if n["type"] == "enhance")
     assert upscale["params"] == {
         "model": "realesr-general-x4v3", "input": "native", "amount": 1.0,
         "backend": "coreml", "apple_compute": "ALL",
+        "denoise": 0, "noise": 15, "passes": 3,
     }
     combine = next(n for n in original["software"] if n["type"] == "combine")
     assert combine["params"]["tab"] == "B"
     assert original["branches"]["B"][0]["params"]["source"] == "raw"
+    preview = next(n for n in original["branches"]["B"] if n["type"] == "preview")
+    assert not preview["expanded"]
     save_presets(load_presets())
     assert (tmp_path / "topdon-duo" / "pipeline-presets.json").read_text().strip() == "{}"
     assert load_presets()[name] == original

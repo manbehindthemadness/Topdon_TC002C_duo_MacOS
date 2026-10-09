@@ -17,6 +17,7 @@ from topdon_duo.pipeline import (
 )
 from topdon_duo.pipeline_hardware import desired_hardware
 from topdon_duo.pipeline_processing import PipelineProcessor, combine_images
+from topdon_duo.processing.branch import BranchProcessor
 
 
 def connect(document, target, owner="A", **params):
@@ -157,7 +158,7 @@ def test_connected_branches_run_once_on_separate_threads_using_same_frame(monkey
             barrier.wait(timeout=3)  # Both must be running concurrently.
         return np.full((4, 6, 3), 100, np.float32), "preview"
 
-    monkeypatch.setattr(PipelineProcessor, "_process_single", fake)
+    monkeypatch.setattr(BranchProcessor, "process", fake)
     try:
         image, _ = processor.process(frame, averaged, document, scale=1)
         assert image.shape == (192, 256, 3)
@@ -301,7 +302,7 @@ def test_failed_branch_drains_frame_and_next_revision_recovers(monkeypatch):
     document = default_pipeline()
     connect(document, "B")
     connect(document, "C")
-    original = PipelineProcessor._process_single
+    original = BranchProcessor.process
     b_id = document["branches"]["B"][0]["id"]
     failed = False
 
@@ -312,7 +313,7 @@ def test_failed_branch_drains_frame_and_next_revision_recovers(monkeypatch):
             raise ValueError("test branch failure")
         return original(self, *args)
 
-    monkeypatch.setattr(PipelineProcessor, "_process_single", intermittent)
+    monkeypatch.setattr(BranchProcessor, "process", intermittent)
     processor = PipelineProcessor()
     frame, _ = frame_with_preview()
     try:

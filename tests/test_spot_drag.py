@@ -3,13 +3,11 @@ from unittest.mock import Mock
 import cv2
 import numpy as np
 import pytest
+from support.desktop_recording import viewer_fixture
 from test_camera import make_frame
-from test_desktop_recording import viewer as viewer_fixture
 
 from topdon_duo import desktop
 from topdon_duo.camera import HEADER_U16, SENSOR_HEIGHT, SENSOR_WIDTH
-
-viewer = viewer_fixture
 
 
 def mouse(picker, event, x, y, flags=0):
@@ -245,3 +243,6 @@ def test_logging_locks_spot_controls_from_file_dialog_until_stopped(viewer, monk
     # Movement resumes after stopping logging, with the same marker identity.
     assert all(points == [(10, 20)] for points in pixels[3:8])
     assert pixels[-1] == [(30, 40)]
+
+
+__all__ = ["viewer_fixture"]

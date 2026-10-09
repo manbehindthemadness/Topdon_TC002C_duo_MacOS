@@ -51,6 +51,19 @@ class PipelineHardware:
         self.document = None
         self._desired = None
 
+    @property
+    def applied_state(self) -> tuple | None:
+        """
+        Return a snapshot of the last successfully applied hardware configuration.
+        """
+        return deepcopy(self._desired)
+
+    def invalidate_applied_state(self) -> None:
+        """
+        Require hardware application after an external restoration.
+        """
+        self._desired = None
+
     def apply(self, document, *, previous_document=None):
         candidate = validate_pipeline(document)
         if (

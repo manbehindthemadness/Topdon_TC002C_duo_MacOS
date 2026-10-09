@@ -205,8 +205,9 @@ edges, contours, antialiasing and sharpening in branch B, followed by native-inp
 Real-ESRGAN 4× in the AI enhancement node with Apple Core ML `ALL` devices.
 
 The Pipeline presets dropdown includes **Detail Enhanced GPU Upscale**, captured
-from the tuned preview/thermal-edge blend with Real-ESRGAN 4× and Apple Core ML
-(`ALL` compute devices). Its complete A/B branch configuration is bundled with
+from the tuned preview/thermal-edge blend with Real-ESRGAN 4× in the current
+AI enhancement node, Native input, and Apple Core ML (`ALL` compute devices).
+Its complete A/B branch configuration is bundled with
 the app. GPU preferences remain stored and fall back to CPU on non-Apple systems;
 Real-ESRGAN downloads on first use if missing. Loading the preset replaces the
 pipeline, not your temperature measurements or other viewer preferences.
@@ -868,6 +869,30 @@ resubmitted before their packets are processed. Use `--usb-queue-depth 0` for
 diagnostic synchronous capture, or choose a depth from 2 to 128.
 
 ## Development
+
+Application-owned Python files, including tests, must stay at or below 800
+physical lines. Split larger modules by responsibility into package folders;
+`tests/test_repository_layout.py` enforces the limit during the normal test run.
+Project skills stay version-controlled under `.agents/skills/`.
+
+The public `desktop.py`, `pipeline.py`, `pipeline_editor.py`, and
+`pipeline_processing.py` modules retain the entry points and imports used by
+callers. Their implementation lives in these packages:
+
+- `desktop_app/`: a session coordinator with settings, capture, hardware-control,
+  and presentation controllers; shared typed session state; toolbar/graph layout,
+  spot handling, overlays, dialogs, and capture helpers.
+- `pipeline_model/`: node catalog, validation, migration, and branch dependencies.
+- `pipeline_ui/`: the Qt editor, widgets, and runtime state updates.
+- `processing/`: image operations, per-branch processing and model caches,
+  dependency scheduling, and the asynchronous worker.
+
+Controllers use public renderer and hardware APIs to restart measurement
+averaging, inspect cached state, and report upload progress. Keep camera reads
+and audited hardware setup order intact when changing these boundaries. Qt
+popup processes continue to communicate through JSON separately from OpenCV.
+Shared test fixtures live in `tests/support/`; recording, pipeline, and ONNX
+tests are grouped by responsibility so each test module follows the same limit.
 
 To investigate a Linux viewer stall without reopening its camera, monitor the
 running viewer's PID:

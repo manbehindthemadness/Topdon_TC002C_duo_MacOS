@@ -4,12 +4,11 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 import usb.core
+from support.frames import make_frame
 
 import topdon_duo.camera as camera_module
 from topdon_duo.camera import (
     FRAME_BYTES,
-    FRAME_MAGIC,
-    FRAME_U16,
     HEADER_U16,
     SENSOR_HEIGHT,
     SENSOR_PIXELS,
@@ -27,14 +26,6 @@ from topdon_duo.camera import (
     parse_probe,
     raw_temperatures,
 )
-
-
-def make_frame(raw_value: int = 20_000) -> bytes:
-    values = np.zeros(FRAME_U16, dtype="<u2")
-    values[0] = FRAME_MAGIC & 0xFFFF
-    values[1] = FRAME_MAGIC >> 16
-    values[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS] = raw_value
-    return values.tobytes()
 
 
 def test_probe_round_trip():

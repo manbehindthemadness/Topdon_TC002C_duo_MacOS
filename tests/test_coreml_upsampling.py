@@ -106,7 +106,7 @@ def test_pipeline_node_executes_independently_and_can_be_bypassed(monkeypatch):
     from test_pipeline import process, raw_pipeline
 
     fake_runtime(monkeypatch)
-    monkeypatch.setattr("topdon_duo.pipeline_processing.CoreMLUpsampler", _CoreMLRuntime)
+    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", _CoreMLRuntime)
     item = node("software", "coreml_acnet")
     document = raw_pipeline(item)
     assert process(document).shape == (192, 256, 3)

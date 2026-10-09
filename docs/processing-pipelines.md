@@ -1,5 +1,14 @@
 # Camera processing pipelines
 
+The public pipeline modules keep their import paths while delegating to
+`pipeline_model/` (catalog and document validation), `pipeline_ui/` (editor,
+widgets, and state updates), and `processing/` (image operations, branch
+execution, scheduling, and worker delivery). Each branch owns its enhancement
+model caches; the scheduler owns dependency order and branch executors. The
+worker preserves revision checks and replaces pending frames with the latest
+submission. Display processing does not modify measurement averages or sensor
+coordinates.
+
 Camera settings has a hardware stack, a row of tabs A–D, and a software stack
 for the selected tab. Click a node header to expand its controls; drag the grip
 to reorder. Node titles summarize their settings, such as **App colors: Inferno**

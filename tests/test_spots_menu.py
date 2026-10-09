@@ -4,12 +4,10 @@ from unittest.mock import Mock
 
 import cv2
 import pytest
+from support.desktop_recording import viewer_fixture
 from test_capture_panel import popup_environment
-from test_desktop_recording import viewer as viewer_fixture
 
 from topdon_duo import desktop
-
-viewer = viewer_fixture
 
 
 def test_spots_disable_and_clear_keep_other_numbers_and_toggle_preserves_positions():
@@ -359,3 +357,6 @@ def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monk
     viewer.hardware.set_auto_calibrate.assert_called_once_with(True)
     viewer.hardware.set_fixed_range.assert_called_once_with(True)
     viewer.hardware.calibrate_now.assert_called_once()  # Startup runs on each launch.
+
+
+__all__ = ["viewer_fixture"]

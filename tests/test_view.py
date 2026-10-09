@@ -5,17 +5,15 @@ from unittest.mock import Mock
 import cv2
 import numpy as np
 import pytest
+from support.desktop_recording import viewer_fixture
 from test_camera import make_frame
 from test_capture_panel import popup_environment
-from test_desktop_recording import viewer as viewer_fixture
 from test_render import frame_with_preview
 
 from topdon_duo import desktop
 from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS
 from topdon_duo.render import ThermalRenderer
 from topdon_duo.view_settings import COLOR_PALETTES, IMAGE_FILTERS, VIEW_DEFAULTS
-
-viewer = viewer_fixture
 
 
 def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading(
@@ -751,3 +749,6 @@ def test_camera_operation_notifies_before_usb_work_and_reports_outcome(viewer, m
     expected = 'Camera setting rejected: test timeout' if fails else 'Detail enhancement mode updated'
     assert any(state['camera_operation'] == expected and not state['camera_operation_busy']
                for state in states)
+
+
+__all__ = ["viewer_fixture"]

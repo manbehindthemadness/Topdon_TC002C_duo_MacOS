@@ -104,22 +104,25 @@ def test_editor_enables_apple_node_without_rewriting_pipeline():
 
     script = """
 from copy import deepcopy
-from PySide6.QtWidgets import QApplication, QMenu
+from PySide6.QtWidgets import QApplication
+from topdon_duo.pipeline import node
 from topdon_duo.view_window import ViewWindow
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor
+enhance = node("software", "enhance", model="acnet", backend="coreml")
+editor.document["software"].insert(1, enhance)
+editor.rebuild()
 original = deepcopy(editor.document)
 for available in (False, True, False):
     capability = {"available": available, "metal": available, "coreml": available,
                   "reason": "Ready" if available else "No Metal device available"}
     editor.update_state({"pipeline": original, "apple_acceleration": capability}, False)
-    menu = QMenu()
-    editor.stacks["software"].add_menu(menu, "Add node", 1)
-    actions = menu.actions()[0].menu().actions()
-    apple = next(a for a in actions if a.text().startswith("Apple Core ML ACNet"))
-    assert apple.isEnabled() is available
-    assert apple.toolTip() == capability["reason"]
+    controls = editor.widgets[enhance["id"]][1]
+    for key in ("backend", "apple_compute"):
+        assert controls[key].isHidden() is (not available)
+        assert controls[key].input.isEnabled() is available
+    assert editor.apple_status.text() == ("Apple acceleration ready · Metal + Core ML" if available else capability["reason"])
     assert editor.document == original
 window.close()
 """

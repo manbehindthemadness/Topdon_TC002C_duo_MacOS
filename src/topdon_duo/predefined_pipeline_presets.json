@@ -100,12 +100,15 @@
         "expanded": false
       },
       {
-        "id": "119ad219258447e898ada6007e528116",
-        "type": "onnx_superresolution",
+        "id": "1a76366707734f339deb45939a4ae334",
+        "type": "enhance",
         "params": {
           "model": "realesr-general-x4v3",
+          "denoise": 0,
+          "noise": 15,
           "input": "native",
-          "amount": 1,
+          "amount": 1.0,
+          "passes": 3,
           "backend": "coreml",
           "apple_compute": "ALL"
         },
@@ -217,7 +220,7 @@
           "type": "preview",
           "params": {},
           "bypass": false,
-          "expanded": true
+          "expanded": false
         }
       ],
       "C": [
