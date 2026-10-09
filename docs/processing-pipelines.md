@@ -27,6 +27,11 @@ offers bundled and user-saved presets. Choose **Save current pipeline as…** to
 name and save your own preset; select its name to apply it later. Presets include
 the hardware stack and all four software tabs, persist across restarts, and can
 still be exported as JSON.
+The bundled collection includes Detail Enhanced GPU Upscale, Detail Enhanced CPU
+Upscale, Redneck Combat, Redneck Combat GPU, Yautja, Yautja GPU, Reaper Night GPU,
+and Reaper Day GPU. The current saved Yautja GPU, Reaper Night/Day GPU, and Detail
+Enhanced CPU Upscale configurations are captured as individual exports in `presets/`
+and included in the package defaults, so they are available without local preferences.
 **Create new** starts a blank, unsaved pipeline: the hardware stack is empty,
 tab A contains only Source and Output, and B–D contain only Source. It returns
 the editor to tab A and leaves saved presets unchanged.

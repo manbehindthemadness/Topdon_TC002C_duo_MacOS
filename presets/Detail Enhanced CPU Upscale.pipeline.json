@@ -1,0 +1,239 @@
+{
+  "version": 4,
+  "hardware": [
+    {
+      "id": "3bb23452949b49e5ab372eb540f6903f",
+      "type": "preset",
+      "params": {
+        "value": "balanced"
+      },
+      "bypass": false,
+      "expanded": true
+    }
+  ],
+  "software": [
+    {
+      "id": "7e5ee323b5ec4eff9bcc862219628745",
+      "type": "source",
+      "params": {
+        "source": "preview"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "427064fad32649f7bfa52c298091a3e4",
+      "type": "colors",
+      "params": {
+        "palette": "plasma"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "87251759feb8445fac17af47d0651e19",
+      "type": "combine",
+      "params": {
+        "tab": "B",
+        "mode": "subtract",
+        "opacity": 0.5,
+        "mask_source": "B",
+        "mask_kind": "luminance",
+        "mask_threshold": 127,
+        "mask_invert": false,
+        "raw_low": 15,
+        "raw_high": 45,
+        "base_weight": 1,
+        "input_weight": 1,
+        "offset": 0,
+        "threshold": 127,
+        "invert": false,
+        "interpolation": "linear"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "ccbc7cede58e4c07a7cd136e8cea5552",
+      "type": "filter",
+      "params": {
+        "filter": "clahe",
+        "mix": 1.0,
+        "kernel": 0,
+        "sigma": 0.8,
+        "sigma_color": 21.0,
+        "sigma_space": 3.0,
+        "channels": "color",
+        "border": "reflect",
+        "direction": "magnitude",
+        "gain": 1.0,
+        "edge_low": 50,
+        "edge_high": 150,
+        "l2_gradient": false,
+        "clip_limit": 2.0,
+        "tile_size": 5.0,
+        "threshold": 127,
+        "threshold_type": "binary",
+        "maximum": 255,
+        "block_size": 11,
+        "adaptive_method": "gaussian",
+        "adaptive_c": 2.0,
+        "invert": false,
+        "morph_operation": "open",
+        "shape": "ellipse",
+        "iterations": 1,
+        "emboss_direction": "se",
+        "offset": 128,
+        "amount": 0.7
+      },
+      "bypass": false,
+      "expanded": true
+    },
+    {
+      "id": "f8fa7fccf5284b14b54f5e7bfa7cc29d",
+      "type": "filter",
+      "params": {
+        "filter": "sharpen",
+        "mix": 1,
+        "kernel": 0,
+        "sigma": 2.1,
+        "sigma_color": 21,
+        "sigma_space": 3,
+        "channels": "color",
+        "border": "reflect",
+        "direction": "magnitude",
+        "gain": 1,
+        "edge_low": 50,
+        "edge_high": 150,
+        "l2_gradient": false,
+        "clip_limit": 2,
+        "tile_size": 8,
+        "threshold": 127,
+        "threshold_type": "binary",
+        "maximum": 255,
+        "block_size": 11,
+        "adaptive_method": "gaussian",
+        "adaptive_c": 2,
+        "invert": false,
+        "morph_operation": "open",
+        "shape": "ellipse",
+        "iterations": 1,
+        "emboss_direction": "se",
+        "offset": 128,
+        "amount": 2.54
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "dcdc9097a65c442f95bc0c07c171ca2a",
+      "type": "antialiasing",
+      "params": {
+        "amount": 1.23
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "1a76366707734f339deb45939a4ae334",
+      "type": "enhance",
+      "params": {
+        "model": "acnet",
+        "denoise": 3,
+        "noise": 15,
+        "input": "native",
+        "amount": 1.0,
+        "passes": 1,
+        "backend": "cpu",
+        "apple_compute": "CPUAndGPU"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "3396c6b82f9949998b5e30355afad02d",
+      "type": "output",
+      "params": {},
+      "bypass": false,
+      "expanded": false
+    }
+  ],
+  "branches": {
+    "B": [
+      {
+        "id": "79c5bc08256d49c2af089271160806b4",
+        "type": "source",
+        "params": {
+          "source": "raw"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "fba94892c55b4d8fb81516d10f61476d",
+        "type": "filter",
+        "params": {
+          "filter": "scharr",
+          "mix": 1,
+          "kernel": 0,
+          "sigma": 0.8,
+          "sigma_color": 21,
+          "sigma_space": 3,
+          "channels": "color",
+          "border": "reflect",
+          "direction": "magnitude",
+          "gain": 0.52,
+          "edge_low": 50,
+          "edge_high": 150,
+          "l2_gradient": false,
+          "clip_limit": 2,
+          "tile_size": 8,
+          "threshold": 127,
+          "threshold_type": "binary",
+          "maximum": 255,
+          "block_size": 11,
+          "adaptive_method": "gaussian",
+          "adaptive_c": 2,
+          "invert": false,
+          "morph_operation": "open",
+          "shape": "ellipse",
+          "iterations": 1,
+          "emboss_direction": "se",
+          "offset": 128,
+          "amount": 0.7
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "cf1ee3dec77a49748b1366cfca06abec",
+        "type": "preview",
+        "params": {},
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "C": [
+      {
+        "id": "4ed18ddc9b7e4798bd2e291046a78ce1",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "D": [
+      {
+        "id": "ff9a5f60812b4473a5ca4a620c2e87f3",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ]
+  }
+}

@@ -64,23 +64,52 @@ def test_predefined_yautja_preserves_all_branches_and_apple_acnet():
     assert [n["type"] for n in document["hardware"]] == ["detail", "noise", "preset"]
 
 
-def test_predefined_yautja_gpu_preserves_compositing_and_realesr_settings():
+def test_predefined_yautja_gpu_preserves_compositing_and_realesr_settings() -> None:
+    """
+    Preserve the current saved GPU composition, including its tuned thermal branch.
+    """
     from topdon_duo.pipeline_presets import predefined_presets
 
     presets = predefined_presets()
     document = presets["Yautja GPU"]
-    original = presets["Yautja"]
-    assert document["hardware"] == original["hardware"]
-    assert document["branches"] == original["branches"]
-    for saved, prior in zip(document["software"], original["software"], strict=True):
-        if saved["type"] != "enhance":
-            assert saved == prior
+    assert [n["type"] for n in document["hardware"]] == ["detail", "noise", "preset"]
+    branch = document["branches"]["B"]
+    assert [n["type"] for n in branch] == ["source", "filter", "antialiasing", "filter", "preview"]
+    assert branch[1]["params"]["filter"] == "laplacian"
+    assert branch[1]["params"]["gain"] == 0.2
+    assert branch[3]["params"]["filter"] == "sharpen"
+    assert branch[3]["params"]["amount"] == 3
     enhance = next(n for n in document["software"] if n["type"] == "enhance")
     assert enhance["params"]["model"] == "realesr-general-x4v3"
     assert enhance["params"]["backend"] == "coreml"
     assert enhance["params"]["apple_compute"] == "ALL"
     assert enhance["params"]["input"] == "native"
     assert enhance["params"]["amount"] == 1.0
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Yautja GPU",
+        "Reaper Night GPU",
+        "Reaper Day GPU",
+        "Detail Enhanced CPU Upscale",
+    ],
+)
+def test_current_saved_presets_are_bundled_and_available_on_fresh_install(
+    name: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    Match captured user exports exactly without needing a local preferences file.
+    """
+    from topdon_duo.pipeline_presets import load_presets, predefined_presets
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    export = Path(__file__).resolve().parents[1] / "presets" / f"{name}.pipeline.json"
+    captured = json.loads(export.read_text())
+    assert predefined_presets()[name] == captured
+    assert load_presets()[name] == captured
+    assert not (tmp_path / "topdon-duo" / "pipeline-presets.json").exists()
 
 
 def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
@@ -151,7 +180,8 @@ assert "Redneck Combat" in editor.presets
 assert "Redneck Combat GPU" in editor.presets
 assert "Yautja" in editor.presets
 assert "Yautja GPU" in editor.presets
-assert editor.preset_combo.count() == 10
+baseline_count = editor.preset_combo.count()
+assert baseline_count == len(editor.presets) + 5
 editor.insert("software", "enhance", 1)
 enhance = editor.document["software"][1]
 assert enhance["params"]["passes"] == 3
@@ -165,7 +195,7 @@ QInputDialog.getText = lambda *_: ("My test preset", True)
 editor.select_preset(editor.preset_combo.findText("Save current pipeline as…"))
 saved = load_presets()["My test preset"]
 assert saved == editor.document
-assert editor.preset_combo.count() == 11
+assert editor.preset_combo.count() == baseline_count + 1
 assert editor.preset_combo.currentText() == "My test preset"
 editor.defaults()
 editor.select_preset(editor.preset_combo.findText("My test preset"))

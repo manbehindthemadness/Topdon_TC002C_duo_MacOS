@@ -1,0 +1,246 @@
+{
+  "version": 4,
+  "hardware": [
+    {
+      "id": "606b46d2e38e4fbaabdc0058c4f8cc52",
+      "type": "boost",
+      "params": {
+        "value": 3
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "1a4cc63bd10441b8ad704f1bbfef7103",
+      "type": "preset",
+      "params": {
+        "value": "soft"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "64616675b04d4367a092caa2f31536cf",
+      "type": "detail",
+      "params": {
+        "enabled": true,
+        "amount": 66.0,
+        "fixed": false
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "5ca1b886077e4fa6a8da811137b6cef8",
+      "type": "noise",
+      "params": {
+        "noise_mode": 2.0,
+        "noise_general": 100.0,
+        "noise_spatial": 100.0,
+        "noise_temporal": 100.0
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "fce246ad44b24d7693974ed8d0a71680",
+      "type": "camera_colors",
+      "params": {
+        "palette": 2
+      },
+      "bypass": false,
+      "expanded": false
+    }
+  ],
+  "software": [
+    {
+      "id": "7e5ee323b5ec4eff9bcc862219628745",
+      "type": "source",
+      "params": {
+        "source": "preview"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "c5bd0a5402094faf870ac82377f453c3",
+      "type": "combine",
+      "params": {
+        "tab": "B",
+        "mode": "add",
+        "opacity": 0.5,
+        "mask_source": "B",
+        "mask_kind": "luminance",
+        "mask_threshold": 127,
+        "mask_invert": true,
+        "raw_low": 15.0,
+        "raw_high": 45.0,
+        "base_weight": 1.0,
+        "input_weight": 1.0,
+        "offset": 0,
+        "threshold": 127,
+        "invert": false,
+        "interpolation": "linear"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "985470820ae04430a7b44bb0caa1c2b5",
+      "type": "antialiasing",
+      "params": {
+        "amount": 1.7
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "d5c7233e9f074271ad083d0aefc08156",
+      "type": "filter",
+      "params": {
+        "filter": "sharpen",
+        "mix": 0.2,
+        "kernel": 0,
+        "sigma": 6.5,
+        "sigma_color": 21.0,
+        "sigma_space": 3.0,
+        "channels": "color",
+        "border": "reflect",
+        "direction": "magnitude",
+        "gain": 1.0,
+        "edge_low": 50,
+        "edge_high": 150,
+        "l2_gradient": false,
+        "clip_limit": 2.0,
+        "tile_size": 8,
+        "threshold": 127,
+        "threshold_type": "binary",
+        "maximum": 255,
+        "block_size": 11,
+        "adaptive_method": "gaussian",
+        "adaptive_c": 2.0,
+        "invert": false,
+        "morph_operation": "open",
+        "shape": "ellipse",
+        "iterations": 1,
+        "emboss_direction": "se",
+        "offset": 128,
+        "amount": 3.0
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "f64936ef646b492b9326e098546a3259",
+      "type": "enhance",
+      "params": {
+        "model": "dncnn-25",
+        "denoise": 0,
+        "noise": 15,
+        "input": "native",
+        "amount": 1.0,
+        "passes": 3,
+        "backend": "coreml",
+        "apple_compute": "ALL"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "3396c6b82f9949998b5e30355afad02d",
+      "type": "output",
+      "params": {},
+      "bypass": false,
+      "expanded": false
+    }
+  ],
+  "branches": {
+    "B": [
+      {
+        "id": "79c5bc08256d49c2af089271160806b4",
+        "type": "source",
+        "params": {
+          "source": "raw"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "4223d59c1bc14b1ab6c7761384f6cbc5",
+        "type": "colors",
+        "params": {
+          "palette": "black_hot"
+        },
+        "bypass": false,
+        "expanded": true
+      },
+      {
+        "id": "4ea1af26a2ae43fb8cd0c670add2cfaf",
+        "type": "interpolation",
+        "params": {
+          "method": "bicubic",
+          "scale": 4
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "bc6f466b8ff64795bd608ba9f5f2ebe2",
+        "type": "range",
+        "params": {
+          "low": -20.0,
+          "high": 37.8
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "f420be51d2f648c6a3d843009388cb1d",
+        "type": "gamma",
+        "params": {
+          "amount": 0.43
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "8d70a9f6789143e7a45244796a4fb080",
+        "type": "contrast",
+        "params": {
+          "amount": 2.67
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "899a9def903441b29d14fbd5096f6951",
+        "type": "preview",
+        "params": {},
+        "bypass": false,
+        "expanded": true
+      }
+    ],
+    "C": [
+      {
+        "id": "4ed18ddc9b7e4798bd2e291046a78ce1",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ],
+    "D": [
+      {
+        "id": "ff9a5f60812b4473a5ca4a620c2e87f3",
+        "type": "source",
+        "params": {
+          "source": "preview"
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ]
+  }
+}

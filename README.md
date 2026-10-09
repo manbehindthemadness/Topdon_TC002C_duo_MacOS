@@ -227,8 +227,19 @@ calibration/invalid frames still hold the last valid image and readings.
 mask in C and camera-palette overlay in D, with single-pass Apple Core ML ACNet
 and the saved hardware detail/noise configuration.
 
-**Yautja GPU** retains that same multi-branch composition and hardware setup,
-with native-input Real-ESRGAN 4× using Apple Core ML `ALL` devices instead of ACNet.
+**Yautja GPU** bundles the current saved black-hot composition, camera-palette
+overlay, contrast mask and tuned Laplacian/antialiasing/sharpening thermal branch,
+with native-input Real-ESRGAN 4× using Apple Core ML `ALL` devices.
+
+**Reaper Night GPU** and **Reaper Day GPU** bundle the saved masked raw-thermal
+blends, 4× bicubic thermal branch, gamma/contrast settings, sharpening and DnCNN
+denoising with Apple Core ML `ALL` devices. Day retains its black-hot thermal
+branch, inverted mix mask and camera palette setting.
+
+**Detail Enhanced CPU Upscale** bundles the saved Plasma preview with a Scharr
+thermal-edge branch, masked subtraction, CLAHE, sharpening, antialiasing and
+single-pass CPU ACNet enhancement. Standalone exports of these three presets
+and the current Yautja GPU are checked into `presets/`.
 
 **Redneck Combat** is also bundled in the dropdown, preserving the original
 Inferno preview with its Laplacian/contour thermal branch and masked blend.
