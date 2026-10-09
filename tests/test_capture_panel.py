@@ -1,17 +1,12 @@
-import os
 import subprocess
 import sys
 import time
 
+from support.qt_process import popup_environment
+
 from topdon_duo.capture_panel import CapturePanel
 
-
-def popup_environment():
-    env = os.environ.copy()
-    env["QT_QPA_PLATFORM"] = "offscreen"
-    env.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
-    env.pop("QT_QPA_FONTDIR", None)
-    return env
+__all__ = ["popup_environment"]
 
 
 def test_popup_number_field_checkbox_and_recording_states(tmp_path):

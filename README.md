@@ -203,6 +203,13 @@ renames the loaded preset while preserving its saved settings and open edits.
 confirmation and keeps the open pipeline available to edit or save again. Deleted
 bundled presets stay hidden across restarts without changing the shipped files.
 
+**Import pipelines** and **Export pipelines** open checkbox lists for selecting
+multiple pipelines. Export the current pipeline (including open edits), saved
+presets, or both into one JSON file. Import accepts these bundles and existing
+individual pipeline files, including several files at once. Name conflicts offer
+Rename, Replace, or Skip; unique names are suggested to keep existing presets.
+Imported pipelines are saved as presets, with an option to load the first selection.
+
 Raw thermal display pixels (including raw blend/mask inputs and branches) use
 the latest valid sensor frame, independently of temporal measurement averaging.
 Temperature readouts, spots and graphs retain their averaged measurement plane;

@@ -43,8 +43,9 @@ The dropdown retains the loaded preset name while editing. **Update pipeline**
 re-saves it, including pending input edits; updating a bundled preset creates a
 user override. With no preset loaded, **Save pipeline** asks for a name and
 selects the newly saved preset. Reopening Camera settings recognizes matching
-presets independently of node expansion state. Restoring defaults or importing
-another pipeline clears the association, then recognizes any matching preset.
+presets independently of node expansion state. Restoring defaults clears the
+association, then recognizes any matching preset. Loading an imported pipeline
+selects its saved preset name.
 Cancelling a save keeps the previous selection. Save as asks before replacing
 an existing name; Update pipeline saves directly. Presets are locked
 during logging and calibration measurements, like the other pipeline controls.
@@ -419,11 +420,26 @@ and reload on startup. Existing display preferences migrate once into a minimal
 pipeline, retaining configured hardware and enhancement choices. Existing Analyze
 preferences become range/interpolation/filter/enhancement/color nodes.
 
-Import and Export use `.pipeline.json` and remember separate directories. A file
-contains hardware, all four software tabs and format version, not units, spots,
-logging or calibrations. Imports replace the complete pipeline only after full validation. An
-invalid document leaves the current configuration intact. A hardware failure
-restores previously owned fields without resetting calibration fields.
+Import pipelines and Export pipelines use `.pipeline.json` and remember separate
+directories. Their dialogs offer per-pipeline checkboxes, Select all, and Clear
+selection. Export includes the current pipeline with pending edits and any checked
+saved presets. When the current pipeline is a loaded preset, its current edits
+represent that preset in the checklist. Exporting only an unnamed current pipeline
+retains the original individual-document format; named or multiple selections use
+a bundle with format `topdon-duo-pipelines`, version 1, and a `pipelines` mapping
+from names to complete documents. Each document contains hardware and all four
+software tabs, not units, spots, logging or calibrations.
+
+Import accepts bundles and original individual files, and permits selecting several
+files together. Individual files use their filename as the suggested preset name.
+The checklist offers Rename, Replace, or Skip for conflicts. Rename suggests a
+unique suffix and permits editing the name; Replace explicitly uses the incoming
+name. Unresolved duplicate or empty names block import. Invalid files are reported;
+valid files remain available to review. The selected presets are saved together
+before the dropdown changes. Cancellation or a save failure leaves existing presets
+and the active pipeline intact. Load first selected pipeline after import is checked
+by default; uncheck it to retain the active pipeline. A hardware failure restores
+previously owned fields without resetting calibration fields.
 
 Clear current stack and Clear all retain each Image source and A’s fixed output. Restore default pipeline
 returns to Camera preview, Inferno app colors and antialiasing. Restore camera

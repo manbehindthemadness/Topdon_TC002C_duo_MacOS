@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 from support.desktop_recording import viewer_fixture
 from support.pipeline import raw_pipeline
+from support.qt_process import run_popup
 
 from topdon_duo.pipeline import (
     default_pipeline,
@@ -15,11 +16,6 @@ from topdon_duo.pipeline import (
 
 
 def test_pipeline_editor_context_operations_import_export_and_lock(tmp_path: Path) -> None:
-    import subprocess
-    import sys
-
-    from test_capture_panel import popup_environment
-
     script = """
 import json, sys
 from copy import deepcopy
@@ -28,6 +24,9 @@ from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QMenu
 from topdon_duo.view_window import ViewWindow
 from topdon_duo.pipeline import node, default_pipeline
+from topdon_duo.pipeline_ui.transfer.dialogs import ExportDialog, ImportDialog
+ExportDialog.exec = lambda _: ExportDialog.DialogCode.Accepted
+ImportDialog.exec = lambda _: ImportDialog.DialogCode.Accepted
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)
@@ -86,7 +85,7 @@ editor.export_file()
 exported = json.loads(destination.read_text())
 assert set(exported) == {"version", "hardware", "software", "branches"}
 assert exported == editor.document
-QFileDialog.getOpenFileName = lambda *_args: (str(destination), "")
+QFileDialog.getOpenFileNames = lambda *_args: ([str(destination)], "")
 editor.clear()
 assert not editor.document["hardware"] and len(editor.document["software"]) == 2
 editor.import_file()
@@ -169,14 +168,7 @@ editor.tab_bar.setCurrentIndex(0)
 window.grab().save(str(Path(sys.argv[1]) / "pipeline-editor.png"))
 window.close()
 """
-    result = subprocess.run(
-        [sys.executable, "-c", script, str(tmp_path)],
-        env=popup_environment(),
-        capture_output=True,
-        text=True,
-        timeout=20,
-        check=False,
-    )
+    result = run_popup(script, tmp_path)
     assert result.returncode == 0, result.stderr
 
 
@@ -190,6 +182,8 @@ def test_desktop_pipeline_command_persists_and_is_locked_while_logging(
     document["software"][1]["expanded"] = True
     panel = Mock()
     panel.poll.return_value = [{"action": "pipeline", "document": document, "serial": 1}]
+    # The desktop facade explicitly re-exports ViewPanel for dependency injection.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0

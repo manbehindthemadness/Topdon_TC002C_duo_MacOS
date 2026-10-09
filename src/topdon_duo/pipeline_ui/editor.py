@@ -4,10 +4,8 @@ Qt pipeline editing, import/export, presets, and node controls.
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from functools import partial
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
@@ -17,7 +15,6 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPalette, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
-    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -29,7 +26,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..dialog_preferences import load_dialog_directory, remember_dialog_directory
 from ..enhancement_limits import enhancement_pass_limits
 from ..feature_processing import feature_fields
 from ..image_filters import allowed_kernels, filter_fields
@@ -48,6 +44,7 @@ from ..pipeline_titles import node_title
 from .compute import update_compute_devices
 from .presets import pipeline_content, rename_current_preset
 from .state import update_editor_state
+from .transfer.actions import export_pipelines, import_pipelines
 from .widgets import PipelinePreview, StackList
 
 
@@ -105,8 +102,8 @@ class PipelineEditor(QWidget):
             self.stacks[stack] = listing
             layout.addWidget(listing)
         buttons = QHBoxLayout()
-        self.import_button = QPushButton("Import pipeline")
-        self.export_button = QPushButton("Export pipeline")
+        self.import_button = QPushButton("Import pipelines")
+        self.export_button = QPushButton("Export pipelines")
         self.defaults_button = QPushButton("Restore default pipeline")
         self.import_button.clicked.connect(self.import_file)
         self.export_button.clicked.connect(self.export_file)
@@ -220,13 +217,7 @@ class PipelineEditor(QWidget):
                 != QMessageBox.StandardButton.Yes
             ):
                 return
-        # Include spinbox edits that are still waiting on their debounce timer.
-        for _, controls, *_ in list(self.widgets.values()):
-            for row in controls.values():
-                if hasattr(row.input, "interpretText"):
-                    row.input.interpretText()
-                if row.timer.isActive():
-                    row.timer.timeout.emit()
+        self.commit_pending_inputs()
         try:
             candidate = {**self.presets, name: validate_pipeline(self.document)}
             save_presets(candidate)
@@ -237,6 +228,17 @@ class PipelineEditor(QWidget):
         self.current_preset_name = name
         self.recognize_preset = True
         self.refresh_presets()
+
+    def commit_pending_inputs(self) -> None:
+        """
+        Include spinbox edits that are still waiting on their debounce timer.
+        """
+        for _, controls, *_ in list(self.widgets.values()):
+            for row in controls.values():
+                if hasattr(row.input, "interpretText"):
+                    row.input.interpretText()
+                if row.timer.isActive():
+                    row.timer.timeout.emit()
 
     def create_new_pipeline(self) -> None:
         """
@@ -306,12 +308,7 @@ class PipelineEditor(QWidget):
         Select tab.
         """
         if not self.locked:
-            for _, controls, *_ in list(self.widgets.values()):
-                for row in controls.values():
-                    if hasattr(row.input, "interpretText"):
-                        row.input.interpretText()
-                    if row.timer.isActive():
-                        row.timer.timeout.emit()
+            self.commit_pending_inputs()
         self.tab = "ABCD"[index]
         self.rebuild()
         if hasattr(self, "last_state"):
@@ -732,52 +729,12 @@ class PipelineEditor(QWidget):
 
     def import_file(self) -> None:
         """
-        Import file.
+        Import selected pipelines through the batch review dialog.
         """
-        if self.locked:
-            return
-        directory = load_dialog_directory("pipeline_import")
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Import pipeline", str(directory or ""), "Pipelines (*.pipeline.json *.json)"
-        )
-        if not path:
-            return
-        try:
-            candidate = validate_pipeline(json.loads(Path(path).read_text()))
-        except (OSError, ValueError, TypeError) as exc:
-            QMessageBox.warning(self, "Import rejected", str(exc))
-            return
-        remember_dialog_directory("pipeline_import", path)
-        self.current_preset_name = None
-        self.recognize_preset = True
-        self.document = candidate
-        self.rebuild()
-        self.publish()
+        import_pipelines(self)
 
     def export_file(self) -> None:
         """
-        Export file.
+        Export selected pipelines through the batch inclusion dialog.
         """
-        directory = load_dialog_directory("pipeline_export")
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export pipeline",
-            str((directory or Path.cwd()) / "camera.pipeline.json"),
-            "Pipelines (*.pipeline.json)",
-        )
-        if not path:
-            return
-        if not path.endswith(".pipeline.json"):
-            path += ".pipeline.json"
-        destination = Path(path)
-        temporary = destination.with_suffix(".json.tmp")
-        try:
-            temporary.write_text(
-                json.dumps(validate_pipeline(self.document), indent=2, allow_nan=False) + "\n"
-            )
-            temporary.replace(destination)
-            remember_dialog_directory("pipeline_export", destination)
-        except (OSError, ValueError) as exc:
-            QMessageBox.warning(self, "Export failed", str(exc))
-        finally:
-            temporary.unlink(missing_ok=True)
+        export_pipelines(self)
