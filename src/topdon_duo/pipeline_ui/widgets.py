@@ -5,10 +5,11 @@ Pipeline thumbnails and draggable stack-list widgets.
 import base64
 from typing import Any, cast
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QImage, QPainter, QPalette, QPixmap
+from PySide6.QtCore import QModelIndex, QPoint, QPointF, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QDrag, QImage, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFrame,
     QLabel,
     QListWidget,
     QMenu,
@@ -199,6 +200,11 @@ class StackList(QListWidget):
         )
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setDropIndicatorShown(False)
+        self.placement_bar = QFrame(self.viewport())
+        self.placement_bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.placement_bar.setStyleSheet("background: palette(highlight); border-radius: 2px;")
+        self.placement_bar.hide()
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setSpacing(6)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -248,26 +254,93 @@ class StackList(QListWidget):
         if event.size().width() != event.oldSize().width():
             self.fit_contents()
 
+    def startDrag(self, supported_actions: Qt.DropAction) -> None:
+        """
+        Drag a node while keeping ownership of model moves in this stack.
+        """
+        current = self.currentItem()
+        if self.editor.locked or current is None:
+            return
+        if not current.flags() & Qt.ItemFlag.ItemIsDragEnabled:
+            return
+        drag = QDrag(self)
+        drag.setMimeData(self.mimeData([current]))
+        drag.setPixmap(self.viewport().grab(self.visualItemRect(current)))
+        try:
+            drag.exec(supported_actions & Qt.DropAction.MoveAction, Qt.DropAction.MoveAction)
+        finally:
+            self.placement_bar.hide()
+
+    def drop_row(self, position: QPoint) -> int | None:
+        """
+        Find the insertion boundary, rejecting fixed endpoints and unchanged order.
+        """
+        current = self.currentItem()
+        if self.editor.locked or current is None:
+            return None
+        index = next(
+            (
+                row
+                for row in range(self.count())
+                if position.y() < self.visualItemRect(self.item(row)).center().y()
+            ),
+            self.count(),
+        )
+        if self.stack == "software":
+            nodes = self.editor.nodes(self.stack)
+            moving = nodes[self.row(current)]
+            if moving["type"] in ("source", "output"):
+                return None
+            maximum = self.count() - (nodes[-1]["type"] == "output")
+            if not 1 <= index <= maximum:
+                return None
+        if index in (self.row(current), self.row(current) + 1):
+            return None
+        return index
+
+    def dragMoveEvent(self, event: Any) -> None:
+        """
+        Show a visible placement bar only at valid insertion boundaries.
+        """
+        destination = self.drop_row(event.position().toPoint()) if event.source() is self else None
+        if destination is None:
+            self.placement_bar.hide()
+            event.ignore()
+            return
+        if destination < self.count():
+            y = self.visualItemRect(self.item(destination)).top() - self.spacing()
+        else:
+            y = self.visualItemRect(self.item(self.count() - 1)).bottom() + self.spacing()
+        self.placement_bar.setGeometry(4, max(0, y - 2), max(1, self.viewport().width() - 8), 4)
+        self.placement_bar.show()
+        self.placement_bar.raise_()
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+
+    def dragLeaveEvent(self, event: Any) -> None:
+        """
+        Clear the placement marker when a drag leaves this stack.
+        """
+        self.placement_bar.hide()
+        super().dragLeaveEvent(event)
+
     def dropEvent(self, event: Any) -> None:
         """
-        Dropevent.
+        Move to the indicated boundary without allowing cross-stack transfers.
         """
-        if event.source() is not self or self.editor.locked:
+        self.placement_bar.hide()
+        destination = self.drop_row(event.position().toPoint()) if event.source() is self else None
+        if destination is None:
             event.ignore()
             return
-        index = self.indexAt(event.position().toPoint()).row()
-        current = self.currentItem()
-        if self.stack == "software" and (
-            current is None
-            or current.data(Qt.ItemDataRole.UserRole) == self.editor.nodes("software")[0]["id"]
-            or current.data(Qt.ItemDataRole.UserRole) == self.editor.nodes("software")[-1]["id"]
-            and self.editor.nodes("software")[-1]["type"] == "output"
-            or index == 0
-            or (self.editor.tab == "A" and index < 0)
-        ):
+        moved = self.model().moveRows(
+            QModelIndex(), self.currentRow(), 1, QModelIndex(), destination
+        )
+        if moved:
+            event.setDropAction(Qt.DropAction.MoveAction)
+            event.accept()
+        else:
             event.ignore()
-            return
-        super().dropEvent(event)
 
     def reordered(self) -> None:
         """

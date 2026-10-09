@@ -18,12 +18,35 @@ Clear all nodes clears hardware and all four software tabs. Right-click a node
 to insert above/below or remove it. Image source stays first in every tab and
 cannot be removed or bypassed. A also has a fixed Output → viewer node at the
 bottom. Hardware controls can appear once; processing and Combine nodes repeat.
+While dragging, a highlighted placement bar marks the insertion boundary. The
+bar appears only for valid moves within the same stack; Source and Output remain
+fixed. It clears when the drag leaves the stack, is cancelled, or is dropped.
 
-The **Pipeline presets…** dropdown beside Import, Export, and Restore defaults
-starts empty. Choose **Save current pipeline…** to name and save your own preset;
-select its name to apply it later. Presets include the hardware stack and all
-four software tabs, persist across restarts, and can still be exported as JSON.
-Saving under an existing name asks before replacing it. Presets are locked
+The pipeline presets dropdown beside Import, Export, and Restore defaults
+offers bundled and user-saved presets. Choose **Save current pipeline as…** to
+name and save your own preset; select its name to apply it later. Presets include
+the hardware stack and all four software tabs, persist across restarts, and can
+still be exported as JSON.
+**Create new** starts a blank, unsaved pipeline: the hardware stack is empty,
+tab A contains only Source and Output, and B–D contain only Source. It returns
+the editor to tab A and leaves saved presets unchanged.
+**Rename current pipeline…**, directly beneath Create new, renames the loaded
+preset and selects its new name. The dialog starts with the existing name and
+asks before replacing another preset. Saved settings and open edits are preserved;
+use Update pipeline to save those edits. Renaming a bundled preset hides its old
+name and saves a user preset under the new name without changing bundled files.
+**Delete current pipeline…** is available when a preset is loaded. It asks for
+confirmation, removes the saved preset, and retains the open pipeline as unsaved
+work. Deletions persist across restarts, including bundled presets; bundled files
+are unchanged. The name can be saved again later.
+The dropdown retains the loaded preset name while editing. **Update pipeline**
+re-saves it, including pending input edits; updating a bundled preset creates a
+user override. With no preset loaded, **Save pipeline** asks for a name and
+selects the newly saved preset. Reopening Camera settings recognizes matching
+presets independently of node expansion state. Restoring defaults or importing
+another pipeline clears the association, then recognizes any matching preset.
+Cancelling a save keeps the previous selection. Save as asks before replacing
+an existing name; Update pipeline saves directly. Presets are locked
 during logging and calibration measurements, like the other pipeline controls.
 
 Hardware order only organizes the menu. Hardware commands run in an audited,
@@ -309,12 +332,13 @@ and [Canny edge detection](https://docs.opencv.org/4.x/da/d22/tutorial_py_canny.
 
 ## Enhancement and performance
 
-The normal **AI enhancement** node exposes **ACNet execution** and **Apple compute
-devices** only when startup detects Metal plus the Core ML runtime. The detected
-GPU controls are shown only for ACNet; Anime4K09 is CPU-only and hides them.
-Changing the execution backend never changes the selected model. Apple device
-choices can be saved before enabling Apple execution, and remain stored but
-inactive when switching to Anime4K09. Returning to ACNet restores these preferences.
+The normal **AI enhancement** node exposes execution and **Compute devices**
+controls when startup detects Metal plus the Core ML runtime, for ACNet and ONNX
+models. Anime4K09 is CPU-only and hides them. Changing the execution backend never
+changes the selected model. With CPU execution, **Compute devices** displays
+**CPU only** and is disabled. Selecting Apple Core ML enables the selector and
+restores the saved device choice. Apple preferences remain stored but inactive
+when switching to Anime4K09. Returning to ACNet restores these preferences.
 The same input, denoising, amount and pass controls work with either ACNet backend.
 Each pass doubles both dimensions. ACNet passes are clamped to the 4-megapixel
 budget: up to two passes for 512×384 input, three for 256×192, fewer after earlier

@@ -139,6 +139,8 @@ stack upscalers initially. ONNX upscalers use one fixed-scale pass, an enhanceme
 and CPU execution. On Apple-accelerated systems it also exposes the Apple
 Core ML backend and compute-device preference. Saved Apple preferences are
 retained but use CPU on systems without Apple acceleration.
+The **Compute devices** selector displays **CPU only** and is disabled while
+execution is set to CPU. Selecting Apple Core ML restores the saved device choice.
 
 - [ESPCN](https://huggingface.co/onnxmodelzoo/super-resolution-10): luminance-only
   3× enhancement, about 240 KB, Apache-2.0. The published fixed 224×224 export
@@ -184,6 +186,22 @@ notice in `scripts/LICENSE-KAIR.txt`). Apple execution is optional and experimen
 provider availability is not a performance guarantee. Preferences survive on CPU-only systems.
 
 ### Pipeline presets
+
+Dragging a node shows a placement bar at valid drop positions in each pipeline
+stack. Source and Output remain fixed, and locked stacks cannot be reordered.
+
+The dropdown displays the loaded preset name and keeps it selected while you
+edit. **Update pipeline** re-saves that preset, including pending input edits.
+With no preset loaded, the button reads **Save pipeline** and asks for a name;
+saving selects the new preset. **Save current pipeline as…** in the dropdown
+saves under another name. Updating a bundled preset creates a user override.
+Reopening Camera settings recognizes presets that match the active pipeline.
+Choose **Create new** to start a blank, unsaved pipeline with only the required
+source/output nodes. **Rename current pipeline…**, directly below Create new,
+renames the loaded preset while preserving its saved settings and open edits.
+**Delete current pipeline…** removes the loaded preset after
+confirmation and keeps the open pipeline available to edit or save again. Deleted
+bundled presets stay hidden across restarts without changing the shipped files.
 
 Raw thermal display pixels (including raw blend/mask inputs and branches) use
 the latest valid sensor frame, independently of temporal measurement averaging.

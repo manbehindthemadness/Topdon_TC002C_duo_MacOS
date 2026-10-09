@@ -7,7 +7,10 @@ from .pipeline import validate_pipeline
 from .window_preferences import _path
 
 
-def _load_presets(path):
+def _load_presets(path: Path) -> dict[str, dict | None]:
+    """
+    Read valid documents and explicit deletions, ignoring malformed entries.
+    """
     try:
         saved = json.loads(path.read_text())
     except (OSError, ValueError):
@@ -18,6 +21,9 @@ def _load_presets(path):
     for name, document in saved.items():
         if not isinstance(name, str) or not name.strip():
             continue
+        if document is None:
+            presets[name] = None
+            continue
         try:
             presets[name] = validate_pipeline(document)
         except (ValueError, TypeError, KeyError):
@@ -25,23 +31,37 @@ def _load_presets(path):
     return presets
 
 
-def predefined_presets():
-    return _load_presets(Path(__file__).with_name("predefined_pipeline_presets.json"))
+def predefined_presets() -> dict[str, dict]:
+    """
+    Load shipped presets without user overrides or deletions.
+    """
+    saved = _load_presets(Path(__file__).with_name("predefined_pipeline_presets.json"))
+    return {name: document for name, document in saved.items() if document is not None}
 
 
-def load_presets():
-    return {
+def load_presets() -> dict[str, dict]:
+    """
+    Merge user overrides and hide presets explicitly deleted by the user.
+    """
+    saved = {
         **predefined_presets(),
         **_load_presets(_path().with_name("pipeline-presets.json")),
     }
+    return {name: document for name, document in saved.items() if document is not None}
 
 
-def save_presets(presets):
+# Keep the same atomic replacement pattern as other preference writers.
+# noinspection DuplicatedCode
+def save_presets(presets: dict[str, dict]) -> None:
+    """
+    Persist the complete visible collection, including deletions of bundled presets.
+    """
     validated = {name: validate_pipeline(document) for name, document in presets.items()}
     predefined = predefined_presets()
     # Do not copy unmodified bundled presets into user preferences. An explicit
     # replacement remains a user override and never changes the shipped preset.
     validated = {name: doc for name, doc in validated.items() if doc != predefined.get(name)}
+    validated.update({name: None for name in predefined if name not in presets})
     path = _path().with_name("pipeline-presets.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".json.tmp")

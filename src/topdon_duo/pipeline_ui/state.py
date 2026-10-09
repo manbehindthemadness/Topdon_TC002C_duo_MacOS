@@ -20,6 +20,8 @@ from ..pipeline import (
     validate_pipeline,
 )
 from ..pipeline_hardware import desired_hardware
+from .compute import update_compute_devices
+from .presets import pipeline_content
 
 
 def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
@@ -43,6 +45,9 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
         incoming = validate_pipeline(incoming)
         self.edit_serial = max(self.edit_serial, state.get("pipeline_serial", 0))
         if incoming != self.document:
+            if pipeline_content(incoming) != pipeline_content(self.document):
+                self.current_preset_name = None
+                self.recognize_preset = True
             old_structure = [
                 (n["id"], n["expanded"])
                 for stack in ("hardware", "software")
@@ -71,6 +76,7 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
     self.update_titles()
     self.locked = locked
     pass_limits = enhancement_pass_limits(self.document, clamp=True)
+    self.update_preset_selection()
     current = state.get("pipeline_serial", 0) >= self.edit_serial
     for item in self.nodes("software"):
         if item["type"] == "preview":
@@ -229,7 +235,10 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                             if not maximum
                             else "Anime4K09 allows 1–5 refinement passes with one 2× output."
                         )
-                row.update_state(item["params"][key], available)
+                if key == "apple_compute":
+                    update_compute_devices(row, item["params"], available)
+                else:
+                    row.update_state(item["params"][key], available)
             # Child size changes (badges) need a refreshed item height.
     for listing in self.stacks.values():
         listing.setDragEnabled(not locked)

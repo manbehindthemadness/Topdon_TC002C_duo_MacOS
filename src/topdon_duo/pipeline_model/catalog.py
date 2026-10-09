@@ -493,6 +493,7 @@ SOFTWARE_NODES = {
                 "Compute devices",
                 "CPUAndGPU",
                 (
+                    ("CPUOnly", "CPU only"),
                     ("CPUAndGPU", "CPU + GPU"),
                     ("ALL", "CPU + GPU + Neural Engine"),
                     ("CPUAndNeuralEngine", "CPU + Neural Engine"),
@@ -542,9 +543,10 @@ SOFTWARE_NODES = {
                 "Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))
             ),
             "apple_compute": choice(
-                "Apple compute devices",
+                "Compute devices",
                 "CPUAndGPU",
                 (
+                    ("CPUOnly", "CPU only"),
                     ("CPUAndGPU", "CPU + GPU"),
                     ("ALL", "CPU + GPU + Neural Engine"),
                     ("CPUAndNeuralEngine", "CPU + Neural Engine"),
@@ -573,9 +575,10 @@ SOFTWARE_NODES = {
                 "Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))
             ),
             "apple_compute": choice(
-                "Apple compute devices",
+                "Compute devices",
                 "CPUAndGPU",
                 (
+                    ("CPUOnly", "CPU only"),
                     ("CPUAndGPU", "CPU + GPU"),
                     ("ALL", "CPU + GPU + Neural Engine"),
                     ("CPUAndNeuralEngine", "CPU + Neural Engine"),
@@ -600,9 +603,10 @@ SOFTWARE_NODES = {
                 "Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))
             ),
             "apple_compute": choice(
-                "Apple compute devices",
+                "Compute devices",
                 "CPUAndGPU",
                 (
+                    ("CPUOnly", "CPU only"),
                     ("CPUAndGPU", "CPU + GPU"),
                     ("ALL", "CPU + GPU + Neural Engine"),
                     ("CPUAndNeuralEngine", "CPU + Neural Engine"),
@@ -646,12 +650,13 @@ SOFTWARE_NODES = {
             "amount": Parameter("Enhancement amount", 1.0, 0, 1, 0.01),
             "passes": Parameter("Passes", 3, 1, 5),
             "backend": choice(
-                "Execution", "cpu", (("cpu", "CPU (OpenCV / ONNX)"), ("coreml", "Apple Core ML"))
+                "Execution", "cpu", (("cpu", "CPU"), ("coreml", "Apple Core ML"))
             ),
             "apple_compute": choice(
-                "Apple compute devices",
+                "Compute devices",
                 "CPUAndGPU",
                 (
+                    ("CPUOnly", "CPU only"),
                     ("CPUAndGPU", "CPU + GPU"),
                     ("ALL", "CPU + GPU + Neural Engine"),
                     ("CPUAndNeuralEngine", "CPU + Neural Engine"),

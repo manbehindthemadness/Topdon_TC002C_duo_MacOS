@@ -8,13 +8,13 @@ import json
 from copy import deepcopy
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from ..view_window import ControlRow
 
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QPalette, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -45,6 +45,8 @@ from ..pipeline import (
 from ..pipeline_hardware import desired_hardware
 from ..pipeline_presets import load_presets, save_presets
 from ..pipeline_titles import node_title
+from .compute import update_compute_devices
+from .presets import pipeline_content, rename_current_preset
 from .state import update_editor_state
 from .widgets import PipelinePreview, StackList
 
@@ -112,12 +114,17 @@ class PipelineEditor(QWidget):
         for button in (self.import_button, self.export_button, self.defaults_button):
             buttons.addWidget(button)
         self.presets = load_presets()
+        self.current_preset_name: str | None = None
+        self.recognize_preset = True
         self.preset_combo = QComboBox()
         self.preset_combo.setAccessibleName("Pipeline presets")
-        self.preset_combo.setToolTip("Save your current pipeline or apply a named preset.")
+        self.preset_combo.setToolTip("Create, rename, save, load or delete a pipeline preset.")
+        self.save_preset_button = QPushButton("Save pipeline")
+        self.save_preset_button.clicked.connect(self.save_current_preset)
         self.refresh_presets()
         self.preset_combo.activated.connect(self.select_preset)
         buttons.addWidget(self.preset_combo)
+        buttons.addWidget(self.save_preset_button)
         layout.addLayout(buttons)
         self.rebuild()
 
@@ -126,37 +133,93 @@ class PipelineEditor(QWidget):
         Refresh presets.
         """
         self.preset_combo.clear()
-        self.preset_combo.addItem("Pipeline presets…", None)
-        self.preset_combo.addItem("Save current pipeline…", ("save", ""))
+        self.preset_combo.addItem("Create new", ("new", ""))
+        self.preset_combo.addItem("Rename current pipeline…", ("rename", ""))
+        self.preset_combo.addItem("Save current pipeline as…", ("save", ""))
+        self.preset_combo.addItem("Delete current pipeline…", ("delete", ""))
         if self.presets:
             self.preset_combo.insertSeparator(self.preset_combo.count())
         for name in sorted(self.presets, key=str.casefold):
             self.preset_combo.addItem(name, ("load", name))
+        self.update_preset_selection()
 
-    def select_preset(self, index: Any) -> None:
+    def update_preset_selection(self) -> None:
         """
-        Select preset.
+        Keep the loaded preset associated with edits, or recognize a restored preset.
+        """
+        current = pipeline_content(self.document)
+        matches = [
+            name
+            for name in sorted(self.presets, key=str.casefold)
+            if pipeline_content(self.presets[name]) == current
+        ]
+        if self.current_preset_name not in self.presets:
+            self.current_preset_name = matches[0] if matches and self.recognize_preset else None
+        index = next(
+            (
+                i
+                for i in range(self.preset_combo.count())
+                if self.preset_combo.itemData(i) == ("load", self.current_preset_name)
+            ),
+            0,
+        )
+        self.preset_combo.setCurrentIndex(index)
+        self.save_preset_button.setText(
+            "Update pipeline" if self.current_preset_name is not None else "Save pipeline"
+        )
+        self.save_preset_button.setEnabled(not self.locked)
+        model = cast(QStandardItemModel, self.preset_combo.model())
+        for row in range(self.preset_combo.count()):
+            if self.preset_combo.itemData(row) in (("rename", ""), ("delete", "")):
+                model.item(row).setEnabled(not self.locked and self.current_preset_name is not None)
+
+    def select_preset(self, index: int) -> None:
+        """
+        Apply or save a preset, restoring the displayed name after cancelled actions.
         """
         choice = self.preset_combo.itemData(index)
-        self.preset_combo.setCurrentIndex(0)
+        self.update_preset_selection()
         if self.locked or choice is None:
             return
         action, name = choice
+        if action == "rename":
+            rename_current_preset(self)
+            return
+        if action == "new":
+            self.create_new_pipeline()
+            return
+        if action == "delete":
+            self.delete_current_preset()
+            return
         if action == "load":
             self.document = validate_pipeline(self.presets[name])
+            self.current_preset_name = name
+            self.recognize_preset = True
             self.rebuild()
             self.publish()
             return
-        name, accepted = QInputDialog.getText(self, "Save pipeline preset", "Preset name:")
-        name = name.strip()
-        if not accepted or not name:
+        self.save_current_preset(save_as=True)
+
+    def save_current_preset(self, _checked: bool = False, *, save_as: bool = False) -> None:
+        """
+        Update the loaded preset or save under a chosen name, including pending inputs.
+        """
+        if self.locked:
             return
-        if (
-            name in self.presets
-            and QMessageBox.question(self, "Replace preset", f'Replace the saved preset "{name}"?')
-            != QMessageBox.StandardButton.Yes
-        ):
-            return
+        name = self.current_preset_name
+        if save_as or name is None:
+            name, accepted = QInputDialog.getText(self, "Save pipeline preset", "Preset name:")
+            name = name.strip()
+            if not accepted or not name:
+                return
+            if (
+                name in self.presets
+                and QMessageBox.question(
+                    self, "Replace preset", f'Replace the saved preset "{name}"?'
+                )
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
         # Include spinbox edits that are still waiting on their debounce timer.
         for _, controls, *_ in list(self.widgets.values()):
             for row in controls.values():
@@ -164,13 +227,57 @@ class PipelineEditor(QWidget):
                     row.input.interpretText()
                 if row.timer.isActive():
                     row.timer.timeout.emit()
-        candidate = {**self.presets, name: validate_pipeline(self.document)}
         try:
+            candidate = {**self.presets, name: validate_pipeline(self.document)}
             save_presets(candidate)
         except (OSError, ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Could not save preset", str(exc))
             return
         self.presets = candidate
+        self.current_preset_name = name
+        self.recognize_preset = True
+        self.refresh_presets()
+
+    def create_new_pipeline(self) -> None:
+        """
+        Start an unsaved pipeline with only required source and output nodes.
+        """
+        if self.locked:
+            return
+        self.current_preset_name = None
+        self.recognize_preset = False
+        self.document = default_pipeline()
+        self.document["software"] = [node("software", "source"), node("software", "output")]
+        self.tab = "A"
+        self.tab_bar.blockSignals(True)
+        self.tab_bar.setCurrentIndex(0)
+        self.tab_bar.blockSignals(False)
+        self.rebuild()
+        self.publish()
+
+    def delete_current_preset(self) -> None:
+        """
+        Delete the selected preset after confirmation, retaining the working pipeline.
+        """
+        name = self.current_preset_name
+        if self.locked or name is None:
+            return
+        if (
+            QMessageBox.question(
+                self, "Delete pipeline preset", f'Delete the saved preset "{name}"?'
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        candidate = {key: document for key, document in self.presets.items() if key != name}
+        try:
+            save_presets(candidate)
+        except (OSError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Could not delete preset", str(exc))
+            return
+        self.presets = candidate
+        self.current_preset_name = None
+        self.recognize_preset = False
         self.refresh_presets()
 
     def nodes(self, stack: str, document: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -220,9 +327,11 @@ class PipelineEditor(QWidget):
             QMessageBox.warning(self, "Pipeline rejected", str(exc))
             self.document = deepcopy(self.accepted_document)
             self.rebuild()
+            self.update_preset_selection()
             self.send({"action": "pipeline_refresh"})
             return
         enhancement_pass_limits(self.document, clamp=True)
+        self.update_preset_selection()
         self.accepted_document = deepcopy(self.document)
         self.update_tab_status()
         self.update_titles()
@@ -311,6 +420,8 @@ class PipelineEditor(QWidget):
         Defaults.
         """
         if not self.locked:
+            self.current_preset_name = None
+            self.recognize_preset = True
             self.document = default_pipeline()
             self.rebuild()
             self.publish()
@@ -343,6 +454,15 @@ class PipelineEditor(QWidget):
         if item["type"] == "detail" and key == "enabled" and not value:
             item["params"]["fixed"] = False
         self.publish()
+        if key == "backend":
+            self.update_state(
+                {
+                    **getattr(self, "last_state", {}),
+                    "pipeline": self.document,
+                    "pipeline_serial": self.edit_serial,
+                },
+                self.locked,
+            )
 
     def expand(
         self, item: Any, body: Any, listing: Any, _entry: Any, _checked: bool = False
@@ -471,7 +591,10 @@ class PipelineEditor(QWidget):
                         options=spec.options,
                         unit=spec.unit,
                     )
-                    row.update_state(item["params"][key])
+                    if key == "apple_compute":
+                        update_compute_devices(row, item["params"], not self.locked)
+                    else:
+                        row.update_state(item["params"][key])
                     if item["type"] in (
                         "onnx_superresolution",
                         "onnx_denoise",
@@ -625,6 +748,8 @@ class PipelineEditor(QWidget):
             QMessageBox.warning(self, "Import rejected", str(exc))
             return
         remember_dialog_directory("pipeline_import", path)
+        self.current_preset_name = None
+        self.recognize_preset = True
         self.document = candidate
         self.rebuild()
         self.publish()
