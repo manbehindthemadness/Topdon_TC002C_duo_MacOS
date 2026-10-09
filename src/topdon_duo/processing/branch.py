@@ -10,12 +10,14 @@ from typing import Any, cast
 import cv2
 import numpy as np
 
+from ..acceleration import select_backend
 from ..apple_acceleration import apple_acceleration
 from ..camera import IMAGE_OFFSET, decode_duo_frame, has_yuy2_preview, raw_temperatures
 from ..coreml_upsampling import CoreMLUpsampler
 from ..enhancement_limits import MAX_PIXELS, acnet_pass_limit
 from ..feature_processing import apply_features
 from ..image_filters import apply_filter
+from ..nvidia_acceleration import nvidia_acceleration
 from ..onnx_models import MODELS as ONNX_MODELS
 from ..onnx_upsampling import ONNXUpsampler
 from ..pipeline import (
@@ -37,12 +39,19 @@ from .images import (
 
 
 class BranchProcessor:
-    def __init__(self, apple_available: bool | None = None) -> None:
+    def __init__(
+        self,
+        apple_available: bool | None = None,
+        nvidia_available: bool | None = None,
+    ) -> None:
         """
         Init.
         """
         self.apple_available = (
             apple_acceleration()["available"] if apple_available is None else apple_available
+        )
+        self.nvidia_available = (
+            nvidia_acceleration()["available"] if nvidia_available is None else nvidia_available
         )
         self.models: dict[tuple[str, str], VisionUpsampler] = {}
         self.coreml_models: dict[tuple[str, int, str], CoreMLUpsampler] = {}
@@ -201,9 +210,11 @@ class BranchProcessor:
         if kind != "onnx_denoise" and factor > 1 and p["input"] != "current":
             image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
         check_size(image.shape[1] * factor, image.shape[0] * factor)
-        backend = "coreml" if p["backend"] == "coreml" and self.apple_available else "cpu"
+        backend = self.effective_backend(p["backend"])
         key = item["id"], p["model"], backend, p["apple_compute"]
-        upsampler = self.onnx_models.setdefault(key, ONNXUpsampler())
+        if key not in self.onnx_models:
+            self.onnx_models[key] = ONNXUpsampler()
+        upsampler = self.onnx_models[key]
         image = upsampler.apply(
             bytes_image(image),
             p["model"],
@@ -213,6 +224,13 @@ class BranchProcessor:
             **({"noise": p["noise"]} if p["model"] in ("dncnn-25", "ffdnet-gray") else {}),
         ).astype(np.float32)
         return image
+
+    def effective_backend(self, requested: str) -> str:
+        """
+        Try the other GPU before CPU when the saved GPU preference is unavailable.
+        """
+        backend = select_backend(requested, self.apple_available, self.nvidia_available)
+        return backend
 
     def apply_coreml(self, image: np.ndarray, item: dict[str, Any]) -> np.ndarray:
         """
@@ -237,10 +255,16 @@ class BranchProcessor:
         if p["input"] != "current":
             image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
         model = "anime4k09" if p["model"] == "anime4k09" else f"acnet-legacy-hdn{p['denoise']}"
-        use_apple = model != "anime4k09" and p["backend"] == "coreml" and self.apple_available
+        use_apple = model != "anime4k09" and self.effective_backend(p["backend"]) == "coreml"
+        use_cuda = model != "anime4k09" and self.effective_backend(p["backend"]) == "cuda"
         if use_apple:
             key = item["id"], p["denoise"], p["apple_compute"]
             upsampler = self.coreml_models.setdefault(key, CoreMLUpsampler())
+        elif use_cuda:
+            key = item["id"], model, "cuda", p["apple_compute"]
+            if key not in self.onnx_models:
+                self.onnx_models[key] = ONNXUpsampler()
+            upsampler = self.onnx_models[key]
         else:
             upsampler = self.models.setdefault((item["id"], model), VisionUpsampler())
         # Anime passes refine one 2× output; ACNet passes repeatedly upscale.
@@ -267,6 +291,10 @@ class BranchProcessor:
                 image = upsampler.apply(
                     bytes_image(image), p["denoise"], p["apple_compute"], p["amount"]
                 )
+            elif use_cuda:
+                image = upsampler.apply(
+                    bytes_image(image), model, "cuda", p["apple_compute"], p["amount"]
+                )
             else:
                 image = upsampler.apply(bytes_image(image), model, p["amount"], int(p["passes"]))
             if upsampler.error:
@@ -282,9 +310,7 @@ class BranchProcessor:
             (
                 item["id"],
                 item["params"]["model"],
-                "coreml"
-                if item["params"]["backend"] == "coreml" and self.apple_available
-                else "cpu",
+                self.effective_backend(item["params"]["backend"]),
                 item["params"]["apple_compute"],
             )
             for item in software
@@ -296,6 +322,20 @@ class BranchProcessor:
             and not item["bypass"]
             and item["params"]["amount"]
         }
+        onnx_live.update(
+            (
+                item["id"],
+                f"acnet-legacy-hdn{item['params']['denoise']}",
+                "cuda",
+                item["params"]["apple_compute"],
+            )
+            for item in software
+            if item["type"] == "enhance"
+            and item["params"]["model"] == "acnet"
+            and self.effective_backend(item["params"]["backend"]) == "cuda"
+            and not item["bypass"]
+            and item["params"]["amount"]
+        )
         for key, engine in self.onnx_models.items():
             if key not in onnx_live:
                 engine.close()
@@ -323,8 +363,7 @@ class BranchProcessor:
             for item in software
             if item["type"] == "enhance"
             and item["params"]["model"] == "acnet"
-            and item["params"]["backend"] == "coreml"
-            and self.apple_available
+            and self.effective_backend(item["params"]["backend"]) == "coreml"
         )
         for key, engine in self.coreml_models.items():
             if key not in coreml_live:

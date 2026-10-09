@@ -14,13 +14,12 @@ if TYPE_CHECKING:
 from ..enhancement_limits import enhancement_pass_limits
 from ..feature_processing import feature_fields
 from ..image_filters import allowed_kernels, filter_fields
-from ..onnx_models import MODELS as ONNX_MODELS
 from ..pipeline import (
     preview_required,
     validate_pipeline,
 )
 from ..pipeline_hardware import desired_hardware
-from .compute import update_compute_devices
+from .compute import backend_status, configure_backend_row, state_backend, update_compute_devices
 from .presets import pipeline_content
 
 
@@ -38,7 +37,14 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
         if capability.get("available")
         else capability.get("reason", "")
     )
-    self.apple_status.setVisible(bool(capability))
+    nvidia = state.get("nvidia_acceleration", {})
+    if nvidia.get("available") or (
+        nvidia
+        and not capability.get("available")
+        and nvidia.get("reason") != "NVIDIA acceleration requires Linux"
+    ):
+        self.apple_status.setText(nvidia.get("reason", ""))
+    self.apple_status.setVisible(bool(capability or nvidia))
     self.hardware_state = state.get("hardware", {})
     incoming = state.get("pipeline")
     if incoming is not None and state.get("pipeline_serial", 0) >= self.edit_serial:
@@ -119,16 +125,8 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                 if inactive
                 else "Bypassed"
                 if item["bypass"]
-                else "CPU execution · saved Apple settings retained"
-                if (
-                    item["type"] in ("onnx_superresolution", "onnx_denoise", "onnx_style")
-                    or item["type"] == "enhance"
-                    and (
-                        item["params"]["model"] == "acnet" or item["params"]["model"] in ONNX_MODELS
-                    )
-                )
-                and item["params"]["backend"] == "coreml"
-                and not state.get("apple_acceleration", {}).get("available", False)
+                else backend_status(item, state)
+                if "backend" in item["params"]
                 else state.get("apple_acceleration", {}).get("reason", "")
                 if item["type"] == "coreml_acnet"
                 and not state.get("apple_acceleration", {}).get("available", False)
@@ -158,36 +156,12 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                             row.input.model().item(index).setEnabled(
                                 row.input.itemData(index) in allowed
                             )
-                if item["type"] in (
-                    "onnx_superresolution",
-                    "onnx_denoise",
-                    "onnx_style",
-                ) and key in ("backend", "apple_compute"):
-                    detected = bool(state.get("apple_acceleration", {}).get("available"))
-                    row.setVisible(detected)
-                    available &= detected
-                    row.setToolTip(
-                        "Visual-only ONNX inference; saved Apple preferences use CPU on systems without Apple acceleration."
-                    )
+                if key in ("backend", "apple_compute"):
+                    available = configure_backend_row(row, item, key, state, available)
                 if item["type"] == "onnx_denoise" and key == "noise":
                     relevant = item["params"]["model"] == "ffdnet-gray"
                     row.setVisible(relevant)
                     available &= relevant
-                if item["type"] == "enhance" and key in ("backend", "apple_compute"):
-                    detected = bool(state.get("apple_acceleration", {}).get("available"))
-                    supported = (
-                        item["params"]["model"] == "acnet" or item["params"]["model"] in ONNX_MODELS
-                    )
-                    row.setVisible(detected and supported)
-                    available &= detected and supported
-                    help_text = (
-                        "Execution backend; this does not change the selected model. "
-                        "Anime4K09 is CPU-only. No --extra flag is needed."
-                        if key == "backend"
-                        else "Apple device preference is saved even while CPU execution is selected."
-                    )
-                    row.setToolTip(help_text)
-                    row.input.setToolTip(help_text)
                 if item["type"] in ("edges", "contours"):
                     relevant = key in feature_fields(item["type"], item["params"])
                     row.setVisible(relevant)
@@ -236,7 +210,9 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                             else "Anime4K09 allows 1–5 refinement passes with one 2× output."
                         )
                 if key == "apple_compute":
-                    update_compute_devices(row, item["params"], available)
+                    update_compute_devices(
+                        row, item["params"], available, state_backend(item["params"], state)
+                    )
                 else:
                     row.update_state(item["params"][key], available)
             # Child size changes (badges) need a refreshed item height.

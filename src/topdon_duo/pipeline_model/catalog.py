@@ -540,7 +540,13 @@ SOFTWARE_NODES = {
             ),
             "amount": Parameter("Enhancement amount", 1.0, 0, 1, 0.01),
             "backend": choice(
-                "Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))
+                "Execution",
+                "cpu",
+                (
+                    ("cpu", "CPU (ONNX Runtime)"),
+                    ("coreml", "Apple Core ML"),
+                    ("cuda", "NVIDIA CUDA"),
+                ),
             ),
             "apple_compute": choice(
                 "Compute devices",
@@ -572,7 +578,13 @@ SOFTWARE_NODES = {
             ),
             "amount": Parameter("Style blend", 0.5, 0, 1, 0.01),
             "backend": choice(
-                "Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))
+                "Execution",
+                "cpu",
+                (
+                    ("cpu", "CPU (ONNX Runtime)"),
+                    ("coreml", "Apple Core ML"),
+                    ("cuda", "NVIDIA CUDA"),
+                ),
             ),
             "apple_compute": choice(
                 "Compute devices",
@@ -600,7 +612,13 @@ SOFTWARE_NODES = {
             "noise": Parameter("FFDNet noise sigma (not temperature)", 15, 0, 75, 1),
             "amount": Parameter("Denoising blend", 1.0, 0, 1, 0.01),
             "backend": choice(
-                "Execution", "cpu", (("cpu", "CPU (ONNX Runtime)"), ("coreml", "Apple Core ML"))
+                "Execution",
+                "cpu",
+                (
+                    ("cpu", "CPU (ONNX Runtime)"),
+                    ("coreml", "Apple Core ML"),
+                    ("cuda", "NVIDIA CUDA"),
+                ),
             ),
             "apple_compute": choice(
                 "Compute devices",
@@ -650,7 +668,9 @@ SOFTWARE_NODES = {
             "amount": Parameter("Enhancement amount", 1.0, 0, 1, 0.01),
             "passes": Parameter("Passes", 3, 1, 5),
             "backend": choice(
-                "Execution", "cpu", (("cpu", "CPU"), ("coreml", "Apple Core ML"))
+                "Execution",
+                "cpu",
+                (("cpu", "CPU"), ("coreml", "Apple Core ML"), ("cuda", "NVIDIA CUDA")),
             ),
             "apple_compute": choice(
                 "Compute devices",

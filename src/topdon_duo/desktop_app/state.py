@@ -64,6 +64,7 @@ class SessionState:
     last_window_size: tuple[int, int] | None = None
     layout: api_types.ToolbarLayout = field(init=False)
     next_hardware_retry: float = 0.0
+    nvidia_capability: dict[str, Any] = field(default_factory=dict)
     pending_save_kind: str | None = None
     picker: api_types.MousePicker = field(init=False)
     pipeline: dict[str, Any] = field(default_factory=dict)

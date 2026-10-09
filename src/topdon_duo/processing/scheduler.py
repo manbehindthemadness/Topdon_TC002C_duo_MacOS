@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from ..apple_acceleration import apple_acceleration
+from ..nvidia_acceleration import nvidia_acceleration
 from ..pipeline import (
     active_nodes,
     execution_dependencies,
@@ -26,12 +27,19 @@ from .images import (
 
 
 class PipelineProcessor:
-    def __init__(self, apple_available: Any = None) -> None:
+    def __init__(
+        self,
+        apple_available: bool | None = None,
+        nvidia_available: bool | None = None,
+    ) -> None:
         """
         Init.
         """
         self.apple_available = (
             apple_acceleration()["available"] if apple_available is None else apple_available
+        )
+        self.nvidia_available = (
+            nvidia_acceleration()["available"] if nvidia_available is None else nvidia_available
         )
         self.models = {}
         self.coreml_models = {}
@@ -90,7 +98,10 @@ class PipelineProcessor:
                 self.executors[tab] = ThreadPoolExecutor(
                     max_workers=1, thread_name_prefix=f"pipeline-{tab}"
                 )
-                self.branches[tab] = BranchProcessor(apple_available=self.apple_available)
+                self.branches[tab] = BranchProcessor(
+                    apple_available=self.apple_available,
+                    nvidia_available=self.nvidia_available,
+                )
         outputs, pending, submitted, errors = {}, {}, set(), {}
         try:
             while len(outputs) < len(dependencies):

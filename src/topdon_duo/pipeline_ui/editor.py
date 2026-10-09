@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
 from ..enhancement_limits import enhancement_pass_limits
 from ..feature_processing import feature_fields
 from ..image_filters import allowed_kernels, filter_fields
-from ..onnx_models import MODELS as ONNX_MODELS
 from ..pipeline import (
     CATALOG,
     default_pipeline,
@@ -41,7 +40,7 @@ from ..pipeline import (
 from ..pipeline_hardware import desired_hardware
 from ..pipeline_presets import load_presets, save_presets
 from ..pipeline_titles import node_title
-from .compute import update_compute_devices
+from .compute import configure_backend_row, state_backend, update_compute_devices
 from .presets import pipeline_content, rename_current_preset
 from .state import update_editor_state
 from .transfer.actions import export_pipelines, import_pipelines
@@ -589,32 +588,21 @@ class PipelineEditor(QWidget):
                         unit=spec.unit,
                     )
                     if key == "apple_compute":
-                        update_compute_devices(row, item["params"], not self.locked)
+                        update_compute_devices(
+                            row,
+                            item["params"],
+                            not self.locked,
+                            state_backend(item["params"], getattr(self, "last_state", {})),
+                        )
                     else:
                         row.update_state(item["params"][key])
-                    if item["type"] in (
-                        "onnx_superresolution",
-                        "onnx_denoise",
-                        "onnx_style",
-                    ) and key in ("backend", "apple_compute"):
-                        row.setVisible(
-                            bool(
-                                getattr(self, "last_state", {})
-                                .get("apple_acceleration", {})
-                                .get("available")
-                            )
-                        )
-                    if item["type"] == "enhance" and key in ("backend", "apple_compute"):
-                        row.setVisible(
-                            bool(
-                                getattr(self, "last_state", {})
-                                .get("apple_acceleration", {})
-                                .get("available")
-                            )
-                            and (
-                                item["params"]["model"] == "acnet"
-                                or item["params"]["model"] in ONNX_MODELS
-                            )
+                    if key in ("backend", "apple_compute"):
+                        configure_backend_row(
+                            row,
+                            item,
+                            key,
+                            getattr(self, "last_state", {}),
+                            not self.locked,
                         )
                     if item["type"] == "enhance" and key in ("noise", "denoise", "passes", "input"):
                         model = item["params"]["model"]

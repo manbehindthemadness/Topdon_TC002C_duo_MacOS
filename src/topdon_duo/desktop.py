@@ -52,6 +52,7 @@ from .hardware_controls import (
     camera_operation_title,
 )
 from .model_downloads import MODEL_DOWNLOADS
+from .nvidia_acceleration import nvidia_acceleration
 from .pipeline import (
     collapse_previews,
     default_pipeline,
@@ -241,6 +242,7 @@ __all__ = [
     "mouse_viewport_size",
     "node",
     "np",
+    "nvidia_acceleration",
     "os",
     "parse_args",
     "pipeline_hardware_fields",

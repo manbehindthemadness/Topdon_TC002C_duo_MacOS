@@ -324,6 +324,7 @@ class SettingsController(SessionState):
             **self.renderer.view_settings(),
             "pipeline": self.pipeline,
             "apple_acceleration": self.apple_capability,
+            "nvidia_acceleration": self.nvidia_capability,
             "model_download_status": self.api.MODEL_DOWNLOADS.status(),
             "pipeline_serial": self.pipeline_serial,
             "pipeline_previews": self.pipeline_worker.latest_previews(self.pipeline_revision)

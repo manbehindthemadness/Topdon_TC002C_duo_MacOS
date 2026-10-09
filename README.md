@@ -63,6 +63,13 @@ separately. Live capture has been checked on Ubuntu 24.04. Linux assembly uses
 the negotiated full frame size and rejects incomplete frames; the macOS
 assembler and radiometric decoding remain unchanged.
 
+### NVIDIA Jetson / JetPack
+
+The Linux viewer supports optional NVIDIA CUDA inference for ACNet and ONNX
+visual models. Follow [JetPack setup and GPU verification](docs/nvidia-jetpack.md)
+to install a compatible GPU runtime, then select **NVIDIA CUDA** in the node
+execution controls. Radiometric measurements keep their native CPU path.
+
 ### macOS
 
 ```bash
@@ -136,9 +143,10 @@ software tab. Start with **Native sensor** input and choose **ESPCN 3×**,
 **MewZoom V1 4× (TrunkNet)**, or **Real-ESRGAN general 4× v3**.
 These models appear alongside ACNet and Anime4K09; do not
 stack upscalers initially. ONNX upscalers use one fixed-scale pass, an enhancement blend,
-and CPU execution. On Apple-accelerated systems it also exposes the Apple
-Core ML backend and compute-device preference. Saved Apple preferences are
-retained but use CPU on systems without Apple acceleration.
+and default to CPU execution. Capable systems also expose Apple Core ML with a
+compute-device preference, or NVIDIA CUDA with the optional GPU runtime.
+Saved GPU preferences are retained; an unavailable GPU backend tries the other
+GPU before CPU. Explicit CPU selections remain CPU.
 The **Compute devices** selector displays **CPU only** and is disabled while
 execution is set to CPU. Selecting Apple Core ML restores the saved device choice.
 
@@ -272,7 +280,8 @@ that square with aspect-preserving padding, removes the padding from the styled
 output, then restores the original image dimensions. This is a low-resolution
 art effect, not an enhancement of sensor detail. CPU works on Linux and macOS;
 Apple systems also expose optional Core ML execution, which needs local testing.
-Saved Apple preferences are retained but ignored on CPU-only systems.
+Linux NVIDIA systems expose CUDA with a compatible GPU runtime.
+Saved GPU preferences are retained but ignored on CPU-only systems.
 
 **Line Art** uses the [Informative Drawings ONNX conversion](https://github.com/josephrocca/image-to-line-art-js)
 of the [MIT-licensed original project](https://github.com/carolineec/informative-drawings).
@@ -319,7 +328,7 @@ On macOS the downloader supplements Python's trust store with `/etc/ssl/cert.pem
 to support framework Python installations with missing default CA roots. TLS
 certificate and hostname verification remain enabled; explicit `SSL_CERT_FILE`
 and `SSL_CERT_DIR` settings are respected. Linux keeps its default trust configuration.
-Both CPU and Apple inference run in persistent spawned helpers, containing
+CPU, Apple, and NVIDIA inference run in persistent spawned helpers, containing
 native crashes and keeping model work off the GUI and USB acquisition threads.
 
 ### Viewer size and graph layout
@@ -564,9 +573,9 @@ controls when Metal and Core ML are available; saved pipelines remain unchanged.
 See [Apple node setup and limitations](docs/processing-pipelines.md#experimental-apple-core-ml-node).
 
 AI enhancement nodes offer Anime4K09 and bundled ACNet ONNX models, with amount,
-passes, ACNet denoising and Current/Native/Preview input sizes. They expose an
-ACNet Apple backend selector when Metal/Core ML are detected.
-Apple preferences stay in saved presets but are ignored on CPU-only systems,
+passes, ACNet denoising and Current/Native/Preview input sizes. They expose
+Apple Core ML or NVIDIA CUDA execution when the corresponding runtime is detected.
+GPU preferences stay in saved presets but are ignored on CPU-only systems,
 where the normal node uses OpenCV ACNet instead. Models need no compilation
 or additional weight downloads. Image processing runs independently from measurements
 and graphs; slow chains report latency rather than blocking sampling. A four

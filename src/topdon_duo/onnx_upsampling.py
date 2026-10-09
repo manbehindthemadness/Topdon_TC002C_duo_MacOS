@@ -4,7 +4,9 @@ import logging
 import multiprocessing
 import sys
 from contextlib import suppress
+from importlib.resources import files
 from time import perf_counter
+from typing import Any
 
 import cv2
 import numpy as np
@@ -12,9 +14,28 @@ import numpy as np
 from .coreml_model import coreml_input_shape_overrides, explicit_coreml_padding
 from .enhancement_limits import MAX_PIXELS
 from .model_downloads import MODEL_DOWNLOADS
+from .nvidia_acceleration import cuda_providers
 from .onnx_models import MODELS, verified_model
 
 LOG = logging.getLogger(__name__)
+
+BUNDLED_ACNET = tuple(f"acnet-legacy-hdn{level}" for level in range(4))
+
+
+def model_spec(model: str) -> dict[str, Any]:
+    """
+    Describe bundled ACNet without adding legacy weights to the download catalog.
+    """
+    return {"factor": 2, "rgb": False} if model in BUNDLED_ACNET else MODELS[model]
+
+
+def model_data(model: str) -> bytes:
+    """
+    Load original bundled weights or verify a downloaded model's checksum.
+    """
+    if model in BUNDLED_ACNET:
+        return files("topdon_duo").joinpath("models", f"{model}.onnx").read_bytes()
+    return verified_model(model)
 
 
 class ONNXRuntime:
@@ -23,9 +44,12 @@ class ONNXRuntime:
         self.key = None
         self.elapsed_ms = 0.0
 
-    def _infer(self, blob, model, noise=15):
+    def _infer(self, blob: np.ndarray, model: str, noise: float = 15) -> np.ndarray:
+        """
+        Run the model's tensor convention and preserve rectangular display geometry.
+        """
         entry = self.session.get_inputs()[0]
-        if MODELS[model].get("task") == "style":
+        if model_spec(model).get("task") == "style":
             # Use each export's bounded working size and tensor convention.
             # Fit the full rectangular view without cropping/stretching it.
             spec = MODELS[model]
@@ -51,7 +75,9 @@ class ONNXRuntime:
             feed = padded[None] if nhwc else padded.transpose(2, 0, 1)[None]
             result = self.session.run(None, {entry.name: np.ascontiguousarray(feed)})[0]
             channels = spec.get("output_channels", 3)
-            expected = (1, target_h, target_w, channels) if nhwc else (1, channels, target_h, target_w)
+            expected = (
+                (1, target_h, target_w, channels) if nhwc else (1, channels, target_h, target_w)
+            )
             if result.shape != expected or not np.isfinite(result).all():
                 raise ValueError("Unexpected style output dimensions or non-finite pixels")
             if nhwc:
@@ -108,10 +134,23 @@ class ONNXRuntime:
                 ]
         return output
 
-    def apply(self, image, model, backend="cpu", compute="CPUAndGPU", amount=1.0, noise=15):
+    def apply(
+        self,
+        image: np.ndarray,
+        model: str,
+        backend: str = "cpu",
+        compute: str = "CPUAndGPU",
+        amount: float = 1.0,
+        noise: float = 15,
+    ) -> np.ndarray:
+        """
+        Enhance display pixels using an explicitly initialized execution provider.
+        """
         if not amount:
             return image
-        spec = MODELS[model]
+        if backend not in ("cpu", "coreml", "cuda"):
+            raise ValueError(f"Unsupported ONNX backend: {backend}")
+        spec = model_spec(model)
         if model == "ffdnet-gray" and (not np.isfinite(noise) or not 0 <= noise <= 75):
             raise ValueError("FFDNet noise sigma must be between 0 and 75")
         height, width = image.shape[:2]
@@ -128,8 +167,15 @@ class ONNXRuntime:
         if self.key != key:
             import onnxruntime as ort
 
-            data = verified_model(model)
+            data = model_data(model)
             providers = ["CPUExecutionProvider"]
+            if backend == "cuda":
+                if (
+                    sys.platform != "linux"
+                    or "CUDAExecutionProvider" not in ort.get_available_providers()
+                ):
+                    raise ValueError("NVIDIA CUDA provider unavailable")
+                providers = cuda_providers()
             if backend == "coreml":
                 if (
                     sys.platform != "darwin"
@@ -166,6 +212,8 @@ class ONNXRuntime:
             session.disable_fallback()
             if backend == "coreml" and "CoreMLExecutionProvider" not in session.get_providers():
                 raise ValueError("Core ML session failed; select CPU execution to try this model")
+            if backend == "cuda" and "CUDAExecutionProvider" not in session.get_providers():
+                raise ValueError("CUDA session failed; select CPU execution to try this model")
             inputs = session.get_inputs()
             if len(inputs) != (2 if model == "ffdnet-gray" else 1) or (
                 model == "ffdnet-gray" and inputs[1].name != "sigma"
@@ -174,7 +222,9 @@ class ONNXRuntime:
             self.session = session
             self.key = key
             LOG.info(
-                "Visual ONNX %s: %s (unsupported Apple operators may run on CPU)", model, backend
+                "Visual ONNX %s: %s (unsupported accelerator operators may run on CPU)",
+                model,
+                backend,
             )
         started = perf_counter()
         color = image.ndim == 3
@@ -194,18 +244,23 @@ class ONNXRuntime:
         expected = (1, 3 if spec["rgb"] else 1, size[1], size[0])
         if tensor.shape != expected or not np.isfinite(tensor).all():
             raise ValueError("Unexpected ONNX output dimensions or non-finite pixels")
-        pixels = np.clip((tensor[0] - offset) * (255.0 / pixel_range), 0, 255).round().astype(np.uint8)
+        pixels = (
+            np.clip((tensor[0] - offset) * (255.0 / pixel_range), 0, 255).round().astype(np.uint8)
+        )
         if spec["rgb"]:
             result = cv2.cvtColor(pixels.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
             if not color:
                 result = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
         else:
             result = pixels[0]
+            if model in BUNDLED_ACNET and amount != 1:
+                baseline = cv2.resize(gray, size, interpolation=cv2.INTER_CUBIC)
+                result = cv2.addWeighted(result, amount, baseline, 1 - amount, 0)
             if color:
                 ycrcb = cv2.resize(ycrcb, size, interpolation=cv2.INTER_CUBIC)
                 ycrcb[..., 0] = result
                 result = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
-        if amount != 1:
+        if amount != 1 and model not in BUNDLED_ACNET:
             baseline = cv2.resize(image, size, interpolation=cv2.INTER_CUBIC)
             result = cv2.addWeighted(result, amount, baseline, 1 - amount, 0)
         self.elapsed_ms = (perf_counter() - started) * 1000
@@ -230,7 +285,9 @@ def _worker(connection, model, backend, compute):
 
 
 class ONNXUpsampler:
-    """Persistent spawned CPU/Apple helper; a native crash cannot kill the viewer."""
+    """
+    Persistent spawned CPU/Apple/NVIDIA helper; contain native runtime crashes.
+    """
 
     def __init__(self):
         self.process = self.connection = self.key = None
@@ -255,7 +312,18 @@ class ONNXUpsampler:
         with suppress(OSError, ValueError, AssertionError, AttributeError):
             self.close()
 
-    def apply(self, image, model, backend="cpu", compute="CPUAndGPU", amount=1.0, noise=15):
+    def apply(
+        self,
+        image: np.ndarray,
+        model: str,
+        backend: str = "cpu",
+        compute: str = "CPUAndGPU",
+        amount: float = 1.0,
+        noise: float = 15,
+    ) -> np.ndarray:
+        """
+        Reuse an isolated worker until its model or execution settings change.
+        """
         if not amount:
             return image
         key = model, backend, compute
@@ -265,15 +333,20 @@ class ONNXUpsampler:
             self.key, self.error = key, ""
         if self.error:
             raise ValueError(self.error)
-        factor = MODELS[model]["factor"]
+        factor = model_spec(model)["factor"]
         if image.shape[0] * image.shape[1] * factor * factor > MAX_PIXELS:
             raise ValueError("ONNX upscale exceeds 4 megapixels; reduce preceding scales")
-        if not MODEL_DOWNLOADS.request(model, retry=retry_download):
+        if model not in BUNDLED_ACNET and not MODEL_DOWNLOADS.request(model, retry=retry_download):
             # Keep the feed and downstream geometry live while installing.
             self.elapsed_ms = 0.0
-            return image if factor == 1 else cv2.resize(
-                image, (image.shape[1] * factor, image.shape[0] * factor),
-                interpolation=cv2.INTER_CUBIC,
+            return (
+                image
+                if factor == 1
+                else cv2.resize(
+                    image,
+                    (image.shape[1] * factor, image.shape[0] * factor),
+                    interpolation=cv2.INTER_CUBIC,
+                )
             )
         try:
             if self.process is None:

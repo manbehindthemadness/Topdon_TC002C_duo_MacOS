@@ -51,6 +51,8 @@ class DesktopSession(
         )
         self.apple_capability = self.api.apple_acceleration()
         self.api.LOG.info("Apple acceleration: %s", self.apple_capability["reason"])
+        self.nvidia_capability = self.api.nvidia_acceleration()
+        self.api.LOG.info("NVIDIA acceleration: %s", self.nvidia_capability["reason"])
         self.renderer = self.api.ThermalRenderer(
             scale=self.args.scale,
             ambient_celsius=None,

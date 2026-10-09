@@ -348,12 +348,31 @@ refinement passes. Execution also clamps older/imported excessive ACNet requests
 If even one pass cannot fit, reduce preceding scales or choose Native input.
 
 Execution defaults to CPU for new nodes and older presets. Backend and Apple
-device preferences are always saved/exported, including on Ubuntu. Without the
-detected GPU/runtime, the Apple controls are hidden and those preferences are
-ignored during execution: the normal node uses CPU ACNet without altering the
-saved preferences. Returning the same preset to a capable Mac restores the Apple
-choice. Actual Apple runtime errors still appear in Camera status rather than
+device preferences are always saved/exported, including on Ubuntu. When the
+preferred GPU/runtime is unavailable, the normal node tries the other available
+GPU, then CPU ACNet, without altering the saved preferences. Apple compute-device
+controls appear when Core ML is the effective GPU backend. Returning the same
+preset to a capable Mac restores the Apple choice. Actual Apple runtime errors
+still appear in Camera status rather than
 silently switching backends. The older standalone Apple node remains supported.
+
+### NVIDIA CUDA execution
+
+On a Linux NVIDIA system with a working GPU runtime, the execution selector
+also offers **NVIDIA CUDA** for ACNet and ONNX models. CUDA uses GPU zero;
+Apple compute-device choices remain saved and are hidden while CUDA is the
+effective backend.
+ACNet uses the original bundled ONNX weights with the same denoising levels,
+passes, amount blending, and size limit as CPU execution. Anime4K09 remains CPU.
+The startup probe contains native failures and confirms an actual small CUDA
+inference before exposing controls. Unavailable saved CUDA settings try Apple
+Core ML before CPU, and unavailable Apple settings try CUDA before CPU. Explicit
+CPU selections remain CPU. The status badge shows the effective fallback; errors
+from an active GPU session appear in Camera status. Ordinary filters
+and radiometry retain their CPU implementation.
+
+See [JetPack installation and verification](nvidia-jetpack.md), including the
+CUDA 13 runtime replacement and `uv run --no-sync` workflow.
 
 ### Experimental Apple Core ML node
 
