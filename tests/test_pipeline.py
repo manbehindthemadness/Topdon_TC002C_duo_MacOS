@@ -509,6 +509,13 @@ menu = QMenu()
 editor.stacks["hardware"].add_menu(menu, "Add", 2)
 brightness = next(a for a in menu.actions()[0].menu().actions() if a.text() == "Camera brightness")
 assert not brightness.isEnabled()
+for menu_title in ("Add node", "Insert node above", "Insert node below"):
+    software_menu = QMenu()
+    software.add_menu(software_menu, menu_title, 1)
+    labels = {a.text() for a in software_menu.actions()[0].menu().actions()}
+    assert "AI enhancement" in labels and "AI image styling" in labels
+    assert not any("experimental" in label or "legacy" in label for label in labels)
+    assert not any(label.startswith("ONNX ") or label.startswith("Apple Core ML ACNet") for label in labels)
 # Bypassed singleton still cannot be duplicated.
 item["bypass"] = True
 editor.publish()

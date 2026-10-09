@@ -33,6 +33,7 @@ from .image_filters import allowed_kernels, filter_fields
 from .onnx_models import MODELS as ONNX_MODELS
 from .pipeline import (
     CATALOG,
+    LEGACY_SOFTWARE_NODES,
     default_pipeline,
     execution_dependencies,
     node,
@@ -278,17 +279,13 @@ class StackList(QListWidget):
         add = menu.addMenu(title)
         existing = {n["type"] for n in self.editor.nodes(self.stack)}
         for kind, (label, _) in CATALOG[self.stack].items():
-            if kind in ("source", "output"):
+            if kind in ("source", "output") or self.stack == "software" and kind in LEGACY_SOFTWARE_NODES:
                 continue
             action = add.addAction(
                 label,
                 lambda _checked=False, kind=kind: self.editor.insert(self.stack, kind, position),
             )
             action.setEnabled(self.stack != "hardware" or kind not in existing)
-            if kind == "coreml_acnet":
-                capability = getattr(self.editor, "last_state", {}).get("apple_acceleration", {})
-                action.setEnabled(bool(capability.get("available")))
-                action.setToolTip(capability.get("reason", "Waiting for startup capability check"))
 
 
 class PipelineEditor(QWidget):

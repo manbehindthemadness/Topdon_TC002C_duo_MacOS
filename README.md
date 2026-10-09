@@ -169,9 +169,10 @@ and current image dimensions; input-size and pass controls are hidden:
   weights. Start at sigma 15; the 0–75 sigma control describes 8-bit image noise,
   not degrees or sensor calibration. Odd dimensions are padded and cropped back.
 
-The older separate **ONNX super-resolution (experimental)** and
-**ONNX denoising (experimental)** nodes remain supported for existing pipelines
-and presets. Existing model caches are reused; no reinstallation is needed.
+The old separate ONNX super-resolution, ONNX denoising and Apple Core ML ACNet
+nodes are removed from Add/Insert menus. Use **AI enhancement** for those models
+and execution controls. Existing pipelines and presets still load their legacy
+nodes unchanged; model caches are reused and no reinstallation is needed.
 
 The exporter downloads weights from the authors' [KAIR release](https://github.com/cszn/KAIR/releases/tag/v1.0)
 over verified HTTPS, loads tensor-only checkpoints with `weights_only=True`,
@@ -529,10 +530,10 @@ case. Bounds follow the selected temperature units and never change measurements
 [Static board analysis examples](docs/processing-pipelines.md#static-board-analysis)
 show a useful starting pipeline.
 
-An optional **Apple Core ML ACNet (experimental)** node keeps Apple inference
-separate from the portable CPU nodes. `uv sync` installs its prebuilt runtime
-automatically on macOS only. Startup detection enables the node when Metal and
-Core ML are available; saved pipelines remain unchanged. Launch with
+Apple Core ML ACNet is available through **AI enhancement**; the old separate
+node is retained only for existing pipelines. `uv sync` installs its prebuilt
+runtime automatically on macOS only. Startup detection exposes Apple execution
+controls when Metal and Core ML are available; saved pipelines remain unchanged. Launch with
 `uv run topdon-duo-desktop`; no OpenCV rebuild is needed.
 See [Apple node setup and limitations](docs/processing-pipelines.md#experimental-apple-core-ml-node).
 

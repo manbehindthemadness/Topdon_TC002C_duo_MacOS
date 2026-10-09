@@ -476,7 +476,7 @@ SOFTWARE_NODES = {
         },
     ),
     "coreml_acnet": (
-        "Apple Core ML ACNet (experimental)",
+        "Apple Core ML ACNet (legacy)",
         {
             "compute": choice(
                 "Compute devices",
@@ -503,7 +503,7 @@ SOFTWARE_NODES = {
         },
     ),
     "onnx_superresolution": (
-        "ONNX super-resolution (experimental)",
+        "ONNX super-resolution (legacy)",
         {
             "model": choice("Model", "espcn", (
                 ("espcn", "ESPCN 3×"), ("mewzoom", "MewZoom V0 4× (legacy)"),
@@ -543,7 +543,7 @@ SOFTWARE_NODES = {
         },
     ),
     "onnx_denoise": (
-        "ONNX denoising (experimental)",
+        "ONNX denoising (legacy)",
         {
             "model": choice("Model", "ffdnet-gray", (
                 ("ffdnet-gray", "FFDNet luminance (adjustable noise)"),
@@ -607,6 +607,8 @@ SOFTWARE_NODES = {
     ),
 }
 CATALOG = {"hardware": HARDWARE_NODES, "software": SOFTWARE_NODES}
+# Import/runtime compatibility only: all new instances belong in AI enhancement.
+LEGACY_SOFTWARE_NODES = frozenset({"coreml_acnet", "onnx_superresolution", "onnx_denoise"})
 
 
 def node(stack, kind, **params):

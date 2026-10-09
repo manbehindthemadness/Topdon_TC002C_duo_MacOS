@@ -326,12 +326,13 @@ silently switching backends. The older standalone Apple node remains supported.
 On macOS, `uv sync` automatically installs the prebuilt Apple runtime; Linux does
 not install it. Launch with `uv run topdon-duo-desktop`. At startup a short,
 isolated probe checks `MTLCreateSystemDefaultDevice` and the Core ML provider.
-The Apple node is enabled in the Add menu only when both are available; Camera
-controls show readiness or the reason it is unavailable. Detection does not
+Apple execution controls in **AI enhancement** are exposed when both are
+available; Camera controls show readiness or the reason it is unavailable. Detection does not
 rewrite saved pipelines or presets, and model loading stays lazy until the node
-is used. The older `--extra apple` commands remain supported. In the software pipeline,
-add **Apple Core ML ACNet (experimental)**. No custom OpenCV build is required.
-The existing AI enhancement node and every other CPU node are unchanged.
+is used. The older `--extra apple` commands remain supported. Add **AI enhancement**,
+select **ACNet**, then choose **Apple Core ML** execution. No custom OpenCV build
+is required. The separate experimental Apple node is no longer offered in Add/Insert
+menus; the following describes its legacy runtime for existing saved pipelines.
 
 This separate node performs one 2× ACNet pass, defaults to Native sensor input,
 and offers denoising, strength, and CPU + GPU / CPU + Neural Engine / all-device
