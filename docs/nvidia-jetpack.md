@@ -56,8 +56,10 @@ replacement commands afterward. For example:
 
 Model downloads and conversions remain separate from hardware acquisition.
 For other JetPack releases, select a GPU wheel built for that system's Python,
-ARM64 architecture, CUDA, and cuDNN versions. The ordinary PyPI GPU package uses
-CUDA 12; it is not the tested CUDA 13 setup above. See the official
+ARM64 architecture, CUDA, and cuDNN versions. PyPI GPU releases before 1.27 use
+CUDA 12; releases from 1.27 use CUDA 13. Neither is the pinned nightly setup
+verified above. For other Linux hosts, see [general CUDA setup](nvidia-linux.md).
+See the official
 [ONNX Runtime installation guide](https://onnxruntime.ai/docs/install/) and
 [CUDA requirements](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html).
 

@@ -63,12 +63,27 @@ separately. Live capture has been checked on Ubuntu 24.04. Linux assembly uses
 the negotiated full frame size and rejects incomplete frames; the macOS
 assembler and radiometric decoding remain unchanged.
 
+### Other Linux NVIDIA CUDA systems (experimental)
+
+Linux x86-64 and ARM64 systems can attempt CUDA inference with compatible GPU
+runtime packages. The [general Linux CUDA setup](docs/nvidia-linux.md) includes
+a setup helper for CUDA 12 or 13, package compatibility checks, live inference
+verification, and CPU fallback. Systems other than the documented Spark and
+JetPack hosts have not been verified on physical hardware.
+
 ### NVIDIA Jetson / JetPack
 
 The Linux viewer supports optional NVIDIA CUDA inference for ACNet and ONNX
 visual models. Follow [JetPack setup and GPU verification](docs/nvidia-jetpack.md)
 to install a compatible GPU runtime, then select **NVIDIA CUDA** in the node
 execution controls. Radiometric measurements keep their native CPU path.
+
+### NVIDIA DGX Spark
+
+DGX Spark uses the same Linux capture and CUDA backend with its ARM64 CUDA 13
+runtime. Follow [DGX Spark setup and GPU verification](docs/nvidia-spark.md) for
+the tested ONNX Runtime GPU and cuDNN installation, then select **NVIDIA CUDA**
+in the pipeline node execution controls.
 
 ### macOS
 

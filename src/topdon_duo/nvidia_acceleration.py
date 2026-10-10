@@ -7,14 +7,25 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from contextlib import redirect_stdout
 from functools import lru_cache
 from typing import Any
 
 
 def cuda_providers() -> list[Any]:
     """
-    Select GPU zero with CPU support for operators unsupported by CUDA.
+    Load optional NVIDIA libraries and select GPU zero with CPU operator support.
     """
+    import onnxruntime as ort
+
+    # Pip-installed cuDNN lives outside the system loader's search path. Every
+    # spawned inference process must preload it before constructing a session.
+    # Older JetPack runtimes without this API keep their system-library path.
+    preload = getattr(ort, "preload_dlls", None)
+    if preload is not None:
+        # ORT writes loader diagnostics to stdout; keep the probe's JSON intact.
+        with redirect_stdout(sys.stderr):
+            preload(msvc=False)
     return [
         (
             "CUDAExecutionProvider",
@@ -36,7 +47,7 @@ def _probe() -> dict[str, Any]:
         import onnxruntime as ort
 
         if "CUDAExecutionProvider" not in ort.get_available_providers():
-            return {**result, "reason": "Install a JetPack-compatible ONNX Runtime GPU build"}
+            return {**result, "reason": "Install a CUDA-compatible ONNX Runtime GPU build"}
         from .onnx_upsampling import ONNXRuntime
 
         runtime = ONNXRuntime()

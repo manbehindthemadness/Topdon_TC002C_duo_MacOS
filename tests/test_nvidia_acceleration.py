@@ -78,8 +78,34 @@ def test_cpu_runtime_never_attempts_cuda_inference(monkeypatch: pytest.MonkeyPat
     )
     infer = Mock(side_effect=AssertionError("unexpected inference"))
     monkeypatch.setattr(ONNXRuntime, "apply", infer)
-    assert "JetPack-compatible" in module._probe()["reason"]
+    assert "CUDA-compatible" in module._probe()["reason"]
     infer.assert_not_called()
+
+
+def test_library_preload_preserves_probe_json(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Load pip NVIDIA libraries while keeping native loader diagnostics off stdout.
+    """
+    def preload(**kwargs: Any) -> None:
+        assert kwargs == {"msvc": False}
+        print("CUDA loader diagnostic")
+
+    monkeypatch.setitem(sys.modules, "onnxruntime", SimpleNamespace(preload_dlls=preload))
+    providers = module.cuda_providers()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "CUDA loader diagnostic" in captured.err
+    assert providers[0][0] == "CUDAExecutionProvider"
+
+
+def test_older_gpu_runtime_uses_system_libraries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Keep JetPack builds that predate preload_dlls usable.
+    """
+    monkeypatch.setitem(sys.modules, "onnxruntime", SimpleNamespace())
+    assert module.cuda_providers()[1] == "CPUExecutionProvider"
 
 
 def test_successful_probe_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
