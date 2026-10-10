@@ -16,6 +16,8 @@ import numpy as np
 
 from ..enhancement_limits import MAX_PIXELS
 from .bundle import package_files, read_json_object
+from .configuration import read_controls
+from .devices import resolve_device
 from .labels import DisplayLabel, collect_labels
 
 
@@ -71,12 +73,16 @@ class CustomProcessor:
     Cache package imports per node while preserving independent branch state.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self, apple_available: bool | None = None, nvidia_available: bool | None = None,
+    ) -> None:
         """
         Start with no loaded custom packages.
         """
         self.packages: dict[str, CustomPackage] = {}
         self.labels: list[DisplayLabel] = []
+        self.apple_available = apple_available
+        self.nvidia_available = nvidia_available
 
     def retain(self, identities: set[str]) -> None:
         """
@@ -112,8 +118,16 @@ class CustomProcessor:
                     self.packages.pop(identity).close()
                 package = CustomPackage(params["package"])
                 self.packages[identity] = package
+            config = read_json_object(params["config"])
+            for control in read_controls(params.get("controls", "[]"), config):
+                if control["type"] == "device":
+                    key = control["key"]
+                    config[key] = resolve_device(
+                        config[key], apple_available=self.apple_available,
+                        nvidia_available=self.nvidia_available,
+                    )
             with collect_labels(self.labels):
-                result = package.process(image.copy(), read_json_object(params["config"]))
+                result = package.process(image.copy(), config)
             if (
                 not isinstance(result, np.ndarray)
                 or result.ndim != 3

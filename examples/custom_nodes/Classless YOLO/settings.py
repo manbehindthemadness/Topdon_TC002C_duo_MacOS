@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from topdon_duo.custom_nodes.colors import color_value
+from topdon_duo.custom_nodes.devices import validate_device
 
 
 def fraction(config: dict[str, Any], name: str, default: float, minimum: float = 0.0) -> float:
@@ -63,6 +64,7 @@ class Settings:
     nested_coverage: float
     suppress_duplicates: bool
     duplicate_iou: float
+    device: dict[str, str] | None = None
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> Settings:
@@ -80,7 +82,11 @@ class Settings:
             if not path.is_file():
                 raise ValueError(f"Model not found: {path}")
             resolved = str(path)
-        providers = config.get("providers", ["CPUExecutionProvider"])
+        device = validate_device(config["device"]) if "device" in config else None
+        providers = (
+            config.get("providers", ["CPUExecutionProvider"])
+            if device is None else ["CPUExecutionProvider"]
+        )
         if (
             not isinstance(providers, list)
             or not providers
@@ -113,5 +119,6 @@ class Settings:
             fraction(config, "nested_coverage", 0.85, 0.5),
             boolean(config, "suppress_duplicates", True),
             fraction(config, "duplicate_iou", 0.5, 0.01),
+            device,
         )
         return settings

@@ -7,6 +7,7 @@ from typing import Any
 
 from .bundle import read_json_object
 from .colors import color_value
+from .devices import validate_device
 
 
 def validate_controls(controls: Any, values: dict[str, Any]) -> list[dict[str, Any]]:
@@ -25,7 +26,7 @@ def validate_controls(controls: Any, values: dict[str, Any]) -> list[dict[str, A
         keys.add(key)
         if not isinstance(label, str) or not label or len(label) > 200:
             raise ValueError(f"Invalid custom control label: {key}")
-        if kind not in ("number", "integer", "boolean", "choice", "text", "color", "model"):
+        if kind not in ("number", "integer", "boolean", "choice", "text", "color", "model", "device"):
             raise ValueError(f"Unsupported custom control type: {key}")
         fields = {"key", "label", "type"}
         if kind in ("number", "integer"):
@@ -49,6 +50,8 @@ def validate_controls(controls: Any, values: dict[str, Any]) -> list[dict[str, A
             raise ValueError(f"Custom checkbox requires a boolean: {key}")
         elif kind == "color":
             color_value(value)
+        elif kind == "device":
+            validate_device(value)
         elif kind in ("choice", "text", "model"):
             if not isinstance(value, str):
                 raise ValueError(f"Custom text/choice requires a string: {key}")

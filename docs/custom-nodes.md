@@ -89,6 +89,7 @@ saved/exported pipelines. Reopening the folder reloads its defaults and controls
 | `text` | Text field, applied when editing finishes | None |
 | `color` | Color dropdown and **Choose…** picker | Value: RGB `#RRGGBB` or `dynamic` |
 | `model` | Existing ONNX model dropdown and **Browse…** | Value: local path or `""` for automatic download |
+| `device` | Execution and Apple compute-device selectors | Value: object with `backend` and `apple_compute` |
 
 Up to 64 controls are supported. Numeric bounds/values must be finite, within
 ±1,000,000,000; steps must be at least 0.000000001 and no larger than the range.
@@ -110,6 +111,67 @@ and labels, and uses inverted pixels for its optional dynamic fill.
 assignments (annotations are allowed). Computed expressions such as `json.loads`
 or function calls are rejected for these declarations. The editor reads their AST
 without importing/executing the package.
+
+## Optional CPU/GPU device control
+
+Add a `device` control only to packages that support selecting their execution device.
+The configuration key can have any name; this example uses `inference`:
+
+```python
+CONFIG_JSON = {
+    "defaults": {
+        "inference": {"backend": "cpu", "apple_compute": "CPUAndGPU"}
+    },
+    "controls": [
+        {"key": "inference", "label": "Inference device", "type": "device"}
+    ]
+}
+```
+
+Execution offers `cpu` (CPU), `coreml` (Apple Core ML) and `cuda` (NVIDIA CUDA),
+using the viewer's existing startup capability results. Apple compute devices are
+`CPUOnly`, `CPUAndGPU`, `ALL` (CPU + GPU + Neural Engine), or
+`CPUAndNeuralEngine`. Unavailable GPU choices are disabled. A saved GPU preference
+tries the other available GPU, then CPU, just like the built-in AI nodes. Explicit
+CPU always stays CPU. On a CPU-only host, the selector displays CPU and is disabled.
+Apple compute choices appear on Apple-capable hosts when execution is not CUDA;
+CPU execution shows CPU only and disables them. Returning to Apple Core ML restores
+the saved Apple choice. Locks disable edits, and capability updates do not rewrite
+saved/exported preferences.
+
+For declared device controls, `process(image, config)` receives a fresh **effective**
+device object: `backend` reflects fallback and `apple_compute` is `CPUOnly` unless
+execution is Apple Core ML. Other settings are unchanged. Plain JSON keys without
+a `device` control are not interpreted. The saved configuration retains the requested
+device; callbacks cannot change it by mutating their copy.
+
+The control does not automatically accelerate arbitrary Python or NumPy operations.
+Use the effective selection when creating your package's inference session. For ONNX,
+the shared helper provides the same CUDA preload/options and Apple compute units as
+the built-in nodes:
+
+```python
+import onnxruntime as ort
+from topdon_duo.custom_nodes.devices import onnx_providers
+
+# Inside process, after obtaining a verified model path:
+device = config["inference"]
+key = (str(path), device["backend"], device["apple_compute"])
+if session is None or session_key != key:
+    session = ort.InferenceSession(str(path), providers=onnx_providers(device))
+    session_key = key
+# Prepare model-specific input tensors and call session.run(...).
+```
+
+Keep `session` and `session_key` in module globals and declare them `global` in the
+callback. Recreate cached sessions when the model or effective device changes.
+The package remains responsible for model/provider compatibility, tensor formats
+and any model-specific Core ML conversion or static-shape requirements. Inference
+initialization errors use the existing Custom pipeline-error behavior.
+For standalone execution outside the viewer, call `resolve_device(saved_device)`
+from the same module before `onnx_providers`; its GPU capability probes are cached.
+Validation, folder browsing, JSON imports and UI refreshes do not run probes or create
+inference sessions. No dependency installs or model downloads are added by this control.
 
 ## Additional examples and builder skill
 

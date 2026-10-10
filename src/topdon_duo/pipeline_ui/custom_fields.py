@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from .custom_choices import ColorPicker, ModelPicker
+from .custom_devices import DevicePicker
 
 
 class CustomFields(QWidget):
@@ -25,7 +26,7 @@ class CustomFields(QWidget):
     """
 
     def __init__(self, controls: list[dict[str, Any]], values: dict[str, Any],
-                 changed: Callable[[str, Any], None]) -> None:
+                 changed: Callable[[str, Any], None], state: dict[str, Any] | None = None) -> None:
         """
         Initialize widgets before connecting signals, avoiding unsolicited updates.
         """
@@ -34,7 +35,9 @@ class CustomFields(QWidget):
         layout = QFormLayout(self)
         for control in controls:
             key, kind = control["key"], control["type"]
-            if kind in ("color", "model"):
+            if kind == "device":
+                widget = DevicePicker(values[key], lambda value, name=key: changed(name, value), state)
+            elif kind in ("color", "model"):
                 factory = ColorPicker if kind == "color" else ModelPicker
                 widget = factory(values[key], lambda value, name=key: changed(name, value))
             elif kind == "boolean":
@@ -63,13 +66,15 @@ class CustomFields(QWidget):
             self.fields[key] = widget
             layout.addRow(control["label"], widget)
 
-    def refresh(self, values: dict[str, Any]) -> None:
+    def refresh(self, values: dict[str, Any], state: dict[str, Any] | None = None) -> None:
         """
         Reflect JSON edits without emitting processing updates from widget signals.
         """
         for key, widget in self.fields.items():
             blocker = QSignalBlocker(widget)
-            if isinstance(widget, (ColorPicker, ModelPicker)):
+            if isinstance(widget, DevicePicker):
+                widget.refresh(values[key], state)
+            elif isinstance(widget, (ColorPicker, ModelPicker)):
                 widget.refresh(values[key])
             elif isinstance(widget, QCheckBox):
                 widget.setChecked(values[key])

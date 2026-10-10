@@ -53,12 +53,22 @@ weights. No upstream Python files or weights are copied into this package.
 3. Place the node before **Output → viewer** or an expanded **Preview** node.
    Start with a clean preview/grayscale image before decorative palettes or heavy
    upscaling; the detector sees exactly the image at its position in the stack.
+4. In **Inference device**, choose CPU, Apple Core ML or NVIDIA CUDA. GPU choices
+   are enabled from the viewer's startup capabilities. On Apple Core ML, select
+   **Compute devices** to include the GPU and/or Neural Engine.
+
+CPU remains the default. Unavailable saved GPU preferences try the other available
+GPU, then CPU, while preserving the saved selection. The callback receives the
+effective device, and changing its backend or Apple compute units recreates the
+model session. If GPU initialization fails for this model, select CPU; initialization
+errors are reported rather than silently accepting an absent GPU provider.
 
 | Setting | Meaning |
 | --- | --- |
 | `model_path` | Empty for automatic download; absolute or `~` path overrides it. |
 | `model` | Optional downloader source override; defaults to embedded `MODEL_SOURCE`. |
-| `providers` | ONNX Runtime provider list; defaults to `CPUExecutionProvider`. |
+| `device` | Execution object with `backend` (`cpu`, `coreml`, `cuda`) and `apple_compute`; default CPU with saved `CPUAndGPU` Apple units. |
+| `providers` | Legacy ONNX Runtime provider list, used only when `device` is absent; defaults to `CPUExecutionProvider`. |
 | `filter_scores` | Enable the inclusive confidence range; default true. |
 | `score_threshold` | Minimum confidence, 0–1; default 0.2 matches Inspector's localizer. |
 | `score_maximum` | Maximum confidence, 0–1; default 1. Minimum must not exceed maximum when filtering is enabled. |
@@ -76,13 +86,35 @@ weights. No upstream Python files or weights are copied into this package.
 The package uses the viewer's existing NumPy, OpenCV and ONNX Runtime dependencies.
 It uses the shared model downloader and installs no dependencies. Unavailable configured
 providers and missing/incompatible weights produce clear pipeline errors.
-CPU inference was verified on macOS. Additional providers require a compatible
-ONNX Runtime installation and were not tested for this example.
+CPU and actual Apple Core ML inference were verified on an Apple M4 with macOS
+26.6.2 and ONNX Runtime 1.30.0 using the checksum-pinned export. Core ML's compute
+plan assigned convolution operations to the GPU with `CPUAndGPU`; ONNX Runtime
+assigned 216 of 223 graph nodes to three Core ML partitions, with remaining
+post-processing on CPU. On a visible-light bus/person image, both CPU and GPU
+returned four proposals above 0.2 and the complete Custom node drew the same
+boxes. Maximum score difference was below 0.000001. `CPUOnly`, `ALL` and
+`CPUAndNeuralEngine` Core ML modes also returned valid outputs; this does not
+establish that each mode actually used the Neural Engine. CUDA inference remains
+unverified. Normal regression tests use fake sessions and do not run hardware.
+Provider registration alone does not prove GPU placement; use Core ML's
+[`ProfileComputePlan`](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#available-options-new-api)
+and ONNX Runtime profiling when checking another model/platform.
+
+The decoder accepts the count output as `(1,)` or `(1, 1)` and normalizes the
+extra batch axis before reading it. Other output shapes and count values remain
+strictly validated. The export declares `(1,)` while Core ML execution returns
+`(1, 1)`, which triggers ONNX Runtime's `VerifyOutputSizes` warning before decoding.
+This example sets its session's `log_severity_level` to `3` (errors and fatal
+messages) to suppress the repeated warning. This also suppresses other ONNX
+Runtime warnings from this session; errors, decoder validation and other nodes'
+logging remain active. Native Core ML messages outside ONNX Runtime's logger may
+still appear. For diagnostic logging, change the example's session severity back
+to `2` and reload the folder.
 
 `__init__.py` embeds `CONFIG_JSON` defaults/control definitions and `MODEL_SOURCE`,
 and owns a per-node session cache. No separate configuration or model-source file
 is needed. The editor shows confidence filtering/range, maximum detections, box thickness,
-optional labels, nesting, border/fill colors, fill opacity and local-model controls,
+optional labels, nesting, border/fill colors, fill opacity, local-model and device controls,
 and hides the configuration/model import
 buttons. Advanced settings remain accessible through **Edit JSON configuration…**.
 `settings.py` validates configuration,
@@ -90,7 +122,8 @@ buttons. Advanced settings remain accessible through **Edit JSON configuration�
 `nesting.py` filters/orders boxes, `labels.py` exposes the shared label layout, and
 `drawing.py` renders overlays.
 Changing thresholds/overlay settings reuses
-the session; changing model path or provider list reloads it. When replacing
+the session; changing model path, effective device, Apple compute units or a legacy
+provider list reloads it. When replacing
 weights, use a new filename and update `model_path`, or remove and re-add the node.
 Drawn pixels are
 quantized to uint8 for OpenCV text, then the Custom runtime returns float32.
@@ -143,3 +176,8 @@ network or hardware. An optional still-image experiment exercises actual inferen
 Resolve the configured interpreter through the repository's Python tooling before
 running it. The experiment reads the supplied model/image and writes the requested
 output without camera access or preference changes.
+
+Existing saved Custom nodes embed an older copy of the package. Restart the viewer
+for the device-control host support, then open this folder again to load the new
+control and code. Folder reload restores package defaults; reapply your preferred
+detection/display settings and save the pipeline afterward.

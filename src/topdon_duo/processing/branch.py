@@ -64,7 +64,7 @@ class BranchProcessor:
         self.collect_previews = False
         self.preview_active = False
         self.last_preview_errors = {}
-        self.custom = CustomProcessor()
+        self.custom = CustomProcessor(self.apple_available, self.nvidia_available)
         self.input_labels: dict[str, list[DisplayLabel]] = {}
 
     def close(self) -> None:

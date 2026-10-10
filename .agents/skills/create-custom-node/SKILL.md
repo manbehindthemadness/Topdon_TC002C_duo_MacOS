@@ -47,6 +47,14 @@ name from the algorithm actually executed.
   Use `color` controls for RGB hex/dynamic choices and `model` controls for local
   ONNX dropdowns with Browse. Model controls register paths without copying or
   loading weights; validate model compatibility in the processing callback.
+  For packages that support execution selection, add an optional `device` control
+  whose value has `backend` (`cpu`/`coreml`/`cuda`) and `apple_compute` (the built-in
+  Apple unit choices). The callback receives the effective device after standard
+  GPU/CPU fallback; saved preferences remain intact. Use
+  `custom_nodes.devices.onnx_providers(config[key])` for ONNX provider options and
+  recreate cached sessions when the effective device/model changes. The control
+  alone does not accelerate arbitrary Python; keep model/provider compatibility
+  checks in the worker. Do not probe or initialize inference in schema/UI code.
   Dynamic colors are metadata; reuse the viewer's contrast compositor when
   matching its measurement overlays, rather than inventing a separate style.
   For upright text with measurement-sized glyphs, call

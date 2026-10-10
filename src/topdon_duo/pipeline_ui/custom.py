@@ -88,12 +88,14 @@ class CustomControls(QWidget):
             if self.fields is not None:
                 self.layout_box.removeWidget(self.fields)
                 self.fields.deleteLater()
-            fields = CustomFields(controls, values, self.change_value)
+            fields = CustomFields(
+                controls, values, self.change_value, getattr(self.editor, "last_state", {})
+            )
             self.fields = fields
             self.layout_box.addWidget(fields)
             self.control_source = control_source
         elif self.fields is not None:
-            self.fields.refresh(values)
+            self.fields.refresh(values, getattr(self.editor, "last_state", {}))
         self.setEnabled(not self.editor.locked)
 
     def change_value(self, key: str, value: Any) -> None:

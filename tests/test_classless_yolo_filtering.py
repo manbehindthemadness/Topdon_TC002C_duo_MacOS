@@ -54,7 +54,7 @@ def test_confidence_range_toggle_and_filter_order(
     parent = (0.1, 0.1, 0.9, 0.9, 0.7)
     child = (0.3, 0.3, 0.4, 0.4, 0.9)
     low = (0.91, 0.91, 0.99, 0.99, 0.1)
-    engine = Mock(key=(str(model), ("CPUExecutionProvider",)))
+    engine = Mock(key=(str(model), ("CPUExecutionProvider",), None))
 
     def detect(_image: np.ndarray, threshold: float) -> list[tuple[float, float, float, float, float]]:
         """

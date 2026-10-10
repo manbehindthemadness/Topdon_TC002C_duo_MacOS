@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
+from topdon_duo.custom_nodes.devices import onnx_providers, validate_device
+
 type Detection = tuple[float, float, float, float, float]
 
 
@@ -14,6 +16,8 @@ def decode_outputs(
 ) -> list[Detection]:
     """
     Decode PINTO's four-output export into normalized y1/x1/y2/x2 boxes and confidence.
+
+    Accept the one-value detection count with or without its extra batch axis.
     """
     if len(outputs) != 4:
         raise ValueError("Use the four-output PINTO model_float32.onnx export")
@@ -24,11 +28,12 @@ def decode_outputs(
         or boxes.shape[2] != 4
         or scores.shape != boxes.shape[:2]
         or classes.shape != scores.shape
-        or count.shape != (1,)
+        or count.shape not in ((1,), (1, 1))
         or any(not np.isfinite(value).all() for value in outputs)
     ):
         raise ValueError("Unexpected Mobile Object Localizer output shapes or non-finite values")
-    number = float(count[0])
+    normalized_count = count.reshape(1)
+    number = float(normalized_count[0])
     if not number.is_integer() or not 0 <= number <= boxes.shape[1]:
         raise ValueError("Invalid Mobile Object Localizer detection count")
     selected = []
@@ -50,20 +55,32 @@ class Detector:
     Cache one model session; weights are supplied explicitly outside the package.
     """
 
-    def __init__(self, model_path: str, providers: tuple[str, ...]) -> None:
+    def __init__(
+        self, model_path: str, providers: tuple[str, ...], device: dict[str, str] | None = None,
+    ) -> None:
         """
         Load a local model for inference on the current pipeline image.
         """
-        self.key = model_path, providers
-        missing = set(providers) - set(ort.get_available_providers())
+        device = validate_device(device) if device is not None else None
+        device_key = (device["backend"], device["apple_compute"]) if device is not None else None
+        self.key = model_path, providers, device_key
+        selected = onnx_providers(device) if device is not None else list(providers)
+        provider_names = {entry if isinstance(entry, str) else entry[0] for entry in selected}
+        missing = provider_names - set(ort.get_available_providers())
         if missing:
             raise ValueError(f"ONNX providers unavailable: {', '.join(sorted(missing))}")
         options = ort.SessionOptions()
+        options.log_severity_level = 3
         options.intra_op_num_threads = 1
         options.inter_op_num_threads = 1
         self.session = ort.InferenceSession(
-            model_path, sess_options=options, providers=list(providers)
+            model_path, sess_options=options, providers=selected
         )
+        if device is not None:
+            self.session.disable_fallback()
+            gpu_names = provider_names - {"CPUExecutionProvider"}
+            if gpu_names and not gpu_names <= set(self.session.get_providers()):
+                raise ValueError("Selected GPU session failed; select CPU execution to try this model")
         inputs = self.session.get_inputs()
         outputs = self.session.get_outputs()
         if (

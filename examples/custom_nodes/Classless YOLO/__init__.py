@@ -19,7 +19,7 @@ CONFIG_JSON = r'''
 {
   "defaults": {
     "model_path": "",
-    "providers": ["CPUExecutionProvider"],
+    "device": {"backend": "cpu", "apple_compute": "CPUAndGPU"},
     "score_threshold": 0.2,
     "score_maximum": 1.0,
     "filter_scores": true,
@@ -35,6 +35,7 @@ CONFIG_JSON = r'''
     "fill_opacity": 0.0
   },
   "controls": [
+    {"key": "device", "label": "Inference device", "type": "device"},
     {"key": "filter_scores", "label": "Filter confidence scores", "type": "boolean"},
     {"key": "score_threshold", "label": "Minimum confidence", "type": "number",
      "min": 0, "max": 1, "step": 0.01},
@@ -90,8 +91,13 @@ def process(image: np.ndarray, config: dict[str, Any]) -> np.ndarray:
             return image
         model = str(path)
     engine = _detector
-    if engine is None or engine.key != (model, options.providers):
-        engine = Detector(model, options.providers)
+    device_key = (
+        (options.device["backend"], options.device["apple_compute"])
+        if options.device is not None else None
+    )
+    key = model, options.providers, device_key
+    if engine is None or engine.key != key:
+        engine = Detector(model, options.providers, options.device)
         _detector = engine
     detections = engine.detect(image, options.threshold if options.filter_scores else 0.0)
     if options.filter_scores:

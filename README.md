@@ -546,6 +546,10 @@ or a local ONNX file. Custom packages can use the same checksum-verified cache a
 download-status reporting through `ModelResolver`.
 Embed `CONFIG_JSON` and `MODEL_SOURCE` in `__init__.py` to supply defaults, custom
 controls and download details without separate files; see the Custom-node docs.
+An optional `device` control provides CPU, Apple Core ML and NVIDIA CUDA execution
+with the built-in Apple compute-device choices. Saved GPU preferences survive
+fallback; processing callbacks receive the effective device and can use the shared
+ONNX provider helper when creating their model sessions.
 Use the project-local
 [$create-custom-node skill](.agents/skills/create-custom-node/SKILL.md) to build
 your own Custom-node packages.
