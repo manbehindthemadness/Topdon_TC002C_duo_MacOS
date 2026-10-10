@@ -5,6 +5,7 @@ import math
 import threading
 import time
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .graph_plotting import History, pixel_curve_samples, visible_history
 from .graph_settings import GRAPH_DEFAULTS, validate_graph_settings
 
 GRAPH_INTERVAL = 0.5
@@ -320,7 +322,10 @@ class GraphWorker:
             history.append((now, (value if snapshot.measurements_valid else float("nan"),)))
             self._compact(history)
 
-    def _run(self):
+    def _run(self) -> None:
+        """
+        Sample complete history while rendering snapshots of the visible interval.
+        """
         deadline = 0.0
         while True:
             with self._condition:
@@ -347,8 +352,11 @@ class GraphWorker:
                     self._sample(snapshot, now)
                     self._write_log(snapshot, now)
                 generation = self._history_generation
-                master = tuple(self._master)
-                spots = {key: tuple(history) for key, history in self._spots.items()}
+                master = visible_history(self._master, now, snapshot.history_range)
+                spots = {
+                    key: visible_history(history, now, snapshot.history_range)
+                    for key, history in self._spots.items()
+                }
             result = render_graphs(snapshot, master, spots, now)
             with self._condition:
                 if (
@@ -391,7 +399,18 @@ def render_graphs(snapshot, master, spots, now):
     return canvas
 
 
-def _draw_chart(canvas, title, history, labels, unit, now, duration=HISTORY_SECONDS):
+def _draw_chart(
+    canvas: np.ndarray,
+    title: str,
+    history: History,
+    labels: Sequence[str],
+    unit: str,
+    now: float,
+    duration: float = HISTORY_SECONDS,
+) -> None:
+    """
+    Draw scalar histories with separate curves across unavailable measurements.
+    """
     height, width = canvas.shape[:2]
     if height < 8 or width < 16:
         return
@@ -408,7 +427,7 @@ def _draw_chart(canvas, title, history, labels, unit, now, duration=HISTORY_SECO
         1,
         cv2.LINE_AA,
     )
-    samples = [(stamp, values) for stamp, values in history if stamp >= now - duration]
+    samples = visible_history(history, now, duration)
     if not samples:
         return
     stamps = np.array([stamp for stamp, _ in samples])
@@ -448,28 +467,49 @@ def _draw_chart(canvas, title, history, labels, unit, now, duration=HISTORY_SECO
             1,
             cv2.LINE_AA,
         )
-    for column in range(values.shape[1]):
-        run = []
-        for stamp, value in zip(stamps, values[:, column]):
-            if not np.isfinite(value):
-                if len(run) > 1:
-                    cv2.polylines(
-                        canvas, [np.array(run, np.int32)], False, COLORS[column], 1, cv2.LINE_AA
-                    )
-                run = []
-                continue
-            point = (
-                round(left + (stamp - now + duration) / duration * (right - left)),
-                round(bottom - (value - low) / (high - low) * (bottom - top)),
-            )
-            run.append(point)
-            cv2.circle(canvas, point, 1, COLORS[column], -1, cv2.LINE_AA)
-        if len(run) > 1:
-            cv2.polylines(canvas, [np.array(run, np.int32)], False, COLORS[column], 1, cv2.LINE_AA)
+    _draw_history_curves(canvas, stamps, values, (left, right, top, bottom), low, high, now, duration)
     cv2.putText(
         canvas, f"-{history_duration(duration)}", (left, height - 7), font, 0.32, (155, 160, 175), 1
     )
     cv2.putText(canvas, "now", (max(left, right - 25), height - 7), font, 0.32, (155, 160, 175), 1)
+
+
+def _draw_history_curves(
+    canvas: np.ndarray,
+    stamps: np.ndarray,
+    values: np.ndarray,
+    bounds: tuple[int, int, int, int],
+    low: float,
+    high: float,
+    now: float,
+    duration: float,
+) -> None:
+    """
+    Draw pixel-bounded curves with bulk coordinates and preserved extrema.
+
+    Non-finite samples split curves; isolated valid samples retain a point marker.
+    """
+    left, right, top, bottom = bounds
+    x = np.clip(
+        np.rint(left + (stamps - now + duration) / duration * (right - left)), left, right,
+    ).astype(np.int32)
+    for column in range(values.shape[1]):
+        indices, boundaries = pixel_curve_samples(x, values[:, column])
+        if not indices.size:
+            continue
+        y = np.clip(
+            np.rint(bottom - (values[indices, column] - low) / (high - low) * (bottom - top)),
+            top, bottom,
+        ).astype(np.int32)
+        points = np.column_stack((x[indices], y))
+        runs = np.split(points, boundaries)
+        curves = [run for run in runs if len(run) > 1]
+        if curves:
+            cv2.polylines(canvas, curves, False, COLORS[column], 1, cv2.LINE_AA)
+        for run in runs:
+            if len(run) == 1:
+                point = (int(run[0, 0]), int(run[0, 1]))
+                cv2.circle(canvas, point, 1, COLORS[column], -1, cv2.LINE_AA)
 
 
 def graph_log_button_rect(width):

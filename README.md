@@ -364,6 +364,12 @@ selected Celsius/Fahrenheit unit. The default range shows the most recent
 automatically, retaining bucket minima/maxima and measurement gaps; the newest
 half of the point budget remains uncompressed. The default budget is 4,096 points
 per chart (2,048 recent samples).
+Only the visible time range is copied for fixed-range plots, selecting from the newest
+history backwards without scanning older measurements. Drawing retains at most four
+samples per pixel column per series: first, last, minimum and maximum, in time order.
+This preserves peaks, dips and measurement gaps while bounding plotted geometry by
+the chart width. Isolated measurements retain a point marker. Retained histories,
+current readings and CSV samples remain unchanged by this display reduction.
 CSV logging retains every valid sample at the selected interval. Sampling and rendering run on a separate
 worker thread every 0.5 seconds by default, using the latest camera measurements without
 queuing video frames. Hiding the graph area pauses sampling and rendering;
