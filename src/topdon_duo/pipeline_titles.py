@@ -1,9 +1,14 @@
 """Concise node descriptions derived from settings, without changing node identities."""
 
+from typing import Any
+
 from .pipeline import CATALOG
 
 
-def node_title(stack, item, temperature_unit="C"):
+def node_title(stack: str, item: dict[str, Any], temperature_unit: str = "C") -> str:
+    """
+    Describe a node's operation and settings for its title.
+    """
     kind, p = item["type"], item["params"]
     title, definitions = CATALOG[stack][kind]
 
@@ -67,18 +72,12 @@ def node_title(stack, item, temperature_unit="C"):
         suffix = f"{option('compute')} · 2× · {option('denoise')} denoise"
     elif kind == "onnx_superresolution":
         suffix = f"{option('model')} · {option('input')}"
-        if p["backend"] == "coreml":
-            suffix += " · Apple preferred (CPU fallback)"
     elif kind == "onnx_style":
         suffix = f"{option('model')} · {p['amount'] * 100:g}% blend"
-        if p["backend"] == "coreml":
-            suffix += " · Apple preferred (CPU fallback)"
     elif kind == "onnx_denoise":
         suffix = option("model")
         if p["model"] == "ffdnet-gray":
             suffix += f" · sigma {p['noise']:g}"
-        if p["backend"] == "coreml":
-            suffix += " · Apple preferred (CPU fallback)"
     elif kind == "enhance":
         suffix = option("model")
         if p["model"] != "off":
@@ -90,8 +89,6 @@ def node_title(stack, item, temperature_unit="C"):
                 suffix += f" · {option('input')}"
             if p["model"] == "acnet" and p["denoise"]:
                 suffix += f" · {option('denoise')} denoise"
-            if p["model"] != "anime4k09" and p["backend"] == "coreml":
-                suffix += " · Apple preferred (CPU fallback)"
     elif kind == "combine":
         suffix = f"{option('tab')} · {option('mode')} · {p['opacity'] * 100:g}%"
         if p["mask_source"] != "none":

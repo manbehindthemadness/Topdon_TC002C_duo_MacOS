@@ -146,10 +146,10 @@ window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor
 item = node("software", "enhance", model="acnet", backend="coreml", apple_compute="ALL")
 editor.document["software"].insert(1, item)
-for requested, apple, nvidia, label in (
-    ("coreml", False, True, "NVIDIA CUDA"),
-    ("cuda", True, False, "Apple Core ML"),
-    ("coreml", False, False, "CPU"),
+for requested, apple, nvidia, effective, label in (
+    ("coreml", False, True, "cuda", "NVIDIA CUDA"),
+    ("cuda", True, False, "coreml", "Apple Core ML"),
+    ("coreml", False, False, "cpu", "CPU"),
 ):
     item["params"]["backend"] = requested
     original = deepcopy(editor.document)
@@ -160,10 +160,15 @@ for requested, apple, nvidia, label in (
     rows = editor.widgets[item["id"]][1]
     badge = editor.widgets[item["id"]][4]
     assert badge.text().startswith(label + " execution")
+    assert rows["backend"].value() == effective
     assert rows["apple_compute"].isHidden() is (not apple)
     if apple:
         assert rows["apple_compute"].input.isEnabled()
         assert rows["apple_compute"].value() == "ALL"
+    assert editor.document == original
+    editor.rebuild()
+    rows = editor.widgets[item["id"]][1]
+    assert rows["backend"].value() == effective
     assert editor.document == original
 window.close()
 """

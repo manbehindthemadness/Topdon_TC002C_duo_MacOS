@@ -147,6 +147,8 @@ and default to CPU execution. Capable systems also expose Apple Core ML with a
 compute-device preference, or NVIDIA CUDA with the optional GPU runtime.
 Saved GPU preferences are retained; an unavailable GPU backend tries the other
 GPU before CPU. Explicit CPU selections remain CPU.
+The **Execution** selector displays the effective backend on the current system,
+including NVIDIA CUDA when a saved Apple preference falls back to NVIDIA.
 The **Compute devices** selector displays **CPU only** and is disabled while
 execution is set to CPU. Selecting Apple Core ML restores the saved device choice.
 

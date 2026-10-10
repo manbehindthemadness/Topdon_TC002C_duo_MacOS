@@ -214,7 +214,12 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                         row, item["params"], available, state_backend(item["params"], state)
                     )
                 else:
-                    row.update_state(item["params"][key], available)
+                    value = (
+                        state_backend(item["params"], state)
+                        if key == "backend"
+                        else item["params"][key]
+                    )
+                    row.update_state(value, available)
             # Child size changes (badges) need a refreshed item height.
     for listing in self.stacks.values():
         listing.setDragEnabled(not locked)

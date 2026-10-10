@@ -595,7 +595,12 @@ class PipelineEditor(QWidget):
                             state_backend(item["params"], getattr(self, "last_state", {})),
                         )
                     else:
-                        row.update_state(item["params"][key])
+                        value = (
+                            state_backend(item["params"], getattr(self, "last_state", {}))
+                            if key == "backend"
+                            else item["params"][key]
+                        )
+                        row.update_state(value)
                     if key in ("backend", "apple_compute"):
                         configure_backend_row(
                             row,

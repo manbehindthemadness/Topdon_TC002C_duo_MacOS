@@ -95,7 +95,7 @@ def configure_backend_row(
                 selected == "cpu" or selected == "coreml" and apple or selected == "cuda" and nvidia
             )
         help_text = (
-            "Execution backend for display enhancement. Anime4K09 uses CPU. "
+            "Effective execution backend for display enhancement. Anime4K09 uses CPU. "
             "Unavailable saved GPU preferences try the other GPU before CPU and remain saved."
         )
         row.setToolTip(help_text)
