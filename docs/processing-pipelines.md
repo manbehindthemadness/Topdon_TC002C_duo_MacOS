@@ -118,8 +118,11 @@ Fixed detail requires enabled detail enhancement, Balanced processing,
 gamma 50 and boost Off. Invalid combinations are rejected before writing.
 Normal preset switching accepts all known Balanced, Shadow and Soft processing
 banks, including their gain-paired banks. It retains the verified factory SDK/ISP
-checks, saves the observed live preset for restoration, and applies Balanced
-explicitly when selected. Only Fixed detail requires Balanced to remain selected.
+checks, saves the observed live preset before SDK control writes for restoration,
+and applies Balanced explicitly when selected. Only Fixed detail requires Balanced
+to remain selected.
+A newly added Balanced preset temporarily releases active Fixed detail for verification,
+then re-enables it; later expansion and software-only edits do not repeat these writes.
 A rejected SDK/ISP baseline reports the original AGC mode and current bank.
 Gamma uploads retain progress and cancellation. Camera controls that affect
 only preview are inactive when no connected tab or combine input/mask uses

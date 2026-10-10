@@ -301,6 +301,27 @@ class HardwareControls:
         if self._processing_command() not in PROCESSING_BANKS[preset]:
             raise CameraError("Camera processing bank did not match the selected preset")
 
+    def capture_processing_preset(self) -> None:
+        """
+        Save the verified live preset before SDK writes can reload its bank.
+        """
+        if self._processing_preset_owned or self._original_processing_preset is not None:
+            return
+        self.load()
+        self._fixed_range_baseline()
+        original_mode = self.original[2, 5][23]
+        current_bank = self._processing_command()
+        current_preset = next(
+            (name for name, banks in PROCESSING_BANKS.items() if current_bank in banks), None
+        )
+        if original_mode != PROCESSING_PRESETS["balanced"] or current_preset is None:
+            raise CameraError(
+                "Processing presets require the verified SDK/ISP baseline "
+                f"(startup AGC mode={original_mode}, current bank={current_bank}; "
+                "expected startup mode=1 and a known processing bank 1–6)"
+            )
+        self._original_processing_preset = current_preset
+
     def set_processing_preset(self, preset: str) -> None:
         """
         Preserve the live preset, then select a preview preset on the verified factory ISP.
@@ -315,25 +336,7 @@ class HardwareControls:
         ):
             self.restore_processing_preset()
             return
-        self.load()
-        if not self._processing_preset_owned:
-            self._fixed_range_baseline()  # Same verified factory ISP table.
-            original_mode = self.original[2, 5][23]
-            current_bank = self._processing_command()
-            current_preset = next(
-                (name for name, banks in PROCESSING_BANKS.items() if current_bank in banks), None
-            )
-            if (
-                original_mode != PROCESSING_PRESETS["balanced"]
-                or current_preset is None
-            ):
-                raise CameraError(
-                    "Processing presets require the verified SDK/ISP baseline "
-                    f"(startup AGC mode={original_mode}, current bank={current_bank}; "
-                    "expected startup mode=1 and a known processing bank 1–6)"
-                )
-            if self._original_processing_preset is None:
-                self._original_processing_preset = current_preset
+        self.capture_processing_preset()
         self._processing_preset_owned = True
         try:
             self._apply_processing_preset(preset)

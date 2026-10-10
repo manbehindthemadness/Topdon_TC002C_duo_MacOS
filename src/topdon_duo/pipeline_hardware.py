@@ -67,7 +67,12 @@ class PipelineHardware:
         """
         self._desired = None
 
-    def apply(self, document, *, previous_document=None):
+    def apply(
+        self, document: dict[str, Any], *, previous_document: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Apply changed hardware settings and roll back rejected configurations.
+        """
         candidate = validate_pipeline(document)
         if (
             not self.hardware.original
@@ -135,8 +140,10 @@ class PipelineHardware:
             )
             or (name not in controls and current.get(name, {}).get("enabled", False))
         ]
+        preset_changes = force or verify_preset or hw.processing_preset != preset
         if hw.fixed_range and (
             force
+            or verify_preset
             or changed
             or not fixed
             or hw.processing_preset != preset
@@ -144,6 +151,8 @@ class PipelineHardware:
             or hw.boost != boost
         ):
             hw.restore_fixed_range()
+        if preset_changes:
+            hw.capture_processing_preset()
         # Restore/rebuild tone only when needed; all block writes precede the final LUT.
         tone_changes = (
             force
@@ -168,7 +177,7 @@ class PipelineHardware:
         for name in order:
             if name in changed:
                 hw.set(name, controls.get(name, current[name]["value"]), name in controls)
-        if force or verify_preset or hw.processing_preset != preset:
+        if preset_changes:
             hw.set_processing_preset(preset)
         if tone_changes and (gamma != 50 or boost):
             hw.set_tone(gamma, boost)

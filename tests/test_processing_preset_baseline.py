@@ -205,3 +205,78 @@ def test_first_pipeline_verifies_balanced_instead_of_trusting_default_label(
     hardware.restore_processing_preset()
     assert command.call_args_list[-2:] == [call(0), call()]
     assert hardware.processing_preset == "soft"
+
+
+@pytest.mark.parametrize("initial_bank,original", [(2, "shadow"), (3, "soft")])
+def test_first_pipeline_saves_live_preset_before_sdk_writes(
+    request: pytest.FixtureRequest, initial_bank: int, original: str,
+) -> None:
+    """
+    Preserve the startup bank when a combined preset/control edit reloads the SDK bank.
+    """
+    hardware = preset_hardware(request)
+    bank = initial_bank
+    write = hardware.write
+
+    def sdk_write(key: tuple[int, int], payload: bytes) -> None:
+        """
+        Model the SDK refresh independently of the preset setter.
+        """
+        nonlocal bank
+        write(key, payload)
+        if key[0] == 2:
+            bank = 1
+
+    def processing_command(mode: int | None = None) -> int:
+        """
+        Apply the audited wire-mode mapping to the simulated live bank.
+        """
+        nonlocal bank
+        if mode is not None:
+            bank = {1: 1, 2: 2, 0: 3}[mode]
+            return 1
+        return bank
+
+    hardware.write = Mock(side_effect=sdk_write)
+    hardware._processing_command = Mock(side_effect=processing_command)
+    document = default_pipeline()
+    document["hardware"] = [
+        node("hardware", "contrast", value=70),
+        node("hardware", "preset", value="balanced"),
+    ]
+    PipelineHardware(hardware).apply(document)
+    assert hardware._original_processing_preset == original
+    assert bank == 1
+    hardware.restore()
+    assert bank == initial_bank
+    assert hardware.processing_preset == original
+
+
+def test_add_balanced_preset_while_fixed_detail_is_active(
+    request: pytest.FixtureRequest,
+) -> None:
+    """
+    Release Fixed Detail around explicit preset verification and re-enable it afterward.
+    """
+    hardware = preset_hardware(request)
+    hardware._processing_command = Mock(return_value=1)
+    hardware._fixed_range_bounds = (1000, 2800)
+    hardware._fixed_range_command = Mock()
+    document = default_pipeline()
+    document["hardware"] = [node("hardware", "detail", enabled=True, amount=60, fixed=True)]
+    manager = PipelineHardware(hardware)
+    manager.apply(document)
+    assert hardware.fixed_range
+    hardware._fixed_range_command.reset_mock()
+    document["hardware"].insert(0, node("hardware", "preset", value="balanced"))
+    manager.apply(document)
+    assert hardware.fixed_range and hardware._fixed_range_owned
+    assert hardware.processing_preset == "balanced"
+    assert manager.document == document
+    assert hardware._fixed_range_command.call_args_list == [
+        call(1000, 2800), call(0, 0), call(0, 16383), call(0, 16383),
+    ]
+    hardware._processing_command.reset_mock()
+    document["hardware"][0]["expanded"] = False
+    manager.apply(document)
+    hardware._processing_command.assert_not_called()
