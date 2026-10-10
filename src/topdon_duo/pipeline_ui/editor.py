@@ -41,6 +41,7 @@ from ..pipeline_hardware import desired_hardware
 from ..pipeline_presets import load_presets, save_presets
 from ..pipeline_titles import node_title
 from .compute import configure_backend_row, state_backend, update_compute_devices
+from .custom import CustomControls
 from .presets import pipeline_content, rename_current_preset
 from .state import update_editor_state
 from .transfer.actions import export_pipelines, import_pipelines
@@ -65,6 +66,7 @@ class PipelineEditor(QWidget):
         self.locked = False
         self.rebuilding = False
         self.widgets: dict[str, tuple[str, dict[str, ControlRow], Any, Any, Any]] = {}
+        self.custom_widgets: dict[str, CustomControls] = {}
         self.preview_widgets = {}
         self.preview_timing_widgets = {}
         self.preview_cache = {}
@@ -356,7 +358,7 @@ class PipelineEditor(QWidget):
         if stack == "hardware":
             fields = (
                 {"value": kind}
-                if kind in ("brightness", "contrast", "humidity")
+                if kind in ("brightness", "contrast")
                 else {"palette": "palette"}
                 if kind == "camera_colors"
                 else {"amount": "detail", "enabled": "detail_enabled"}
@@ -504,6 +506,7 @@ class PipelineEditor(QWidget):
         }
         self.rebuilding = True
         self.widgets = {}
+        self.custom_widgets = {}
         self.preview_widgets = {}
         self.preview_timing_widgets = {}
         for stack, listing in self.stacks.items():
@@ -577,7 +580,13 @@ class PipelineEditor(QWidget):
                 fields = QVBoxLayout(body)
                 fields.setContentsMargins(4, 0, 4, 0)
                 controls = {}
-                for key, spec in CATALOG[stack][item["type"]][1].items():
+                definitions = CATALOG[stack][item["type"]][1]
+                if item["type"] == "custom":
+                    custom = CustomControls(self, item)
+                    self.custom_widgets[item["id"]] = custom
+                    fields.addWidget(custom)
+                    definitions = {}
+                for key, spec in definitions.items():
                     row = self.row_class(
                         spec.title,
                         partial(self.change, item, key),

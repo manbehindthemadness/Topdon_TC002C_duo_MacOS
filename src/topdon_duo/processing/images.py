@@ -11,6 +11,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from ..custom_nodes.labels import DisplayLabel, draw_display_labels
 from ..enhancement_limits import MAX_PIXELS
 
 INTERPOLATIONS = {
@@ -52,6 +53,14 @@ def luminance(image: np.ndarray) -> np.ndarray:
     """
     color = cv2.cvtColor(image.astype(np.float32), cv2.COLOR_BGR2YCrCb)
     return color[..., 0]
+
+
+def invert_colors(image: np.ndarray) -> np.ndarray:
+    """
+    Complement each display channel without moving pixels or modifying the input.
+    """
+    inverted = 255.0 - image
+    return inverted
 
 
 def map_luminance(image: np.ndarray, operation: Callable[[np.ndarray], np.ndarray]) -> np.ndarray:
@@ -162,9 +171,9 @@ def combine_images(
     return np.clip(base * (1 - opacity) + result * opacity, 0, 255)
 
 
-def encode_thumbnail(image: np.ndarray) -> str:
+def encode_thumbnail(image: np.ndarray, labels: list[DisplayLabel] | None = None) -> str:
     """
-    Encode thumbnail.
+    Encode a thumbnail, drawing optional annotations at its final resolution.
     """
     height, width = image.shape[:2]
     factor = min(320 / width, 240 / height, 1)
@@ -173,5 +182,7 @@ def encode_thumbnail(image: np.ndarray) -> str:
             image, (max(1, round(width * factor)), max(1, round(height * factor))), cv2.INTER_AREA
         )
     )
+    if labels:
+        thumbnail = draw_display_labels(thumbnail, labels, rotation=0)
     success, encoded = cv2.imencode(".png", thumbnail, [cv2.IMWRITE_PNG_COMPRESSION, 3])
     return base64.b64encode(encoded).decode("ascii") if success else ""

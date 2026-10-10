@@ -36,6 +36,9 @@ class Parameter:
                 valid_type = type(value) is type(self.default)
             if not valid_type or value not in dict(self.options):
                 raise ValueError(f"Invalid {self.title}")
+        elif isinstance(self.default, str):
+            if not isinstance(value, str):
+                raise ValueError(f"Invalid {self.title}")
         elif (
             isinstance(value, bool)
             or not isinstance(value, (int, float))
@@ -115,7 +118,6 @@ HARDWARE_NODES = {
             for name in ("noise_mode", "noise_general", "noise_spatial", "noise_temporal")
         },
     ),
-    "humidity": ("Relative humidity", {"value": hardware_parameter("humidity")}),
 }
 
 
@@ -155,6 +157,15 @@ def feature_parameters() -> Any:
 
 
 SOFTWARE_NODES = {
+    "custom": (
+        "Custom",
+        {
+            "name": Parameter("Module name", ""),
+            "package": Parameter("Python package", "{}"),
+            "config": Parameter("JSON configuration", "{}"),
+            "controls": Parameter("Custom controls", "[]"),
+        },
+    ),
     "source": (
         "Image source",
         {
@@ -167,6 +178,7 @@ SOFTWARE_NODES = {
     ),
     "output": ("Output → viewer", {}),
     "preview": ("Pipeline preview", {}),
+    "invert": ("Invert colors", {}),
     "combine": (
         "Combine pipeline",
         {

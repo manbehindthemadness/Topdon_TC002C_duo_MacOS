@@ -12,10 +12,22 @@ def node_title(stack: str, item: dict[str, Any], temperature_unit: str = "C") ->
     kind, p = item["type"], item["params"]
     title, definitions = CATALOG[stack][kind]
 
-    def option(key):
-        return str(dict(definitions[key].options).get(p[key], p[key]))
+    def option(key: str) -> str:
+        """
+        Resolve a validated setting to its display label.
+        """
+        options: dict[Any, Any] = dict(definitions[key].options)
+        value = options.get(p[key], p[key])
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        return "Unknown"
 
-    def number(key):
+    def number(key: str) -> str:
+        """
+        Format a numeric node setting compactly.
+        """
         return f"{p[key]:g}"
 
     suffix = ""
@@ -30,8 +42,8 @@ def node_title(stack: str, item: dict[str, Any], temperature_unit: str = "C") ->
             suffix = option("noise_mode")
         else:
             suffix = option("value")
-            if kind == "humidity":
-                suffix += "%"
+    elif kind == "custom":
+        suffix = p["name"] or "Choose module folder"
     elif kind == "source":
         suffix = option("source")
     elif kind == "colors":
@@ -62,7 +74,7 @@ def node_title(stack: str, item: dict[str, Any], temperature_unit: str = "C") ->
             or "Off"
         )
     elif kind == "range":
-        low, high = p["low"], p["high"]
+        low, high = float(p["low"]), float(p["high"])
         if temperature_unit == "F":
             low, high = low * 1.8 + 32, high * 1.8 + 32
         suffix = f"{low:.1f}–{high:.1f} °{temperature_unit}"

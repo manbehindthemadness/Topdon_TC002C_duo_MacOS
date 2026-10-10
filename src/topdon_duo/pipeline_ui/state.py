@@ -81,6 +81,8 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
     self.update_tab_status()
     self.update_titles()
     self.locked = locked
+    for custom in self.custom_widgets.values():
+        custom.refresh()
     pass_limits = enhancement_pass_limits(self.document, clamp=True)
     self.update_preset_selection()
     current = state.get("pipeline_serial", 0) >= self.edit_serial
@@ -112,9 +114,7 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
     for stack in ("hardware", "software"):
         for item in self.nodes(stack):
             _, controls, bypass, title, badge = self.widgets[item["id"]]
-            inactive = (
-                stack == "hardware" and thermal and item["type"] not in ("source", "humidity")
-            )
+            inactive = stack == "hardware" and thermal
             unavailable = (
                 stack == "hardware"
                 and item["type"] != "source"

@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from ..apple_acceleration import apple_acceleration
+from ..custom_nodes.labels import draw_display_labels
 from ..nvidia_acceleration import nvidia_acceleration
 from ..pipeline import (
     active_nodes,
@@ -118,6 +119,9 @@ class PipelineProcessor:
                         branch = {"hardware": document["hardware"], "software": tabs[tab]}
                         inputs = {t: outputs[t][0] for t in required}
                         self.branches[tab].collect_previews = self.collect_previews
+                        self.branches[tab].input_labels = {
+                            t: list(self.branches[t].custom.labels) for t in required
+                        }
                         future = self.executors[tab].submit(
                             self.branches[tab].process,
                             frame,
@@ -178,4 +182,6 @@ class PipelineProcessor:
             if any(n["type"] == "antialiasing" for n in active_nodes(document, "software"))
             else cv2.INTER_NEAREST
         )
-        return bytes_image(resize(image, target, interpolation)), source
+        display = bytes_image(resize(image, target, interpolation))
+        display = draw_display_labels(display, self.branches["A"].custom.labels, rotation)
+        return display, source

@@ -1,6 +1,7 @@
 """Apply pipeline-owned fields in audited order; never restore calibration fields."""
 
 from copy import deepcopy
+from typing import Any
 
 from .camera import CameraError
 from .pipeline import active_nodes, preview_required, validate_pipeline
@@ -15,19 +16,21 @@ PIPELINE_FIELDS = {
     "noise_general",
     "noise_spatial",
     "noise_temporal",
-    "humidity",
 }
 
 
-def desired_hardware(document):
+def desired_hardware(document: dict[str, Any]) -> tuple[dict[str, Any], str, int, int, bool]:
+    """
+    Resolve preview-processing controls without owning permanent calibration fields.
+    """
     controls = {}
     preset, gamma, boost, fixed = "balanced", 50, 0, False
     thermal = not preview_required(document)
     for item in active_nodes(document, "hardware"):
         kind, p = item["type"], item["params"]
-        if thermal and kind not in ("source", "humidity"):
+        if thermal:
             continue
-        if kind in ("brightness", "contrast", "humidity"):
+        if kind in ("brightness", "contrast"):
             controls[kind] = p["value"]
         elif kind == "camera_colors":
             controls["palette"] = p["palette"]
@@ -99,7 +102,12 @@ class PipelineHardware:
         self.document = deepcopy(candidate)
         self._desired = desired
 
-    def _apply(self, desired, force=False):
+    def _apply(
+        self, desired: tuple[dict[str, Any], str, int, int, bool], force: bool = False,
+    ) -> None:
+        """
+        Apply only pipeline-owned fields, preserving standalone calibration settings.
+        """
         controls, preset, gamma, boost, fixed = desired
         hw = self.hardware
         if not hw.original:
@@ -137,7 +145,6 @@ class PipelineHardware:
         if tone_changes and (hw.gamma != 50 or hw.boost):
             hw.restore_tone()
         order = (
-            "humidity",
             "brightness",
             "contrast",
             "noise_mode",

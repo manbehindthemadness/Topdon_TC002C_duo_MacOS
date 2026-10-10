@@ -8,6 +8,7 @@ from copy import deepcopy
 from typing import Any
 from uuid import uuid4
 
+from ..custom_nodes.bundle import validate_custom
 from ..feature_processing import validate_feature
 from ..hardware_controls import HARDWARE_CONTROLS
 from ..image_filters import validate_filter
@@ -110,13 +111,13 @@ def validate_pipeline(document: Any) -> Any:
     ]
     for stack, nodes, catalog in stacks:
         if stack == "hardware":
-            # Read older pipelines, but transmission is now a standalone control.
+            # Read older pipelines; these fields now belong to permanent calibration controls.
             catalog = {
                 **catalog,
-                "transmission": (
-                    "Optical transmission",
-                    {"value": hardware_parameter("transmission")},
-                ),
+                **{
+                    name: (HARDWARE_CONTROLS[name].title, {"value": hardware_parameter(name)})
+                    for name in ("transmission", "humidity")
+                },
             }
         if not isinstance(nodes, list) or len(nodes) > 128:
             raise ValueError("Invalid pipeline stack")
@@ -146,6 +147,8 @@ def validate_pipeline(document: Any) -> Any:
             if type(item["bypass"]) is not bool or type(item["expanded"]) is not bool:
                 raise ValueError("Invalid node state")
             definitions = catalog[kind][1]
+            if stack == "software" and kind == "custom" and isinstance(item["params"], dict):
+                item["params"].setdefault("controls", "[]")
             if stack == "software" and kind == "enhance" and isinstance(item["params"], dict):
                 # Read existing version-4 presets without changing model/pass choices.
                 # Hardware-specific preferences remain serialized on every platform.
@@ -170,6 +173,8 @@ def validate_pipeline(document: Any) -> Any:
                 raise ValueError("Unknown/missing node parameter")
             for key, spec in definitions.items():
                 spec.validate(item["params"][key])
+            if stack == "software" and kind == "custom":
+                validate_custom(item["params"])
             if stack == "software" and kind == "filter":
                 validate_filter(item["params"])
             if stack == "software" and kind in ("edges", "contours"):
@@ -220,7 +225,9 @@ def validate_pipeline(document: Any) -> Any:
             "Fixed detail requires detail enhancement, Balanced, gamma 50 and boost Off"
         )
     result = deepcopy(document)
-    result["hardware"] = [item for item in result["hardware"] if item["type"] != "transmission"]
+    result["hardware"] = [
+        item for item in result["hardware"] if item["type"] not in ("transmission", "humidity")
+    ]
     return result
 
 
@@ -228,15 +235,19 @@ def legacy_transmission_value(document: Any) -> Any:
     """
     Preserve an active old node on preference reload, not on pipeline import.
     """
+    return legacy_calibration_values(document).get("transmission")
+
+
+def legacy_calibration_values(document: Any) -> dict[str, int | float]:
+    """
+    Extract validated active correction nodes for migration of local preferences only.
+    """
     validate_pipeline(document)
-    return next(
-        (
-            item["params"]["value"]
-            for item in document["hardware"]
-            if item["type"] == "transmission" and not item["bypass"]
-        ),
-        None,
-    )
+    values = {
+        item["type"]: item["params"]["value"] for item in document["hardware"]
+        if item["type"] in ("transmission", "humidity") and not item["bypass"]
+    }
+    return values
 
 
 def software_tabs(document: Any) -> Any:
@@ -363,7 +374,6 @@ def migrate_pipeline(saved: Any) -> Any:
     for kind, key in (
         ("brightness", "brightness"),
         ("contrast", "contrast"),
-        ("humidity", "humidity"),
     ):
         if key in hardware:
             document["hardware"].append(node("hardware", kind, value=hardware[key]))

@@ -7,10 +7,10 @@ from pathlib import Path
 
 def test_application_python_files_stay_within_line_limit() -> None:
     """
-    Enforce the project limit for source, tests, scripts, tools, and local skills.
+    Enforce the project limit for source, examples, experiments, tests and tooling.
     """
     root = Path(__file__).resolve().parents[1]
-    directories = ("src", "tests", "scripts", "tools", ".agents")
+    directories = ("src", "tests", "scripts", "tools", "examples", "experiments", ".agents")
     oversized = []
     for directory in directories:
         for path in (root / directory).rglob("*.py"):

@@ -521,6 +521,20 @@ filter exposes its relevant settings and blend amount; saved older filters
 retain their existing appearance. Edge features and Contour regions nodes add
 CPU feature selection by direction, size, shape, brightness or position, with
 overlay, isolation and mask outputs for selective Combine processing.
+[Custom nodes](docs/custom-nodes.md) load a folder-based Python package, with helper
+submodules and JSON configuration, into any software stack. Package code and JSON
+files travel with saved/exported pipelines. A working example is included in
+`examples/custom_nodes/local_contrast`.
+The optional [Classless YOLO example](examples/custom_nodes/Classless%20YOLO/README.md)
+adapts Inspector's classless localizer, using the shared automatic model downloader
+or a local ONNX file. Custom packages can use the same checksum-verified cache and
+download-status reporting through `ModelResolver`.
+Embed `CONFIG_JSON` and `MODEL_SOURCE` in `__init__.py` to supply defaults, custom
+controls and download details without separate files; see the Custom-node docs.
+Use the project-local
+[$create-custom-node skill](.agents/skills/create-custom-node/SKILL.md) to build
+your own Custom-node packages.
+
 [Pipeline controls and examples](docs/processing-pipelines.md) explain node ordering,
 static board imaging, persistence, and import/export.
 Display preferences, selected temperature unit, rotation, Auto calibrate, pipeline nodes and their expanded/bypassed states
@@ -569,9 +583,12 @@ optional hardware nodes are singletons. Software processing nodes run top to bot
 and can be repeated. Headers expand/collapse, grips drag, and right-click menus
 add, insert, remove, or clear nodes. All inputs ignore wheel edits.
 
-Auto calibrate, units, ambient/reflected temperature, optical transmission,
+Auto calibrate, units, ambient/reflected temperature, optical transmission, relative humidity,
 distance, emissivity and calibration tools remain separate. Optical transmission
-appears directly below Reflected temperature. Fixed detail mode is a checkbox
+appears directly below Reflected temperature, followed by Relative humidity.
+**Invert colors** is a repeatable software node that replaces each BGR channel
+with `255 − value`, preserving image orientation and native measurements.
+Fixed detail mode is a checkbox
 inside Detail enhancement. It requires enabled detail enhancement, Balanced,
 neutral camera gamma (50), and boost Off. Hardware controls restore their owned
 fields when bypassed/removed, and original camera overrides restore on exit.

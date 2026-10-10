@@ -9,6 +9,12 @@ worker preserves revision checks and replaces pending frames with the latest
 submission. Display processing does not modify measurement averages or sensor
 coordinates.
 
+The **Custom** software node loads an entire Python package folder and JSON
+configuration. Its code and JSON resources are embedded in pipeline documents;
+each node owns its own cached Python module namespace. See
+[Custom node packages](custom-nodes.md) for the entry-point contract, included
+example, configuration controls and execution limits.
+
 Camera settings has a hardware stack, a row of tabs A–D, and a software stack
 for the selected tab. Click a node header to expand its controls; drag the grip
 to reorder. Node titles summarize their settings, such as **App colors: Inferno**
@@ -76,11 +82,12 @@ pipelines retain their explicitly configured pass counts.
 | Processing preset: Balanced, Shadow, Soft | Contrast: 0–3, neutral 1 |
 | Brightness and contrast: 0–100 | Gamma: 0.1–3, neutral 1 |
 | Gamma: 0–100, neutral 50 | App colors, including white/black hot |
+| | Invert colors: each channel becomes 255 − value; orientation is preserved |
 | Boost: Off, Mode 1, Mode 2, Mode 3 | Configurable OpenCV image filters |
 | Detail enhancement, amount, Fixed detail checkbox | Horizontal and vertical mirror |
 | Camera colors and native palette | Adjustable antialiasing |
 | Noise reduction mode and levels | From/To temperature range |
-| Relative humidity | Nearest/linear/bicubic/Lanczos interpolation, 1×/2×/4× |
+| | Nearest/linear/bicubic/Lanczos interpolation, 1×/2×/4× |
 | | Anime4K09 or ACNet enhancement |
 | | Combine: another tab, camera preview or raw thermal |
 | | Output → viewer (mandatory, last, tab A only) |
@@ -89,10 +96,13 @@ pipelines retain their explicitly configured pass counts.
 | | Contour regions: selected shapes, outlines, fills and masks |
 
 Auto calibrate, measurement units, ambient
-and reflected temperatures, optical transmission, distance, emissivity, and the calibration tools
-remain separate. Optical transmission is directly below Reflected temperature.
-An active transmission node in older saved preferences migrates to this control;
-old pipeline imports omit it without changing the standalone measurement setting.
+and reflected temperatures, optical transmission, relative humidity, distance, emissivity,
+and the calibration tools
+remain separate. Optical transmission is directly below Reflected temperature,
+followed by Relative humidity (0–100%, in 0.1% steps).
+Active transmission/humidity nodes in older saved preferences migrate to these controls;
+an explicit standalone humidity preference takes precedence over its old node.
+Old pipeline imports validate and omit both nodes without changing current calibration values.
 Calibrate now remains in the image context menu. The former
 Advanced / Auto placeholder and Analyze mode switch are removed.
 

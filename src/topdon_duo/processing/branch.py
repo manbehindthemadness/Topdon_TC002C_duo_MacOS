@@ -14,6 +14,8 @@ from ..acceleration import select_backend
 from ..apple_acceleration import apple_acceleration
 from ..camera import IMAGE_OFFSET, decode_duo_frame, has_yuy2_preview, raw_temperatures
 from ..coreml_upsampling import CoreMLUpsampler
+from ..custom_nodes.labels import DisplayLabel, transform_labels
+from ..custom_nodes.runtime import CustomProcessor
 from ..enhancement_limits import MAX_PIXELS, acnet_pass_limit
 from ..feature_processing import apply_features
 from ..image_filters import apply_filter
@@ -32,6 +34,7 @@ from .images import (
     colorize,
     combine_images,
     encode_thumbnail,
+    invert_colors,
     luminance,
     map_luminance,
     resize,
@@ -61,11 +64,14 @@ class BranchProcessor:
         self.collect_previews = False
         self.preview_active = False
         self.last_preview_errors = {}
+        self.custom = CustomProcessor()
+        self.input_labels: dict[str, list[DisplayLabel]] = {}
 
     def close(self) -> None:
         """
         Close.
         """
+        self.custom.close()
         for engine in self.coreml_models.values():
             engine.close()
         for engine in self.onnx_models.values():
@@ -92,9 +98,11 @@ class BranchProcessor:
         self.last_previews = {}
         self.last_preview_timings = {}
         started = perf_counter()
+        self.custom.labels = []
         preview_overhead = 0.0
         _, raw, preview = decode_duo_frame(frame)
         software = active_nodes(document, "software")
+        self.custom.retain({item["id"] for item in software if item["type"] == "custom"})
         image, mapping, thermal = self.source_image(
             frame, raw, preview, document, software, camera_palette
         )
@@ -130,8 +138,13 @@ class BranchProcessor:
                 self.last_preview_timings[item["id"]] = max(
                     0, (sampled_at - started - preview_overhead) * 1000
                 )
-                self.last_previews[item["id"]] = encode_thumbnail(image)
+                self.last_previews[item["id"]] = (
+                    encode_thumbnail(image, self.custom.labels)
+                    if self.custom.labels else encode_thumbnail(image)
+                )
                 preview_overhead += perf_counter() - sampled_at
+            elif kind == "custom":
+                image = self.custom.apply(image, item)
             elif kind == "combine":
                 incoming = resolve_input(p["tab"], p)
                 mask_source = p["mask_source"]
@@ -143,8 +156,14 @@ class BranchProcessor:
                     else resolve_input(mask_source, p)
                 )
                 image = combine_images(image, incoming, p, mask)
+                if p["opacity"] > 0 and p["mode"] != "mask":
+                    if p["mode"] == "opacity" and p["opacity"] == 1 and mask is None:
+                        self.custom.labels = []
+                    self.custom.labels.extend(self.input_labels.get(p["tab"], []))
             elif kind == "brightness":
                 image = map_luminance(image, lambda y, params=p: y + params["amount"] * 2.55)
+            elif kind == "invert":
+                image = invert_colors(image)
             elif kind == "contrast":
                 image = map_luminance(
                     image, lambda y, params=p: (y - 127.5) * params["amount"] + 127.5
@@ -163,6 +182,9 @@ class BranchProcessor:
             elif kind == "antialiasing" and p["amount"]:
                 image = cv2.GaussianBlur(image, (0, 0), p["amount"])
             elif kind == "mirror":
+                self.custom.labels = transform_labels(
+                    self.custom.labels, horizontal=p["horizontal"], vertical=p["vertical"]
+                )
                 if p["horizontal"]:
                     image = cv2.flip(image, 1)
                 if p["vertical"]:
@@ -420,9 +442,7 @@ class BranchProcessor:
             image = preview_image(frame, preview)
             hardware = active_nodes(document, "hardware")
             # Preserve the legacy unconfigured, app-colored preview normalization.
-            if any(n["type"] == "colors" for n in software) and not any(
-                n["type"] not in ("source", "humidity") for n in hardware
-            ):
+            if any(n["type"] == "colors" for n in software) and not hardware:
                 low, high = np.percentile(preview, (1, 99))
                 gray = np.clip(
                     (preview.astype(np.float32) - low) * 255 / max(high - low, 1e-6), 0, 255

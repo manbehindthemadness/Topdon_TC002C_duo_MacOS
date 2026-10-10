@@ -1,6 +1,7 @@
 """Camera and display controls in a separate Qt process."""
 
 import sys
+from typing import Any
 
 from PySide6.QtCore import QPoint, QSettings, QSignalBlocker, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
@@ -550,7 +551,10 @@ class ReflectedCalibrationControls(QWidget):
 
 
 class ViewWindow(QWidget):
-    def __init__(self, send) -> None:
+    def __init__(self, send: Any) -> None:
+        """
+        Build pipeline and permanent calibration controls with the viewer message callback.
+        """
         super().__init__()
         from .pipeline_editor import PipelineEditor
         self._send_to_viewer = send
@@ -558,7 +562,9 @@ class ViewWindow(QWidget):
         self._anchor_top_right = None
         self.setWindowTitle("Camera")
         self.setMinimumWidth(650)
-        self._settings = QSettings(QSettings.IniFormat, QSettings.UserScope, "topdon-duo", "desktop")
+        self._settings = QSettings(
+            QSettings.Format.IniFormat, QSettings.Scope.UserScope, "topdon-duo", "desktop"
+        )
         layout = QVBoxLayout(self)
         heading = QLabel("Camera")
         heading.setStyleSheet("font-size: 20px; font-weight: bold")
@@ -587,9 +593,9 @@ class ViewWindow(QWidget):
         self.rows["temperature_unit"] = units
         self.controls = {"temperature_unit": units.input}
         rows.addWidget(units)
-        for name in ("ambient", "distance", "emissivity", "reflected", "transmission"):
+        for name in ("ambient", "distance", "emissivity", "reflected", "transmission", "humidity"):
             spec = HARDWARE_CONTROLS[name]
-            row = ControlRow(spec.title, lambda value, name=name: self._send({"action": "hardware", "name": name, "value": value, "enabled": True}), minimum=spec.minimum, maximum=spec.maximum, step=spec.step, options=spec.options, unit=spec.unit, preserve_input=name == "ambient")
+            row = ControlRow(spec.title, lambda value, field=name: self._send({"action": "hardware", "name": field, "value": value, "enabled": True}), minimum=spec.minimum, maximum=spec.maximum, step=spec.step, options=spec.options, unit=spec.unit, preserve_input=name == "ambient")
             self.hardware_rows[name] = row
             rows.addWidget(row)
         self.distance_calibration = DistanceCalibrationControls(self._send)
@@ -615,7 +621,9 @@ class ViewWindow(QWidget):
         size = self._settings.value("camera/window_size", QSize(700, 850))
         self.resize(size if isinstance(size, QSize) and size.isValid() else QSize(700, 850))
         self._position_top_right()
-        QApplication.instance().aboutToQuit.connect(self._save_window_size)
+        application = QApplication.instance()
+        if isinstance(application, QApplication):
+            application.aboutToQuit.connect(self._save_window_size)
 
     def showEvent(self, event):
         super().showEvent(event)

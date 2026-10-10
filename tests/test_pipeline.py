@@ -86,7 +86,7 @@ def test_raw_visual_inputs_ignore_measurement_average(input_kind: Any) -> None:
             [node("hardware", "brightness"), node("hardware", "brightness", value=20)]
         ),
         lambda d: d["hardware"].append(node("hardware", "detail", enabled=False, fixed=True)),
-        lambda d: d["hardware"].append(node("hardware", "humidity", value=10.123)),
+        lambda d: d["hardware"].append(node("hardware", "brightness", value=10.123)),
     ],
 )
 def test_reject_invalid_pipeline_atomically(mutation: Any) -> None:

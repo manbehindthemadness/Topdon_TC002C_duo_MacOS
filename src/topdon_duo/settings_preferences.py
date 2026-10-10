@@ -2,6 +2,7 @@
 
 import json
 import math
+from typing import Any, cast
 
 from .camera import FRAME_RATE
 from .distance_calibration import DistanceReference
@@ -9,21 +10,24 @@ from .emissivity_calibration import validate_reference
 from .graph_settings import validate_graph_settings
 from .graphs import validate_graph_interval
 from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS, PROCESSING_PRESETS
-from .pipeline import legacy_transmission_value, validate_pipeline
+from .pipeline import legacy_calibration_values, validate_pipeline
 from .reflected_calibration import validate_reference as validate_reflected_reference
 from .spot_preferences import validate_spots
 from .view_settings import VIEW_DEFAULTS, validate_view_setting
 from .window_preferences import _path
 
 
-def load_settings() -> dict:
+def load_settings() -> dict[str, Any]:
+    """
+    Restore validated preferences and migrate removed pipeline correction controls.
+    """
     try:
         saved = json.loads(_path().with_name("settings.json").read_text())
     except (OSError, ValueError):
         return {}
     if not isinstance(saved, dict):
         return {}
-    result = {"display": {}, "hardware": {}}
+    result: dict[str, Any] = {"display": {}, "hardware": {}}
     for section in ("display", "hardware"):
         values = saved.get(section, {})
         if not isinstance(values, dict):
@@ -67,7 +71,7 @@ def load_settings() -> dict:
     except (TypeError, ValueError):
         pass
     rate = saved.get("timelapse_fpm")
-    if type(rate) is int and 1 <= rate <= FRAME_RATE * 60:
+    if type(rate) is int and 1 <= cast(int, rate) <= FRAME_RATE * 60:
         result["timelapse_fpm"] = rate
     rotation = saved.get("rotation")
     if type(rotation) is int and rotation in (0, 90, 180, 270):
@@ -86,7 +90,7 @@ def load_settings() -> dict:
     if isinstance(preset, str) and preset in PROCESSING_PRESETS:
         result["processing_preset"] = preset
     gamma = saved.get("camera_gamma")
-    if type(gamma) is int and 0 <= gamma <= 100:
+    if type(gamma) is int and 0 <= cast(int, gamma) <= 100:
         result["camera_gamma"] = gamma
     boost = saved.get("camera_boost")
     if type(boost) is bool:  # Migrate the old Off/On checkbox (On used mode 3).
@@ -115,9 +119,11 @@ def load_settings() -> dict:
         pass
     try:
         result["pipeline"] = validate_pipeline(saved.get("pipeline"))
-        transmission = legacy_transmission_value(saved["pipeline"])
-        if transmission is not None:
-            result["hardware"]["transmission"] = transmission
+        for name, value in legacy_calibration_values(saved["pipeline"]).items():
+            if name == "humidity":
+                result["hardware"].setdefault(name, value)
+            else:
+                result["hardware"][name] = value
     except (TypeError, ValueError):
         pass
     return result

@@ -125,7 +125,7 @@ def test_source_toggle_preserves_unavailable_hardware_without_retrying_sdk() -> 
     hw.load.side_effect = CameraError("Unsupported control layout")
     controller = PipelineHardware(hw)
     current = default_pipeline()
-    current["hardware"].append(node("hardware", "humidity", value=40))
+    current["hardware"].append(node("hardware", "brightness", value=40))
     for source in ("raw", "preview", "raw"):
         candidate = deepcopy(current)
         candidate["software"][0]["params"]["source"] = source
@@ -135,6 +135,7 @@ def test_source_toggle_preserves_unavailable_hardware_without_retrying_sdk() -> 
         current = candidate
     candidate = deepcopy(current)
     candidate["hardware"][0]["params"]["value"] = 50
+    candidate["software"][0]["params"]["source"] = "preview"
     with pytest.raises(CameraError, match="Unsupported control layout"):
         controller.apply(candidate, previous_document=current)
 

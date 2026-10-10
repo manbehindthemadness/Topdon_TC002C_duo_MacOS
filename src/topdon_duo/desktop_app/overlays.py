@@ -14,6 +14,7 @@ from ..render import (
 )
 from .layout import image_position_at
 from .spots import MousePicker, SampleSpots, spot_hit
+from .typography import LABEL_FONT_SCALE
 
 
 def draw_contrasting_overlay(
@@ -62,7 +63,7 @@ def place_temperature_label(
     """
     Try nearby positions first, reserving the text outline and a small gap.
     """
-    (width, height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 1)
+    (width, height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, LABEL_FONT_SCALE, 1)
     padding = 3
     box_width, box_height = width + padding * 2, height + baseline + padding * 2
     image_height, image_width = image_shape[:2]
@@ -167,7 +168,7 @@ def draw_sample_spots(
             text,
             origin,
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.52,
+            LABEL_FONT_SCALE,
             255,
             1,
             cv2.LINE_AA,
@@ -322,7 +323,7 @@ def draw_picker(
         text,
         origin,
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.52,
+        LABEL_FONT_SCALE,
         255,
         1,
         cv2.LINE_AA,

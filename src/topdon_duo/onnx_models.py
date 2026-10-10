@@ -8,9 +8,13 @@ import ssl
 import sys
 import tempfile
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-MODELS = {
+from .model_archives import extract_model
+
+MODELS: dict[str, dict[str, Any]] = {
     "style-mosaic": {
         "factor": 1,
         "rgb": True,
@@ -137,7 +141,11 @@ MODELS = {
 }
 
 
-def model_path(model):
+def model_path(model: str, *, spec: dict[str, Any] | None = None) -> Path:
+    """
+    Locate a catalog or custom model in the shared host-specific cache.
+    """
+    spec = MODELS[model] if spec is None else spec
     override = os.environ.get("TOPDON_MODEL_DIR")
     if override:
         base = Path(override)
@@ -147,29 +155,38 @@ def model_path(model):
         base = (
             Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "topdon-duo" / "models"
         )
-    checksum = MODELS[model]["sha256"]
+    checksum = spec["sha256"]
     filename = f"{model}-{checksum[:12]}.onnx" if checksum else f"{model}.onnx"
     return base / filename
 
 
-def installed_checksum(model):
-    checksum = MODELS[model]["sha256"]
+def installed_checksum(model: str, *, spec: dict[str, Any] | None = None) -> str:
+    """
+    Resolve a pinned checksum or the publisher checksum retained at installation.
+    """
+    spec = MODELS[model] if spec is None else spec
+    checksum = spec["sha256"]
     if checksum is None:
-        checksum = model_path(model).with_suffix(".sha256").read_text().strip()
+        checksum = model_path(model, spec=spec).with_suffix(".sha256").read_text().strip()
     if not re.fullmatch(r"[0-9a-f]{64}", checksum):
         raise ValueError("Invalid model checksum metadata; reinstall " + model)
     return checksum
 
 
-def verified_model(model):
-    path = model_path(model)
+def verified_model(model: str, *, spec: dict[str, Any] | None = None) -> bytes:
+    """
+    Read cached weights only after validating their pinned checksum.
+    """
+    path = model_path(model, spec=spec)
     try:
         data = path.read_bytes()
-        checksum = installed_checksum(model)
+        checksum = installed_checksum(model, spec=spec)
     except OSError as exc:
-        raise ValueError("Model not installed; run " + install_command(model)) from exc
+        advice = "reload the Custom node" if spec is not None else "run " + install_command(model)
+        raise ValueError("Model not installed; " + advice) from exc
     if hashlib.sha256(data).hexdigest() != checksum:
-        raise ValueError("Model checksum mismatch; reinstall with " + install_command(model))
+        advice = "remove the cached file and reload the Custom node" if spec is not None else "reinstall with " + install_command(model)
+        raise ValueError("Model checksum mismatch; " + advice)
     return data
 
 
@@ -197,26 +214,37 @@ def download_ssl_context():
     return context
 
 
-def download_model(model, progress=None):
-    path = model_path(model)
+def download_model(
+    model: str,
+    progress: Callable[[int, int], None] | None = None,
+    *,
+    spec: dict[str, Any] | None = None,
+) -> Path:
+    """
+    Atomically install checksum-verified direct weights or one declared archive member.
+    """
+    custom = spec is not None
+    spec = MODELS[model] if spec is None else spec
+    path = model_path(model, spec=spec)
     if path.exists():
         try:
-            verified_model(model)
+            verified_model(model, spec=spec if custom else None)
         except ValueError:
             pass  # Replace a corrupt cache only after the new download verifies.
         else:
             return path
-    if MODELS[model].get("local_export"):
+    if spec.get("local_export"):
         raise ValueError("This model needs a one-time export; run " + install_command(model))
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     checksum_temporary = None
+    extracted = None
     try:
         context = download_ssl_context()
-        checksum = MODELS[model]["sha256"]
-        maximum = MODELS[model].get("max_bytes", 70_000_000)
+        checksum = spec["sha256"]
+        maximum = spec.get("max_bytes", 70_000_000)
         if checksum is None:
-            pointer_url = MODELS[model]["url"].replace("/resolve/", "/raw/")
+            pointer_url = spec["url"].replace("/resolve/", "/raw/")
             with urllib.request.urlopen(pointer_url, timeout=30, context=context) as source:
                 pointer = source.read(1025).decode("ascii")
             match = re.fullmatch(
@@ -234,7 +262,7 @@ def download_model(model, progress=None):
                 )
         digest = hashlib.sha256()
         with (
-            urllib.request.urlopen(MODELS[model]["url"], timeout=30, context=context) as source,
+            urllib.request.urlopen(spec["url"], timeout=30, context=context) as source,
             tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as target,
         ):
             temporary = Path(target.name)
@@ -256,9 +284,17 @@ def download_model(model, progress=None):
                     progress(total, length)
         if progress is not None:
             progress(total, total)
-        if digest.hexdigest() != checksum:
+        if spec.get("archive_member"):
+            if digest.hexdigest() != spec["archive_sha256"]:
+                raise ValueError("Model archive checksum mismatch; not installed")
+            extracted, model_checksum = extract_model(temporary, path.parent, spec["archive_member"], maximum)
+            temporary.unlink()
+            temporary = extracted
+        else:
+            model_checksum = digest.hexdigest()
+        if model_checksum != checksum:
             raise ValueError("Model download checksum mismatch; not installed")
-        if MODELS[model]["sha256"] is None:
+        if spec["sha256"] is None:
             with tempfile.NamedTemporaryFile(dir=path.parent, delete=False, mode="w") as target:
                 checksum_temporary = Path(target.name)
                 target.write(checksum + "\n")
@@ -267,6 +303,8 @@ def download_model(model, progress=None):
             checksum_temporary.replace(path.with_suffix(".sha256"))
         return path
     finally:
+        if extracted is not None:
+            extracted.unlink(missing_ok=True)
         if temporary is not None:
             temporary.unlink(missing_ok=True)
         if checksum_temporary is not None:
