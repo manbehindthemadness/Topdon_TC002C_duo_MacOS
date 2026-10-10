@@ -355,8 +355,9 @@ their pane's displayed size, rather than enlarged from a fixed low-resolution pl
 
 **Show graph** doubles the main window width, keeping its height and displaying
 thermal history on the right. **Hide graph** halves the width again. The toggle
-is remembered across restarts. The master graph plots minimum, average, maximum
-and center temperatures; each placed spot gets its own graph in placement order.
+is remembered across restarts. On macOS, chart toggles use the native window size,
+including manual resizes, and preserve its height. The master graph plots minimum,
+average, maximum and center temperatures; each placed spot gets its own graph in placement order.
 The graph pane grows with the window and uses the remaining width beside the
 camera image. The camera image scales without changing its aspect ratio; unused
 space below it stays black. Graph text stays readable as the pane grows.

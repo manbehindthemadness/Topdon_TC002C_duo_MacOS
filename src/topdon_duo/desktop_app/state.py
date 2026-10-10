@@ -86,6 +86,7 @@ class SessionState:
     rendered: api_types.RenderedThermalFrame = field(init=False)
     renderer: api_types.ThermalRenderer = field(init=False)
     requested_window_size: tuple[int, int] | None = None
+    cocoa_initial_resize_pending: bool = False
     save_dialog: api_types.MacSaveDialog = field(init=False)
     saved_settings: dict[str, Any] = field(default_factory=dict)
     saved_window_size: tuple[int, int] | None = None

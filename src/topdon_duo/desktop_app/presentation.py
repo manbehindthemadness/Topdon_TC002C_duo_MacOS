@@ -203,10 +203,14 @@ class PresentationController(SessionState):
                 self.rendered.image.shape[0] + self.layout.height,
             )
             self.requested_window_size = (width, height)
-            self.api.cv2.resizeWindow(self.api.WINDOW_NAME, width, height)
+            if self.api.sys.platform == "darwin":
+                self.last_window_size = self.requested_window_size
+                self.cocoa_initial_resize_pending = True
+            else:
+                self.api.cv2.resizeWindow(self.api.WINDOW_NAME, width, height)
             self.initial_window_size_set = True
         self.event_viewport = self.api.mouse_viewport_size()
-        current_size = self.api.window_resize_size(self.api.WINDOW_NAME)
+        current_size = self.current_window_size()
         if current_size is not None:
             self.last_window_size = current_size
         # A popup covering the window center can temporarily prevent native
@@ -522,7 +526,7 @@ class PresentationController(SessionState):
             if self.graph_layout is None:
                 self.graph_layout = self.api.GraphWindowLayout.fit(
                     (self.display.shape[1], self.display.shape[0]),
-                    self.api.window_resize_size(self.api.WINDOW_NAME) or self.last_window_size,
+                    self.current_window_size() or self.last_window_size,
                 )
             graph_layout = self.graph_layout
             assert graph_layout is not None
@@ -558,10 +562,14 @@ class PresentationController(SessionState):
             self.graphs.pause()
         self.diagnostics.stage("imshow")
         self.api.cv2.imshow(self.api.WINDOW_NAME, self.display)
+        if self.cocoa_initial_resize_pending and self.requested_window_size is not None:
+            # Cocoa's first imshow resets the content size to its bitmap size.
+            self.api.cv2.resizeWindow(self.api.WINDOW_NAME, *self.requested_window_size)
+            self.cocoa_initial_resize_pending = False
         self.diagnostics.stage("waitKey")
         key = self.api.cv2.waitKey(1) & 0xFF
         self.diagnostics.stage("window_geometry")
-        current_size = self.api.window_resize_size(self.api.WINDOW_NAME)
+        current_size = self.current_window_size()
         if current_size is not None:
             self.last_window_size = current_size
         try:

@@ -59,6 +59,15 @@ class SettingsController(SessionState):
         except OSError as exc:
             self.api.LOG.warning("Could not save Camera settings: %s", exc)
 
+    def current_window_size(self: DesktopSession) -> tuple[int, int] | None:
+        """
+        Use native Cocoa content bounds or the existing Linux/OpenCV size detector.
+        """
+        size = self.api.window_resize_size(self.api.WINDOW_NAME)
+        if size is None and self.api.sys.platform == "darwin":
+            size = self.pointer_monitor.window_size(self.requested_window_size)
+        return size
+
     def toggle_graph(self: DesktopSession) -> None:
         """
         Toggle graph.
@@ -66,11 +75,7 @@ class SettingsController(SessionState):
         if self.graphs.logging or self.pending_save_kind == "graph_log":
             self.notify("Stop graph logging before hiding graphs.")
             return
-        size = (
-            self.api.window_resize_size(self.api.WINDOW_NAME)
-            or self.last_window_size
-            or self.requested_window_size
-        )
+        size = self.current_window_size() or self.last_window_size or self.requested_window_size
         if size is None:
             return
         width, height = size

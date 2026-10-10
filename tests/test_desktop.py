@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from pathlib import Path
 from unittest.mock import Mock
 
 import cv2
@@ -217,7 +218,12 @@ def test_mouse_picker_hides_on_window_exit_without_mouse_event_and_reappears(mon
 
 
 @pytest.mark.parametrize("position", [(100, 0), (-1, 200), (768, 200), None])
-def test_mouse_picker_hides_marker_and_reading_outside_image(position):
+def test_mouse_picker_hides_marker_and_reading_outside_image(
+    position: tuple[int, int] | None,
+) -> None:
+    """
+    Hide inspection markers when the pointer falls outside the image.
+    """
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     layout = toolbar_layout(rendered.image.shape[1])
     if position is None:
@@ -395,12 +401,18 @@ def test_spots_draw_inverted_markers_and_live_readings(monkeypatch):
     assert np.array_equal(rendered.image, original)
 
 
+# The desktop facade explicitly re-exports injectable dependencies.
+# noinspection PyUnresolvedReferences
 def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
-    monkeypatch, tmp_path
-):
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    Exercise spot placement independently of the host platform's native window server.
+    """
     from topdon_duo import desktop
 
     startup = []
+    monkeypatch.setattr(desktop.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     graphs = Mock(logging=False)
     graphs.take_logging_error.return_value = None
@@ -572,7 +584,10 @@ def test_mouse_reading_avoids_fixed_spot_labels(monkeypatch):
     assert all(not rectangles_overlap(mouse_box, box) for box in fixed_boxes)
 
 
-def test_all_labels_including_first_have_connecting_lines(monkeypatch):
+def test_all_labels_including_first_have_connecting_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Connect each displaced spot label to its sensor position.
+    """
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     # These overlapping anchors place readings just below/right and left of
     # the crosshair, both within the old 16-pixel cutoff for connecting lines.
@@ -582,7 +597,8 @@ def test_all_labels_including_first_have_connecting_lines(monkeypatch):
     draw_sample_spots(rendered.image, rendered, spots, 3)
     assert line.call_count == 3
     for call in line.call_args_list:
-        start, end = call.args[1:3]
+        start: tuple[int, int] = call.args[1]
+        end: tuple[int, int] = call.args[2]
         assert start == (124, 202)
         assert 0 < max(abs(end[0] - start[0]), abs(end[1] - start[1])) <= 16
 
@@ -610,8 +626,16 @@ def test_displaced_mouse_label_has_connecting_line(monkeypatch):
     ],
 )
 def test_cursor_label_hidden_over_enabled_spot_or_during_drag(
-    monkeypatch, viewport_size, offset, enabled, dragging, hidden
-):
+    monkeypatch: pytest.MonkeyPatch,
+    viewport_size: tuple[int, int] | None,
+    offset: int,
+    enabled: bool,
+    dragging: bool,
+    hidden: bool,
+) -> None:
+    """
+    Hide overlapping cursor labels for active spots and drag operations.
+    """
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     spots = SampleSpots(pixels=[(41, 67)])
     spots.set_enabled(1, enabled)

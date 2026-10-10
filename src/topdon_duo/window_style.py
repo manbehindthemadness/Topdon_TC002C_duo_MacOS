@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# noinspection PyPep8Naming
 import ctypes as C
 import sys
 from functools import lru_cache
@@ -51,7 +52,13 @@ def _qt_window_size_functions():
 
 
 def window_resize_size(window_name: str) -> tuple[int, int] | None:
-    """Return dimensions suitable for resizeWindow, including unused image margins."""
+    """
+    Return native resize dimensions where OpenCV exposes trustworthy window geometry.
+    """
+    if sys.platform == "darwin":
+        # Cocoa reports the imshow bitmap size, not the resized content view.
+        # The session uses CoreGraphics bounds and its known resize request instead.
+        return None
     try:
         left, top, width, height = cv2.getWindowImageRect(window_name)
         if width <= 0 or height <= 0:
@@ -113,7 +120,10 @@ def _qt_black_backgrounds() -> bool:
     return False
 
 
-def set_black_window_backgrounds(window_name: str) -> bool:
+def set_black_window_backgrounds(_window_name: str) -> bool:
+    """
+    Apply black Qt widget backgrounds where native window styling is supported.
+    """
     try:
         if sys.platform.startswith("linux"):
             return _qt_black_backgrounds()

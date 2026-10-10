@@ -12,6 +12,8 @@ from topdon_duo import desktop
 from .frames import make_frame
 
 
+# The desktop facade explicitly re-exports its injectable dependencies.
+# noinspection PyUnresolvedReferences
 @pytest.fixture(name="viewer")
 def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     # These interaction/recording tests use fixed 768px toolbar coordinates.
@@ -70,10 +72,14 @@ def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     )
     hardware.set_fixed_range.side_effect = lambda value: setattr(hardware, "fixed_range", value)
     hardware.restore_fixed_range.side_effect = lambda: setattr(hardware, "fixed_range", False)
-    hardware.set_tone.side_effect = lambda gamma, boost: (
-        setattr(hardware, "gamma", gamma),
-        setattr(hardware, "boost", boost),
-    )
+
+    def set_tone(gamma: float, boost: int) -> None:
+        """
+        Update the fake camera tone state without a return value.
+        """
+        hardware.gamma, hardware.boost = gamma, boost
+
+    hardware.set_tone.side_effect = set_tone
     monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
     graphs = Mock(logging=False)
     graphs.take_logging_error.return_value = None
@@ -126,6 +132,7 @@ def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     monkeypatch.setattr(desktop, "window_resize_size", lambda _name: None)
     pointer = Mock()
     pointer.over_image.return_value = True
+    pointer.window_size.return_value = None
     monkeypatch.setattr(desktop, "PointerMonitor", lambda _name: pointer)
     panel = Mock()
     panel.events = []
