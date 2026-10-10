@@ -11,11 +11,15 @@ import struct
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 import usb.core
 
 from .camera import CameraError
+
+if TYPE_CHECKING:
+    from .camera_backends import ControlSpec
 
 
 class HardwareProtocolError(CameraError):
@@ -110,6 +114,12 @@ PROCESSING_BANKS = {"balanced": (1, 4), "shadow": (2, 5), "soft": (3, 6)}
 
 
 def camera_operation_title(command: dict) -> str | None:
+    """
+    Describe recognized camera operations without interpreting malformed actions.
+    """
+    action = command.get("action")
+    if not isinstance(action, str):
+        return None
     if command.get("action") == "pipeline" and not command.get("hardware_operation", True):
         return None
     if command.get("action") == "hardware":
@@ -123,7 +133,7 @@ def camera_operation_title(command: dict) -> str | None:
         "fixed_range": "Fixed detail mode",
         "auto_calibrate": "Auto calibrate",
         "restore_hardware": "Restore camera settings",
-    }.get(command.get("action"))
+    }.get(action)
 
 
 def validate_fixed_range_bounds(bounds: object) -> tuple[int, int]:
@@ -136,6 +146,43 @@ def validate_fixed_range_bounds(bounds: object) -> tuple[int, int]:
 
 
 class HardwareControls:
+    @property
+    def specs(self) -> dict[str, ControlSpec]:
+        """
+        Expose transport-independent metadata for this backend's verified controls.
+        """
+        from .camera_backends.duo import control_specs
+
+        return control_specs()
+
+    @staticmethod
+    def spot_state() -> dict[str, Any]:
+        """
+        Duo has no independently verified camera-native spot setting API.
+        """
+        return {}
+
+    def set_spot(self, name: str, value: object, spot_id: str, enabled: bool) -> None:
+        """
+        Reject unsupported spot-scoped commands without issuing transfers.
+        """
+        raise CameraError("Camera-native spot controls are not supported by the Duo")
+
+    def capabilities(self) -> dict:
+        """
+        Describe Duo features independently of temporary settings readiness.
+        """
+        from .camera_backends.controls import capability_state
+        from .camera_backends.duo import control_specs
+
+        return capability_state(control_specs(), self.state(), features={
+            "ready": bool(self.original), "duo_nodes": True,
+            "preset": True, "gamma": True, "boost": True,
+            "fixed_detail": True, "auto_calibrate": True, "calibrate_now": True,
+            "host_distance_calibration": True, "host_emissivity_calibration": True,
+            "host_reflected_calibration": True,
+        })
+
     def __init__(self, camera) -> None:
         self.camera = camera
         self.original: dict[tuple[int, int], bytes] = {}
@@ -442,7 +489,10 @@ class HardwareControls:
     def restore_fixed_range(self) -> None:
         if self._fixed_range_owned:
             try:
-                self._fixed_range_command(*self._fixed_range_bounds)
+                bounds = self._fixed_range_bounds
+                if bounds is None:
+                    raise CameraError("Original fixed-range bounds are unavailable")
+                self._fixed_range_command(*bounds)
             finally:
                 self._fixed_range_command(0, 0)
             self._fixed_range_owned = False
@@ -476,7 +526,10 @@ class HardwareControls:
         LOG.info("Camera SDK 2.0 handshake complete")
         self._protocol_device = self.camera.device
 
-    def _select(self, selector, command, delay=0) -> int:
+    def _select(self, selector: int, command: int, delay: float = 0) -> int:
+        """
+        Select an audited block, allowing one evidenced SDK handshake retry.
+        """
         self._ensure_protocol()
         expected = {**BLOCK_LENGTHS, (1, 24): 11, (2, 4): 1}[selector, command]
         for attempt in range(2):
@@ -497,6 +550,7 @@ class HardwareControls:
                 f"for {selector}:{command}: expected {expected} bytes, "
                 f"received length {size} ({response.hex()})"
             )
+        raise HardwareProtocolError("Camera control selection exhausted its bounded retry")
 
     def read(self, selector, command) -> bytes:
         size = self._select(selector, command, delay=0.1)
@@ -596,7 +650,7 @@ class HardwareControls:
             raise CameraError("Turn off fixed range before changing camera display controls")
         self.load()
         proposed = self.enabled | {name} if enabled else self.enabled - {name}
-        values = {**self.values, name: value}
+        values = {**self.values, name: cast(float, value)}
         key = spec.selector, spec.command
         previous = self.read(*key)
         target = bytearray(previous)

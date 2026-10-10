@@ -7,10 +7,14 @@ import struct
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Self
+from typing import TYPE_CHECKING, Any, Self
+
+if TYPE_CHECKING:
+    from .camera_backends import CameraProfile
+    from .hardware_controls import HardwareControls
 
 import libusb_package
 import numpy as np
@@ -86,7 +90,7 @@ class FrameAssembler:
         self._data = bytearray()
         self.last_rejected_size = None
         self.last_rejected_prefix = None
-        self.rejected_frame_observer = None
+        self.rejected_frame_observer: Callable[[bytearray], None] | None = None
         self.rejected = {
             "invalid_header": 0,
             "uvc_error": 0,
@@ -125,6 +129,13 @@ class FrameAssembler:
             completed = self._finish() or completed
             self._fid = None
         return completed
+
+    @property
+    def buffered_bytes(self) -> int:
+        """
+        Report pending transport bytes without exposing mutable assembly buffers.
+        """
+        return len(self._data)
 
     def _finish(self) -> bytes | None:
         if len(self._data) < self.frame_size:
@@ -251,7 +262,32 @@ def parse_probe(data: bytes) -> NegotiatedMode:
 
 
 class TC002CDuoCamera:
-    """Single-owner direct USB connection to the Duo's UVC bulk stream."""
+    """
+    Single-owner direct USB connection to the Duo's UVC bulk stream.
+    """
+
+    @property
+    def profile(self) -> CameraProfile:
+        """
+        Describe this backend without opening USB or probing optional controls.
+        """
+        from .camera_backends.duo import PROFILE
+
+        return PROFILE
+
+    def create_controls(self) -> HardwareControls:
+        """
+        Construct the audited Duo control owner for this physical device.
+        """
+        from .hardware_controls import HardwareControls
+
+        return HardwareControls(self)
+
+    def stop_stream(self) -> None:
+        """
+        Request acquisition shutdown while retaining transfer ownership until close.
+        """
+        self._running.clear()
 
     def __init__(self, timeout_ms: int = 2_000) -> None:
         self.timeout_ms = timeout_ms
@@ -260,8 +296,8 @@ class TC002CDuoCamera:
         self._claimed: list[int] = []
         self._detached: list[int] = []
         self._running = threading.Event()
-        self.stream_observer = None
-        self.rejected_frame_observer = None
+        self.stream_observer: Callable[[dict[str, Any]], None] | None = None
+        self.rejected_frame_observer: Callable[[bytearray], None] | None = None
         self.usb_queue_depth = (
             DEFAULT_USB_QUEUE_DEPTH
             if sys.platform == "darwin" or sys.platform.startswith("linux")
@@ -330,14 +366,15 @@ class TC002CDuoCamera:
                 device.set_configuration()
             for interface_number in (0, VIDEO_STREAMING_INTERFACE):
                 self._detach_and_claim(device, interface_number)
-            self.mode = self._negotiate()
+            mode = self._negotiate()
+            self.mode = mode
             self._running.set()
             LOG.info(
                 "Negotiated TC002C Duo radiometric mode at %.1f fps (payload %d bytes)",
-                self.mode.fps,
-                self.mode.max_payload_size,
+                mode.fps,
+                mode.max_payload_size,
             )
-            return self.mode
+            return mode
         except usb.core.USBError as exc:
             self.close()
             if getattr(exc, "errno", None) in (1, 13) or "Access denied" in str(exc):
@@ -408,21 +445,27 @@ class TC002CDuoCamera:
         return mode
 
     def frames(self) -> Iterator[bytes]:
+        """
+        Yield complete frames using the negotiated layout and continuous transport drainage.
+        """
         if self.device is None or self.mode is None:
             self.open()
+        mode = self.mode
+        if mode is None:
+            raise CameraError("Camera stream mode is unavailable")
         if sys.platform.startswith("linux"):
             # Linux can negotiate a larger preview plane. The radiometric
             # plane stays at the same offset, but the entire USB frame must
             # arrive before it is safe to use it. Keep macOS assembly intact.
-            if self.mode.max_frame_size < FRAME_BYTES:
-                raise CameraError(f"invalid negotiated frame size: {self.mode.max_frame_size}")
-            assembler = LinuxFrameAssembler(self.mode.max_frame_size)
+            if mode.max_frame_size < FRAME_BYTES:
+                raise CameraError(f"invalid negotiated frame size: {mode.max_frame_size}")
+            assembler = LinuxFrameAssembler(mode.max_frame_size)
         else:
             # Preserve tolerant macOS framing, including complete large
             # previews when present. Queued requests prevent host gaps.
             assembler = FrameAssembler()
         assembler.rejected_frame_observer = self.rejected_frame_observer
-        read_size = max(16_384, self.mode.max_payload_size)
+        read_size = max(16_384, mode.max_payload_size)
         observer = self.stream_observer
         totals = {"packets": 0, "bytes": 0, "timeouts": 0, "frames": 0}
         next_report = 0.0
@@ -432,16 +475,19 @@ class TC002CDuoCamera:
         last_read_finished = None
         last_frame_size = None
 
-        def report():
+        def report(callback: Callable[[dict[str, Any]], None]) -> None:
+            """
+            Publish bounded stream diagnostics when an observer is attached.
+            """
             nonlocal next_report, longest_read, longest_gap
             now = time.monotonic()
             if now >= next_report:
-                observer(
+                callback(
                     {
                         **totals,
                         "rejected": assembler.rejected.copy(),
                         "expected_frame_bytes": assembler.frame_size,
-                        "buffered_bytes": len(assembler._data),
+                        "buffered_bytes": assembler.buffered_bytes,
                         "last_rejected_size": assembler.last_rejected_size,
                         "last_rejected_prefix": assembler.last_rejected_prefix,
                         "packet_lengths": packet_lengths.copy(),
@@ -479,7 +525,7 @@ class TC002CDuoCamera:
                         last_read_finished = time.perf_counter()
                         longest_read = max(longest_read, last_read_finished - read_started)
                         totals["timeouts"] += 1
-                        report()
+                        report(observer)
                     continue
                 except usb.core.USBError as exc:
                     if not self._running.is_set():
@@ -497,12 +543,12 @@ class TC002CDuoCamera:
                     totals["packets"] += 1
                     totals["bytes"] += len(packet)
                     totals["frames"] += int(frame is not None)
-                    report()
+                    report(observer)
                 if frame is not None:
                     if len(frame) != last_frame_size:
                         LOG.info(
                             "Received %d-byte frame (probe advertised %d): %s",
-                            len(frame), self.mode.max_frame_size,
+                            len(frame), mode.max_frame_size,
                             "512x384 processed camera preview"
                             if has_yuy2_preview(frame) else "short frame; radiometric fallback",
                         )

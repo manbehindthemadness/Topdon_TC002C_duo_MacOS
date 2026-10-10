@@ -8,18 +8,19 @@ import math
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
+from PySide6.QtGui import QStandardItemModel
+from PySide6.QtWidgets import QComboBox
+
 if TYPE_CHECKING:
     from .editor import PipelineEditor
 
 from ..enhancement_limits import enhancement_pass_limits
 from ..feature_processing import feature_fields
 from ..image_filters import allowed_kernels, filter_fields
-from ..pipeline import (
-    preview_required,
-    validate_pipeline,
-)
+from ..pipeline import preview_required
 from ..pipeline_hardware import desired_hardware
 from .compute import backend_status, configure_backend_row, state_backend, update_compute_devices
+from .hardware import node_capability
 from .presets import pipeline_content
 
 
@@ -48,7 +49,7 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
     self.hardware_state = state.get("hardware", {})
     incoming = state.get("pipeline")
     if incoming is not None and state.get("pipeline_serial", 0) >= self.edit_serial:
-        incoming = validate_pipeline(incoming)
+        incoming = self.validate_document(incoming)
         self.edit_serial = max(self.edit_serial, state.get("pipeline_serial", 0))
         if incoming != self.document:
             if pipeline_content(incoming) != pipeline_content(self.document):
@@ -115,13 +116,12 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
         for item in self.nodes(stack):
             _, controls, bypass, title, badge = self.widgets[item["id"]]
             inactive = stack == "hardware" and thermal
-            unavailable = (
-                stack == "hardware"
-                and item["type"] != "source"
-                and not state.get("processing_preset_available", False)
-            )
+            capability = node_capability(item, state) if stack == "hardware" else {}
+            unavailable = stack == "hardware" and not capability.get("available", False)
             badge.setText(
-                "Inactive for thermal rendering; settings retained"
+                capability.get("reason") or "Camera setting unavailable; value retained"
+                if unavailable
+                else "Inactive for thermal rendering; settings retained"
                 if inactive
                 else "Bypassed"
                 if item["bypass"]
@@ -136,8 +136,10 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
             bypass.blockSignals(True)
             bypass.setChecked(item["bypass"])
             bypass.blockSignals(False)
-            bypass.setEnabled(not locked and not unavailable)
+            bypass.setEnabled(not locked)
             title.setEnabled(not locked)
+            if item["id"] in self.hardware_widgets:
+                self.hardware_widgets[item["id"]].update_state(state, locked or inactive)
             if item["type"] == "preview":
                 elapsed = self.preview_widgets[item["id"]].elapsed_ms
                 self.preview_timing_widgets[item["id"]].setText(
@@ -146,16 +148,36 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
             for key, row in controls.items():
                 row.set_display_unit(state.get("temperature_unit", "C"))
                 available = not locked and not inactive and not unavailable and not item["bypass"]
+                if item["type"] == "source" and key == "source" and "camera_profile" in state:
+                    profile = state["camera_profile"]
+                    combo = row.input
+                    assert isinstance(combo, QComboBox)
+                    model = combo.model()
+                    assert isinstance(model, QStandardItemModel)
+                    for index in range(combo.count()):
+                        source = combo.itemData(index)
+                        supported = profile.get("radiometry") if source == "raw" else profile.get("preview")
+                        entry = model.item(index)
+                        if entry is not None:
+                            entry.setEnabled(bool(supported))
                 if item["type"] == "filter":
                     relevant = key in filter_fields(item["params"])
                     row.setVisible(relevant)
                     available &= relevant
                     if key == "kernel":
                         allowed = allowed_kernels(item["params"]["filter"])
-                        for index in range(row.input.count()):
-                            row.input.model().item(index).setEnabled(
-                                row.input.itemData(index) in allowed
-                            )
+                        combo = row.input
+                        assert isinstance(combo, QComboBox)
+                        model = combo.model()
+                        assert isinstance(model, QStandardItemModel)
+                        for index in range(combo.count()):
+                            entry = model.item(index)
+                            if entry is not None:
+                                entry.setEnabled(combo.itemData(index) in allowed)
+                if stack == "hardware" and item["type"] == "detail" and key == "fixed":
+                    features = state.get("camera_capabilities", {}).get("features", {})
+                    if "camera_capabilities" in state:
+                        available &= bool(features.get("fixed_detail"))
                 if key in ("backend", "apple_compute"):
                     available = configure_backend_row(row, item, key, state, available)
                 if item["type"] == "onnx_denoise" and key == "noise":

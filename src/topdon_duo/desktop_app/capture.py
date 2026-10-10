@@ -21,6 +21,9 @@ class CaptureController(SessionState):
         """
         Toggle graph logging.
         """
+        if not self.camera_profile.radiometry:
+            self.notify("Temperature logging is unavailable for this camera.")
+            return
         if self.reflected_calibration.active:
             self.notify("Close reflected-temperature calibration before starting logging.")
             return
@@ -54,7 +57,7 @@ class CaptureController(SessionState):
         Set timelapse fpm.
         """
         if not self.recorder.is_recording and self.pending_save_kind not in ("video", "timelapse"):
-            self.timelapse_fpm = min(max(value, 1), self.api.TIMELAPSE_MAX_FPM)
+            self.timelapse_fpm = min(max(value, 1), int(self.camera_profile.frame_rate * 60))
 
     def stop_recording(self: DesktopSession) -> None:
         """
@@ -110,7 +113,7 @@ class CaptureController(SessionState):
             "capture_cursor": self.capture_cursor,
             "capture_graphs": self.capture_graphs,
             "frames_per_minute": self.timelapse_fpm,
-            "max_fpm": self.api.TIMELAPSE_MAX_FPM,
+            "max_fpm": int(self.camera_profile.frame_rate * 60),
             "status": self.status,
         }
 

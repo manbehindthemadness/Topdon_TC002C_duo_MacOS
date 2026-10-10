@@ -26,7 +26,7 @@ def _load_presets(path: Path) -> dict[str, dict | None]:
             presets[name] = None
             continue
         try:
-            presets[name] = validate_pipeline(document)
+            presets[name] = validate_pipeline(document, hardware_profile="")
         except (ValueError, TypeError, KeyError):
             continue
     return presets
@@ -55,7 +55,8 @@ def save_presets(presets: dict[str, dict]) -> None:
     """
     Persist the complete visible collection, including deletions of bundled presets.
     """
-    validated = {name: validate_pipeline(document) for name, document in presets.items()}
+    validated: dict[str, dict | None] = {name: validate_pipeline(document, hardware_profile="")
+                 for name, document in presets.items()}
     predefined = predefined_presets()
     # Do not copy unmodified bundled presets into user preferences. An explicit
     # replacement remains a user override and never changes the shipped preset.

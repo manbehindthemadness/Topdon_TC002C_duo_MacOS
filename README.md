@@ -1030,6 +1030,13 @@ original BSD 2-Clause license is retained.
 
 ## Researching another thermal camera
 
+The viewer has explicit [camera backend contracts](docs/camera-backends.md) for
+different native geometry, temperature encoding, preview-only streams and
+capability-driven controls. Device and camera-spot corrections can describe
+distance, humidity and ambient temperature independently; reported spot
+temperatures remain separate from native-grid measurements. The Duo remains the
+default and the only physical camera currently implemented.
+
 The repository includes the Codex skill
 [reverse-engineer-thermal-camera](.agents/skills/reverse-engineer-thermal-camera/SKILL.md)
 for discovering another camera's capture format, radiometry, telemetry and safe

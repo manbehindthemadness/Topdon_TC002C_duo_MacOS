@@ -3,6 +3,7 @@ Typed control rows shared by camera calibration and the pipeline editor.
 """
 
 from collections.abc import Callable, Sequence
+from decimal import Decimal
 from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer
@@ -126,9 +127,9 @@ class ControlRow(QWidget):
             numeric = NoWheelSpinBox()
             self.input = numeric
             numeric.setRange(self._display_value(minimum), self._display_value(maximum))
-            numeric.setDecimals(
-                0 if self.is_distance else (2 if step == 0.01 else (1 if step == 0.1 else 0))
-            )
+            increment = step * 100 if self.is_distance else step
+            exponent = Decimal(str(increment)).normalize().as_tuple().exponent
+            numeric.setDecimals(max(0, -exponent) if isinstance(exponent, int) else 0)
             numeric.setSingleStep(step * 100 if self.is_distance else step)
             numeric.setKeyboardTracking(False)
             numeric.setSuffix(" cm" if self.is_distance else f" {unit}" if unit else "")
@@ -199,6 +200,14 @@ class ControlRow(QWidget):
             decimals = 2 if unit == "F" else 0
             step = self.step / DISTANCE_METERS_PER_UNIT[unit]
             suffix = " in" if unit == "F" else " cm"
+        exact_step = Decimal(str(self.step))
+        if self.is_temperature and unit == "F":
+            exact_step *= Decimal("1.8")
+        elif self.is_distance:
+            exact_step /= Decimal(str(DISTANCE_METERS_PER_UNIT[unit]))
+        exponent = exact_step.normalize().as_tuple().exponent
+        if isinstance(exponent, int):
+            decimals = min(8, max(decimals, -exponent))
         with QSignalBlocker(self.input):
             self.input.setDecimals(decimals)
             self.input.setRange(

@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -26,6 +26,7 @@ from .camera import (
     TC002CDuoCamera,
     raw_temperatures,
 )
+from .camera_backends import DUO_PROFILE, CameraProfile, create_camera
 from .capture_panel import CapturePanel
 from .dialog_preferences import load_dialog_directory, remember_dialog_directory
 from .display_awake import DisplayAwake
@@ -151,6 +152,7 @@ if __name__ == "__main__":
 
 __all__ = [
     "DEFAULT_USB_QUEUE_DEPTH",
+    "DUO_PROFILE",
     "FRAME_RATE",
     "GRAPH_DEFAULTS",
     "GRAPH_INTERVAL",
@@ -170,6 +172,7 @@ __all__ = [
     "WINDOW_NAME",
     "CameraError",
     "CameraFramePump",
+    "CameraProfile",
     "CapturePanel",
     "DesktopSession",
     "DisplayAwake",
@@ -203,8 +206,10 @@ __all__ = [
     "ViewerDiagnostics",
     "apple_acceleration",
     "argparse",
+    "asdict",
     "camera_operation_title",
     "collapse_previews",
+    "create_camera",
     "cv2",
     "dataclass",
     "datetime",

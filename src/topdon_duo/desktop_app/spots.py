@@ -85,6 +85,7 @@ class SampleSpots:
     placing: bool = False
     pixels: list[tuple[int, int]] = field(default_factory=list)
     generation: int = 0
+    native_size: tuple[int, int] = (SENSOR_WIDTH, SENSOR_HEIGHT)
 
     numbers: list[int] = field(default_factory=list, init=False)
     disabled: set[int] = field(default_factory=set, init=False)
@@ -201,7 +202,7 @@ class SampleSpots:
         Saved state.
         """
         width, height = (
-            (SENSOR_WIDTH, SENSOR_HEIGHT) if rotation in (0, 180) else (SENSOR_HEIGHT, SENSOR_WIDTH)
+            self.native_size if rotation in (0, 180) else self.native_size[::-1]
         )
         pixels = [
             (width - 1 - x if horizontal else x, height - 1 - y if vertical else y)
@@ -232,13 +233,13 @@ class SampleSpots:
         """
         Restore saved state.
         """
-        saved = validate_spots(saved)
+        saved = validate_spots(saved, native_size=self.native_size)
         self.pixels = [(item["x"], item["y"]) for item in saved["items"]]
         self.numbers = [item["number"] for item in saved["items"]]
         self.names = {item["number"]: item["name"] for item in saved["items"] if item["name"]}
         self.disabled = {item["number"] for item in saved["items"] if not item["enabled"]}
         self.next_number, self.placing = saved["next_number"], saved["placing"]
-        width, height = SENSOR_WIDTH, SENSOR_HEIGHT
+        width, height = self.native_size
         for _ in range(rotation // 90):
             self.rotate_clockwise(height)
             width, height = height, width

@@ -55,7 +55,7 @@ def read_pipelines(path: Path) -> list[IncomingPipeline]:
         name = path.name.removesuffix(".json").removesuffix(".pipeline").strip()
         documents = {name or "Imported pipeline": saved}
     return [
-        IncomingPipeline(name, validate_pipeline(document), path.name)
+        IncomingPipeline(name, validate_pipeline(document, hardware_profile=""), path.name)
         for name, document in documents.items()
     ]
 
@@ -64,7 +64,8 @@ def write_pipelines(path: Path, documents: dict[str, dict[str, Any]], *, single:
     """
     Atomically export selected documents, retaining the legacy single-file format.
     """
-    validated = {name: validate_pipeline(document) for name, document in documents.items()}
+    validated = {name: validate_pipeline(document, hardware_profile="")
+                 for name, document in documents.items()}
     if not validated:
         raise ValueError("Select at least one pipeline")
     payload = (

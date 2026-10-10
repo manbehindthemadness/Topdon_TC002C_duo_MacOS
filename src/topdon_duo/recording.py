@@ -13,11 +13,16 @@ from .camera import FRAME_RATE
 
 
 class VideoRecorder:
-    def __init__(self) -> None:
+    def __init__(self, frame_rate: float = FRAME_RATE) -> None:
+        """
+        Record at the selected backend's negotiated nominal rate.
+        """
+        if not math.isfinite(frame_rate) or frame_rate <= 0:
+            raise ValueError("Invalid camera frame rate")
         self._writer: cv2.VideoWriter | None = None
         self.path: Path | None = None
         self.mode: str | None = None
-        self.fps = float(FRAME_RATE)
+        self.fps = float(frame_rate)
         self.frames_per_minute = 60.0
         self.frames_written = 0
         self._size = (0, 0)
@@ -42,9 +47,9 @@ class VideoRecorder:
             raise RuntimeError("A recording is already running")
         if mode not in ("video", "timelapse"):
             raise ValueError("Recording mode must be video or timelapse")
-        if not math.isfinite(frames_per_minute) or not 1 <= frames_per_minute <= FRAME_RATE * 60:
+        if not math.isfinite(frames_per_minute) or not 1 <= frames_per_minute <= self.fps * 60:
             raise ValueError(
-                f"Timelapse rate must be between 1 and {FRAME_RATE * 60} frames/minute"
+                f"Timelapse rate must be between 1 and {self.fps * 60:g} frames/minute"
             )
         path = Path(path)
         if not path.suffix:
@@ -55,6 +60,7 @@ class VideoRecorder:
         elif path.suffix.lower() != ".mp4":
             raise ValueError("Choose a filename ending in .mp4")
         size = (image_shape[1], image_shape[0])
+        # noinspection PyUnresolvedReferences
         writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), self.fps, size)
         if not writer.isOpened():
             writer.release()
@@ -106,6 +112,7 @@ class VideoRecorder:
             self._last_frame = frame
         if count:
             frame = self._fit_frame(image) if self.mode == "timelapse" else self._last_frame
+            assert frame is not None
             self._writer.write(frame)
             self.frames_written += 1
         return count

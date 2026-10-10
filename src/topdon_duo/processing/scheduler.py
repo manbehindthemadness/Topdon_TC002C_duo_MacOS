@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from ..apple_acceleration import apple_acceleration
+from ..camera_backends import decode_frame
 from ..custom_nodes.labels import draw_display_labels
 from ..nvidia_acceleration import nvidia_acceleration
 from ..pipeline import (
@@ -84,7 +85,8 @@ class PipelineProcessor:
         self.last_previews = {}
         self.last_preview_timings = {}
         self.last_preview_errors = {}
-        document = validate_pipeline(document)
+        frame = decode_frame(frame)
+        document = validate_pipeline(document, hardware_profile=frame.profile.id)
         viewer_dependencies = execution_dependencies(document)
         roots = preview_roots(document) if self.preview_active or self.collect_previews else ()
         retained_dependencies = execution_dependencies(document, roots=("A", *roots))
@@ -174,7 +176,8 @@ class PipelineProcessor:
         image, source = outputs["A"]
         if rotation:
             image = np.rot90(image, -(rotation // 90)).copy()
-        target: tuple[int, int] = (256 * scale, 192 * scale)
+        width, height = frame.profile.native_size
+        target: tuple[int, int] = (width * scale, height * scale)
         if rotation in (90, 270):
             target = target[1], target[0]
         interpolation = (

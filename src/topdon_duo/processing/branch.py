@@ -12,7 +12,7 @@ import numpy as np
 
 from ..acceleration import select_backend
 from ..apple_acceleration import apple_acceleration
-from ..camera import IMAGE_OFFSET, decode_duo_frame, has_yuy2_preview, raw_temperatures
+from ..camera_backends import CameraFrame, decode_frame
 from ..coreml_upsampling import CoreMLUpsampler
 from ..custom_nodes.labels import DisplayLabel, transform_labels
 from ..custom_nodes.runtime import CustomProcessor
@@ -53,6 +53,7 @@ class BranchProcessor:
         self.apple_available = (
             apple_acceleration()["available"] if apple_available is None else apple_available
         )
+        self.native_size: tuple[int, int] = (256, 192)
         self.nvidia_available = (
             nvidia_acceleration()["available"] if nvidia_available is None else nvidia_available
         )
@@ -84,7 +85,7 @@ class BranchProcessor:
 
     def process(
         self,
-        frame: bytes,
+        frame: bytes | CameraFrame,
         averaged: np.ndarray | None,
         document: dict[str, Any],
         camera_palette: int = 1,
@@ -100,11 +101,13 @@ class BranchProcessor:
         started = perf_counter()
         self.custom.labels = []
         preview_overhead = 0.0
-        _, raw, preview = decode_duo_frame(frame)
+        decoded = decode_frame(frame)
+        self.native_size = decoded.profile.native_size
+        raw, preview = decoded.raw_counts, decoded.preview
         software = active_nodes(document, "software")
         self.custom.retain({item["id"] for item in software if item["type"] == "custom"})
         image, mapping, thermal = self.source_image(
-            frame, raw, preview, document, software, camera_palette
+            decoded, raw, preview, document, software, camera_palette
         )
         direct_preview: np.ndarray | None = None
         available_inputs = inputs if inputs is not None else {}
@@ -116,12 +119,14 @@ class BranchProcessor:
             nonlocal direct_preview
             if source == "preview":
                 if direct_preview is None:
-                    if not has_yuy2_preview(frame) or not np.any(preview):
+                    if decoded.preview_bgr is None or (
+                        decoded.profile.id == "duo" and not np.any(preview)
+                    ):
                         raise ValueError("Camera preview is unavailable for the combine input/mask")
-                    direct_preview = preview_image(frame, preview)
+                    direct_preview = preview_image(decoded, preview)
                 return cast(np.ndarray, direct_preview)
             if source == "raw":
-                plane = raw_temperatures(raw, offset=50)
+                plane = decoded.temperatures(raw)
                 gray = np.clip(
                     (plane - params["raw_low"]) * 255 / (params["raw_high"] - params["raw_low"]),
                     0,
@@ -230,7 +235,8 @@ class BranchProcessor:
         p = item["params"]
         factor = ONNX_MODELS[p["model"]]["factor"]
         if kind != "onnx_denoise" and factor > 1 and p["input"] != "current":
-            image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
+            size = self.native_size
+            image = resize(image, size if p["input"] == "native" else (size[0] * 2, size[1] * 2))
         check_size(image.shape[1] * factor, image.shape[0] * factor)
         backend = self.effective_backend(p["backend"])
         key = item["id"], p["model"], backend, p["apple_compute"]
@@ -260,7 +266,8 @@ class BranchProcessor:
         """
         p = item["params"]
         if p["input"] != "current":
-            image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
+            size = self.native_size
+            image = resize(image, size if p["input"] == "native" else (size[0] * 2, size[1] * 2))
         check_size(image.shape[1] * 2, image.shape[0] * 2)
         key = item["id"], p["denoise"], p["compute"]
         upsampler = self.coreml_models.setdefault(key, CoreMLUpsampler())
@@ -275,7 +282,8 @@ class BranchProcessor:
         """
         p = item["params"]
         if p["input"] != "current":
-            image = resize(image, (256, 192) if p["input"] == "native" else (512, 384))
+            size = self.native_size
+            image = resize(image, size if p["input"] == "native" else (size[0] * 2, size[1] * 2))
         model = "anime4k09" if p["model"] == "anime4k09" else f"acnet-legacy-hdn{p['denoise']}"
         use_apple = model != "anime4k09" and self.effective_backend(p["backend"]) == "coreml"
         use_cuda = model != "anime4k09" and self.effective_backend(p["backend"]) == "cuda"
@@ -396,9 +404,9 @@ class BranchProcessor:
 
     @staticmethod
     def source_image(
-        frame: bytes,
-        raw: np.ndarray,
-        preview: np.ndarray,
+        frame: bytes | CameraFrame,
+        raw: np.ndarray | None,
+        preview: np.ndarray | None,
         document: dict[str, Any],
         software: list[dict[str, Any]],
         camera_palette: int,
@@ -409,11 +417,14 @@ class BranchProcessor:
         ranges = [item for item in software if item["type"] == "range"]
         # A complete 512x384 plane has a verified preview layout on either host.
         # Short frames retain the radiometric fallback.
-        thermal = thermal_source(document) or not has_yuy2_preview(frame) or not np.any(preview)
+        frame = frame if isinstance(frame, CameraFrame) else decode_frame(frame)
+        thermal = thermal_source(document) or frame.preview_bgr is None or (
+            frame.profile.id == "duo" and not np.any(preview)
+        )
         mapping = None
         if thermal:
             # Temporal averaging is reserved for measurements, not display pixels.
-            plane = raw_temperatures(raw, offset=50)
+            plane = frame.temperatures(raw)
             if ranges:
                 mapping = ranges[0]["params"]["low"], ranges[0]["params"]["high"]
             else:
@@ -443,6 +454,7 @@ class BranchProcessor:
             hardware = active_nodes(document, "hardware")
             # Preserve the legacy unconfigured, app-colored preview normalization.
             if any(n["type"] == "colors" for n in software) and not hardware:
+                assert preview is not None
                 low, high = np.percentile(preview, (1, 99))
                 gray = np.clip(
                     (preview.astype(np.float32) - low) * 255 / max(high - low, 1e-6), 0, 255
@@ -451,13 +463,15 @@ class BranchProcessor:
         return image, mapping, bool(thermal)
 
 
-def preview_image(frame: bytes, preview: np.ndarray) -> np.ndarray:
+def preview_image(frame: bytes | CameraFrame, preview: np.ndarray | None) -> np.ndarray:
     """
     Decode a camera display plane without affecting sensor measurements.
     """
-    if has_yuy2_preview(frame):
-        yuyv = np.frombuffer(frame, np.uint8, offset=IMAGE_OFFSET * 2).reshape(*preview.shape, 2)
-        image = cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2).astype(np.float32)
-    else:
+    decoded = frame if isinstance(frame, CameraFrame) else decode_frame(frame)
+    if decoded.preview_bgr is None:
+        if preview is None:
+            raise ValueError("Camera preview is unavailable")
         image = np.repeat(preview[..., None], 3, axis=2).astype(np.float32)
+    else:
+        image = decoded.preview_bgr.astype(np.float32)
     return image

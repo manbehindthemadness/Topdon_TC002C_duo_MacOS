@@ -390,6 +390,19 @@ class StackList(QListWidget):
         add = menu.addMenu(title)
         existing = {n["type"] for n in self.editor.nodes(self.stack)}
         for kind, (label, _) in CATALOG[self.stack].items():
+            if self.stack == "hardware":
+                capabilities = self.editor.last_state.get("camera_capabilities", {})
+                if capabilities and kind == "device_control":
+                    if capabilities.get("features", {}).get("duo_nodes"):
+                        continue
+                    if not any(spec.get("supported") and spec.get("effect") == "preview"
+                               and spec.get("scope", "device") == "device"
+                               for spec in capabilities.get("controls", {}).values()):
+                        continue
+                elif capabilities and not capabilities.get("nodes", {}).get(kind, {}).get(
+                    "supported", False,
+                ):
+                    continue
             if (
                 kind in ("source", "output")
                 or self.stack == "software"
@@ -402,4 +415,5 @@ class StackList(QListWidget):
                     self.stack, bound_kind, position
                 ),
             )
-            action.setEnabled(self.stack != "hardware" or kind not in existing)
+            action.setEnabled(self.stack != "hardware" or kind == "device_control"
+                              or kind not in existing)

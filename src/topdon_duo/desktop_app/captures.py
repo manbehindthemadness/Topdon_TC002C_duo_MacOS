@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -68,19 +69,28 @@ def save_capture(
         raise OSError(f"could not write {png_path}")
     np.savez_compressed(
         data_path,
-        raw_counts=rendered.raw_counts.astype(np.uint16),
+        raw_counts=(
+            rendered.raw_counts.astype(np.uint16)
+            if rendered.camera_profile.id == "duo" and rendered.raw_counts is not None
+            else rendered.raw_counts if rendered.raw_counts is not None
+            else np.empty((0, 0), dtype=np.float32)
+        ),
         temperatures_celsius=rendered.temperatures_celsius.astype(np.float32),
         ambient_celsius=np.float32(ambient_celsius if ambient_celsius is not None else np.nan),
-        raw_gain_divisor=np.float32(64.0),
+        raw_gain_divisor=np.float32(64.0 if rendered.camera_profile.id == "duo" else np.nan),
         rotation_degrees=np.int16(rotation),
         mirror_horizontal=np.bool_(rendered.display_settings.get("mirror_horizontal", False)),
         mirror_vertical=np.bool_(rendered.display_settings.get("mirror_vertical", False)),
         measurements_valid=np.bool_(rendered.measurements_valid),
+        radiometry_available=np.bool_(rendered.radiometry_available),
     )
 
     metadata: dict[str, object] = {
         "captured_at": captured_at.isoformat(),
-        "camera": "TOPDON TC002C Duo",
+        "camera": rendered.camera_profile.title,
+        "camera_profile": rendered.camera_profile.as_dict(),
+        "radiometry_available": rendered.radiometry_available,
+        "reported_readings": [asdict(reading) for reading in rendered.reported_readings],
         "sensor_shape": list(rendered.temperatures_celsius.shape),
         "ambient_celsius": ambient_celsius,
         "rotation_degrees": rotation,
@@ -104,7 +114,9 @@ def save_capture(
                 if np.isfinite(rendered.temperatures_celsius[y, x])
                 else None
             ),
-            "raw_count": int(rendered.raw_counts[y, x]),
+            "raw_count": (
+                rendered.raw_counts[y, x].item() if rendered.raw_counts is not None else None
+            ),
         }
     json_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 

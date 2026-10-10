@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     import numpy as np
 
     from .. import desktop as api_types
+    from ..camera_backends import CameraFrame
 
 
 @dataclass
@@ -30,6 +31,7 @@ class SessionState:
     auto_calibrate: bool = False
     calibration_available: bool = False
     camera: api_types.TC002CDuoCamera = field(init=False)
+    camera_profile: api_types.CameraProfile = field(init=False)
     camera_operation: str = ""
     camera_operation_busy: bool = False
     camera_operation_until: float = 0.0
@@ -42,7 +44,7 @@ class SessionState:
     distance_calibration: api_types.DistanceCalibrator = field(init=False)
     emissivity_calibration: api_types.EmissivityCalibrator = field(init=False)
     event_viewport: tuple[int, int] | None = None
-    frame: bytes | None = None
+    frame: bytes | CameraFrame | None = None
     frame_pump: api_types.CameraFramePump | None = None
     fresh_frame: bool = False
     graph_image: np.ndarray = field(init=False)
@@ -57,7 +59,7 @@ class SessionState:
     hardware_retry_deadline: float | None = None
     hardware_setup_pending: bool = False
     initial_window_size_set: bool = False
-    last_frame: bytes | None = None
+    last_frame: bytes | CameraFrame | None = None
     last_frame_at: float | None = None
     last_saved_spots: dict[str, Any] = field(default_factory=dict)
     last_selected: tuple[int, int] | None = None
@@ -82,6 +84,7 @@ class SessionState:
     remembered_fixed_range: bool = False
     remembered_gamma: int = 0
     remembered_hardware: dict[str, Any] = field(default_factory=dict)
+    remembered_spot_hardware: dict[str, Any] = field(default_factory=dict)
     remembered_processing_preset: str = ""
     rendered: api_types.RenderedThermalFrame = field(init=False)
     renderer: api_types.ThermalRenderer = field(init=False)

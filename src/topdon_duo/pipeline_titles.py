@@ -32,7 +32,9 @@ def node_title(stack: str, item: dict[str, Any], temperature_unit: str = "C") ->
 
     suffix = ""
     if stack == "hardware":
-        if kind == "camera_colors":
+        if kind == "device_control":
+            suffix = f"{p['control'] or 'Choose control'} · {p['value']}"
+        elif kind == "camera_colors":
             suffix = option("palette")
         elif kind == "detail":
             suffix = f"On · {number('amount')}" if p["enabled"] else "Off"

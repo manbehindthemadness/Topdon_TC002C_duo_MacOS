@@ -409,6 +409,12 @@ class ReflectedCalibrationControls(QWidget):
 
 
 class ViewWindow(QWidget):
+    def send_hardware_command(self, command: dict[str, Any]) -> None:
+        """
+        Publish a capability-derived control edit through the existing JSON boundary.
+        """
+        self._send(command)
+
     def __init__(self, send: Any) -> None:
         """
         Build pipeline and permanent calibration controls with the viewer message callback.
@@ -443,10 +449,12 @@ class ViewWindow(QWidget):
         scroll.setWidgetResizable(True)
         body = QWidget()
         rows = QVBoxLayout(body)
+        self.hardware_layout = rows
         self.pipeline_editor = PipelineEditor(self._send, ControlRow)
         rows.addWidget(self.pipeline_editor)
         self.rows = {}
         self.hardware_rows = {}
+        self.hardware_descriptions = {}
         units = ControlRow("Measurement units", lambda value: self._send({"action": "setting", "name": "temperature_unit", "value": value}), options=tuple(TEMPERATURE_UNITS.items()))
         self.rows["temperature_unit"] = units
         self.controls = {"temperature_unit": units.input}
@@ -462,6 +470,13 @@ class ViewWindow(QWidget):
         for tool in (self.distance_calibration, self.emissivity_calibration, self.reflected_calibration):
             rows.addWidget(tool)
         rows.addStretch()
+        self.reported_readings = QLabel()
+        self.reported_readings.setWordWrap(True)
+        rows.addWidget(self.reported_readings)
+        from .spot_hardware_ui import SpotHardwareControls
+
+        self.spot_hardware = SpotHardwareControls(self._send)
+        rows.addWidget(self.spot_hardware)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
         from .error_status import ErrorStatus
@@ -560,6 +575,10 @@ class ViewWindow(QWidget):
         self.cancel_tone.setVisible(tone_busy)
         self.cancel_tone.setEnabled(tone_busy and not state.get("settings_locked", False))
         self.pipeline_editor.update_state(state, locked)
+        from .hardware_ui import update_hardware_ui
+
+        update_hardware_ui(self, state, locked)
+        self.spot_hardware.update_state(state, locked)
         self.restore_button.setEnabled(not locked)
         unit = state.get("temperature_unit", "C")
         self.rows["temperature_unit"].update_state(unit, not locked)
@@ -567,7 +586,9 @@ class ViewWindow(QWidget):
             row.set_display_unit(unit)
             setting = state.get("hardware", {}).get(name, {})
             available = setting.get("available", False) and not locked
-            row.update_state(setting.get("value", HARDWARE_CONTROLS[name].minimum), available)
+            spec = state.get("camera_capabilities", {}).get("controls", {}).get(name, {})
+            fallback = HARDWARE_CONTROLS[name].minimum if name in HARDWARE_CONTROLS else 0
+            row.update_state(setting.get("value", spec.get("default", fallback)), available)
         for tool, key in ((self.distance_calibration, "distance_calibration"), (self.emissivity_calibration, "emissivity_calibration"), (self.reflected_calibration, "reflected_calibration")):
             tool.update_state(state.get(key, {}), unit, locked)
         self.status_alert.update_status(state.get("status", ""), bool(state.get("status_error")))

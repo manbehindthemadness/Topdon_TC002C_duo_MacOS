@@ -64,7 +64,7 @@ def default_pipeline() -> Any:
     }
 
 
-def validate_pipeline(document: Any) -> Any:
+def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[str, Any]:
     """
     Validate pipeline.
     """
@@ -141,9 +141,15 @@ def validate_pipeline(document: Any) -> Any:
             kind = item["type"]
             if not isinstance(kind, str) or kind not in catalog:
                 raise ValueError("Unknown pipeline node")
-            if (stack == "hardware" or kind in ("source", "output")) and kind in kinds:
+            identity = kind
+            if stack == "hardware" and kind == "device_control":
+                params = item.get("params")
+                if not isinstance(params, dict) or not isinstance(params.get("control"), str):
+                    raise ValueError("Invalid hardware control identity")
+                identity = (kind, params["control"])
+            if (stack == "hardware" or kind in ("source", "output")) and identity in kinds:
                 raise ValueError("Camera controls may only be included once")
-            kinds.add(kind)
+            kinds.add(identity)
             if type(item["bypass"]) is not bool or type(item["expanded"]) is not bool:
                 raise ValueError("Invalid node state")
             definitions = catalog[kind][1]
@@ -202,7 +208,6 @@ def validate_pipeline(document: Any) -> Any:
                 raise ValueError("From temperature must be below To temperature")
             if kind == "combine" and item["params"]["raw_low"] >= item["params"]["raw_high"]:
                 raise ValueError("Raw input / mask From must be below To")
-    hardware = document["hardware"]
     for tab, software in software_tabs(document).items():
         if not software or software[0]["type"] != "source" or software[0]["bypass"]:
             raise ValueError(f"Tab {tab}: Image source must be first and enabled")
@@ -213,17 +218,10 @@ def validate_pipeline(document: Any) -> Any:
         elif outputs:
             raise ValueError("Only tab A can contain the viewer Output node")
     execution_dependencies(document, all_tabs=True)  # Also reject cycles in disconnected tabs.
-    enabled = {n["type"]: n["params"] for n in hardware if not n["bypass"]}
-    detail = enabled.get("detail", {})
-    if detail.get("fixed") and (
-        not detail.get("enabled")
-        or enabled.get("preset", {}).get("value", "balanced") != "balanced"
-        or enabled.get("gamma", {}).get("value", 50) != 50
-        or enabled.get("boost", {}).get("value", 0) != 0
-    ):
-        raise ValueError(
-            "Fixed detail requires detail enhancement, Balanced, gamma 50 and boost Off"
-        )
+    if hardware_profile == "duo":
+        from ..camera_backends.duo import validate_hardware
+
+        validate_hardware(document)
     result = deepcopy(document)
     result["hardware"] = [
         item for item in result["hardware"] if item["type"] not in ("transmission", "humidity")

@@ -3,7 +3,11 @@
 from .camera import SENSOR_HEIGHT, SENSOR_WIDTH
 
 
-def validate_spots(saved):
+def validate_spots(saved: object, *, native_size: tuple[int, int] | None = None) -> dict:
+    """
+    Validate unrotated coordinates against the selected native sensor grid.
+    """
+    width, height = native_size or (SENSOR_WIDTH, SENSOR_HEIGHT)
     if (
         not isinstance(saved, dict)
         or type(saved.get("version")) is not int
@@ -21,13 +25,13 @@ def validate_spots(saved):
         number, x, y = (item.get(key) for key in ("number", "x", "y"))
         name, enabled = item.get("name"), item.get("enabled")
         if (
-            type(number) is not int
+            not isinstance(number, int) or isinstance(number, bool)
             or number < 1
             or number in numbers
-            or type(x) is not int
-            or not 0 <= x < SENSOR_WIDTH
-            or type(y) is not int
-            or not 0 <= y < SENSOR_HEIGHT
+            or not isinstance(x, int) or isinstance(x, bool)
+            or not 0 <= x < width
+            or not isinstance(y, int) or isinstance(y, bool)
+            or not 0 <= y < height
             or type(enabled) is not bool
             or not isinstance(name, str)
             or len(name) > 64
@@ -38,7 +42,7 @@ def validate_spots(saved):
         result.append({"number": number, "x": x, "y": y, "name": name.strip(), "enabled": enabled})
     next_number, placing = saved.get("next_number"), saved.get("placing")
     if (
-        type(next_number) is not int
+        not isinstance(next_number, int) or isinstance(next_number, bool)
         or next_number <= max(numbers, default=0)
         or type(placing) is not bool
     ):

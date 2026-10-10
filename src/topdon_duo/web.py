@@ -8,12 +8,16 @@ import logging
 import signal
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import asdict
+from typing import cast
 
 import cv2
 from flask import Flask, Response, jsonify, render_template_string
 
 from . import __version__
 from .camera import CameraError, TC002CDuoCamera, platform_warning
+from .camera_backends import DUO_PROFILE, CameraBackend, CameraFrame, CameraProfile, create_camera
 from .render import ThermalRenderer
 
 LOG = logging.getLogger(__name__)
@@ -23,7 +27,7 @@ PAGE = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TOPDON TC002C Duo</title>
+  <title>{{ camera.title }}</title>
   <style>
     :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
     body { margin: 0; background: #090b10; color: #edf1f7; display: grid;
@@ -42,10 +46,11 @@ PAGE = """<!doctype html>
   </style>
 </head>
 <body><main>
-  <header><h1>TOPDON TC002C Duo</h1><span id="status">Connecting...</span></header>
+  <header><h1>{{ camera.title }}</h1><span id="status">Connecting...</span></header>
   <div class="controls"><button id="rotate" type="button">Rotate 90° clockwise</button></div>
   <img src="/stream.mjpg" alt="Live thermal camera stream">
-  <footer>Native 256x192 radiometric plane · 25 fps camera · ambient-anchored temperatures</footer>
+  <footer>Native {{ camera.native_size[0] }}x{{ camera.native_size[1] }} · {{ camera.frame_rate }} fps
+    · {{ 'Radiometric measurements' if camera.radiometry else 'Preview only; radiometry unavailable' }}</footer>
   <script>
     const status = document.querySelector('#status');
     document.querySelector('#rotate').addEventListener('click', async () => {
@@ -56,7 +61,7 @@ PAGE = """<!doctype html>
         const r = await fetch('/api/status', {cache: 'no-store'});
         const s = await r.json();
         status.textContent = s.error || s.measurement_status || (s.stats ?
-          `Center ${s.stats.center.toFixed(1)} C · ${s.frames} frames` : 'Starting...');
+          `Center ${s.stats.center === null ? '—' : s.stats.center.toFixed(1)} C · ${s.frames} frames` : 'Starting...');
         status.style.color = s.error ? '#ff8d8d' : '#90e0aa';
       } catch (_) { status.textContent = 'Viewer unavailable'; }
     }, 1000);
@@ -67,11 +72,14 @@ PAGE = """<!doctype html>
 class LiveStream:
     def __init__(
         self,
-        camera: TC002CDuoCamera | None = None,
+        camera: CameraBackend | None = None,
         ambient_celsius: float = 22.0,
         rotation: int = 0,
     ) -> None:
-        self.camera = camera or TC002CDuoCamera()
+        self.camera = camera or create_camera(duo_factory=TC002CDuoCamera)
+        profile = getattr(self.camera, "profile", None)
+        self.profile = profile if isinstance(profile, CameraProfile) else DUO_PROFILE
+        self.reported_readings: list[dict] = []
         self.renderer = ThermalRenderer(
             ambient_celsius=ambient_celsius,
             rotation=rotation,
@@ -89,24 +97,33 @@ class LiveStream:
             return
         self.camera.open()
         self.running.set()
-        self.thread = threading.Thread(target=self._capture, name="tc002c-capture", daemon=True)
-        self.thread.start()
+        thread = threading.Thread(target=self._capture, name="camera-capture", daemon=True)
+        self.thread = thread
+        thread.start()
 
     def _capture(self) -> None:
         try:
             for frame in self.camera.frames():
                 if not self.running.is_set():
                     break
+                if self.profile.id != "duo" and (
+                    not isinstance(frame, CameraFrame) or frame.profile != self.profile
+                ):
+                    raise CameraError("Camera backend returned an incompatible decoded frame")
                 image, stats = self.renderer.render(frame)
+                decoded = self.renderer.current_frame
+                assert decoded is not None
+                readings = decoded.readings
                 ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 if not ok:
                     continue
                 with self.condition:
                     self.jpeg = encoded.tobytes()
                     self.stats = stats.as_dict()
+                    self.reported_readings = [asdict(reading) for reading in readings]
                     self.frames += 1
                     self.condition.notify_all()
-        except CameraError as exc:
+        except (CameraError, ValueError, TypeError) as exc:
             LOG.error("Capture stopped: %s", exc)
             self.error = str(exc)
             with self.condition:
@@ -137,18 +154,31 @@ class LiveStream:
             "error": self.error,
             "rotation": self.renderer.rotation,
             "measurement_status": self.renderer.measurement_status,
+            "camera_profile": self.profile.as_dict(),
+            "reported_readings": self.reported_readings,
         }
 
     def rotate_clockwise(self) -> int:
         return self.renderer.rotate_clockwise()
 
     def stop(self) -> None:
+        """
+        Stop acquisition before releasing backend resources owned by the capture thread.
+        """
         self.running.clear()
-        self.camera.close()
+        stopper = getattr(self.camera, "stop_stream", None)
+        if callable(stopper):
+            cast(Callable[[], None], stopper)()
+        else:
+            self.camera.close()  # Compatibility with legacy injected capture objects.
         with self.condition:
             self.condition.notify_all()
         if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=2.5)
+            self.thread.join(timeout=getattr(self.camera, "timeout_ms", 1500) / 1000 + 1)
+            if self.thread.is_alive():
+                raise CameraError("Camera acquisition did not stop within its timeout")
+        elif self.thread is None:
+            self.camera.close()
 
 
 def create_app(stream: LiveStream) -> Flask:
@@ -156,7 +186,7 @@ def create_app(stream: LiveStream) -> Flask:
 
     @app.get("/")
     def index():
-        return render_template_string(PAGE)
+        return render_template_string(PAGE, camera=stream.profile)
 
     @app.get("/stream.mjpg")
     def video_stream():
@@ -178,6 +208,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="TOPDON TC002C Duo live viewer for macOS and Linux"
     )
     parser.add_argument("--host", default="127.0.0.1", help="web bind address")
+    parser.add_argument("--camera", default="duo", help="Registered camera backend (default: duo)")
     parser.add_argument("--port", type=int, default=5001, help="web port")
     parser.add_argument("--diagnose", action="store_true", help="list the USB device and exit")
     parser.add_argument(
@@ -207,10 +238,14 @@ def main(argv: list[str] | None = None) -> int:
     if warning := platform_warning():
         LOG.warning(warning)
     if args.diagnose:
+        if args.camera != "duo":
+            LOG.error("USB diagnostics are only implemented for the Duo backend")
+            return 2
         print(json.dumps(TC002CDuoCamera.diagnostics(), indent=2))
         return 0
 
-    stream = LiveStream(ambient_celsius=args.ambient, rotation=args.rotate)
+    stream = LiveStream(camera=create_camera(args.camera, duo_factory=TC002CDuoCamera),
+                        ambient_celsius=args.ambient, rotation=args.rotate)
     app = create_app(stream)
     try:
         stream.start()

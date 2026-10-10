@@ -13,6 +13,8 @@ def test_index_and_status_routes():
         "rotation": 0,
         "stats": None,
         "measurement_status": "",
+        "camera_profile": {**stream.profile.as_dict(), "native_size": [256, 192]},
+        "reported_readings": [],
     }
 
 
@@ -20,7 +22,9 @@ def test_status_route_reports_capture_error():
     stream = LiveStream()
     stream.error = "camera unavailable"
     client = create_app(stream).test_client()
-    assert client.get("/api/status").json["error"] == "camera unavailable"
+    payload = client.get("/api/status").get_json()
+    assert isinstance(payload, dict)
+    assert payload["error"] == "camera unavailable"
 
 
 def test_rotate_route_cycles_clockwise():

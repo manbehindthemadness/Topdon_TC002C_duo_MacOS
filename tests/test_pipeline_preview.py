@@ -5,9 +5,11 @@ import subprocess
 import sys
 from copy import deepcopy
 from time import monotonic, sleep
+from typing import Any
 
 import cv2
 import numpy as np
+import pytest
 from support.desktop_recording import viewer_fixture
 from test_capture_panel import popup_environment
 from test_render import frame_with_preview
@@ -32,8 +34,13 @@ def preview_document():
     return document, before, after
 
 
-def decode(payload):
-    return cv2.imdecode(np.frombuffer(base64.b64decode(payload), np.uint8), cv2.IMREAD_COLOR)
+def decode(payload: str) -> np.ndarray:
+    """
+    Decode a valid thumbnail and require an image before comparing its pixels.
+    """
+    image = cv2.imdecode(np.frombuffer(base64.b64decode(payload), np.uint8), cv2.IMREAD_COLOR)
+    assert image is not None
+    return image
 
 
 def test_node_snapshots_are_at_their_position_and_preserve_final_image():
@@ -66,7 +73,7 @@ def test_collapsed_bypassed_and_closed_window_previews_do_no_thumbnail_work(monk
     def forbidden(*_args):
         raise AssertionError("disabled preview generated a thumbnail")
 
-    monkeypatch.setattr(processing, "encode_thumbnail", forbidden)
+    monkeypatch.setitem(vars(processing), "encode_thumbnail", forbidden)
     try:
         processor.process(frame, None, document)
         assert processor.last_previews == {}
@@ -129,8 +136,8 @@ def test_worker_previews_are_revision_guarded_throttled_and_cleared_on_close(mon
     worker.processor.process = counting
 
     def wait_result(revision):
-        deadline = monotonic() + 3
-        while worker.latest(revision) is None and monotonic() < deadline:
+        result_deadline = monotonic() + 3
+        while worker.latest(revision) is None and monotonic() < result_deadline:
             sleep(0.01)
         assert worker.latest(revision) is not None
 
@@ -317,7 +324,7 @@ def test_disconnected_preview_failure_does_not_break_viewer(monkeypatch):
         processor.close()
 
 
-def test_preview_failure_propagates_to_preview_consumers_without_blocking_A(monkeypatch):
+def test_preview_failure_propagates_to_preview_consumers_without_blocking_a(monkeypatch):
     document = default_pipeline()
     preview = node("software", "preview")
     preview["expanded"] = True
@@ -342,7 +349,8 @@ def test_preview_failure_propagates_to_preview_consumers_without_blocking_A(monk
         processor.close()
 
 
-def test_camera_open_and_reopen_collapse_all_previews(viewer, monkeypatch):
+@pytest.mark.usefixtures("viewer")
+def test_camera_open_and_reopen_collapse_all_previews(monkeypatch):
     from unittest.mock import Mock
 
     from topdon_duo import desktop
@@ -363,7 +371,7 @@ def test_camera_open_and_reopen_collapse_all_previews(viewer, monkeypatch):
         panel.is_open = True
 
     panel.open.side_effect = open_panel
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setitem(vars(desktop), "ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     keys = iter("vvq")
 
@@ -461,30 +469,44 @@ preview.close()
     assert result.returncode == 0, result.stderr
 
 
-def test_preview_timings_measure_prefix_work_and_exclude_all_thumbnail_encoding(monkeypatch):
+def test_preview_timings_measure_prefix_work_and_exclude_all_thumbnail_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Attribute decoding and processing time to prefixes without counting thumbnail encoding.
+    """
     import topdon_duo.processing.branch as processing
 
     clock = [0.0]
-    original_decode = processing.decode_duo_frame
+    original_decode = processing.decode_frame
     original_brightness = processing.map_luminance
     original_thumbnail = processing.encode_thumbnail
 
-    def decoding(*args, **kwargs):
+    def decoding(*args: Any, **kwargs: Any) -> Any:
+        """
+        Advance a deterministic clock when decoding a shared backend frame.
+        """
         clock[0] += 0.003
         return original_decode(*args, **kwargs)
 
-    def brightness(*args, **kwargs):
+    def brightness(*args: Any, **kwargs: Any) -> Any:
+        """
+        Advance the clock for the simulated image operation.
+        """
         clock[0] += 0.020
         return original_brightness(*args, **kwargs)
 
-    def thumbnail(*args, **kwargs):
+    def thumbnail(*args: Any, **kwargs: Any) -> Any:
+        """
+        Advance the clock for encoding that should be excluded from timings.
+        """
         clock[0] += 0.200
         return original_thumbnail(*args, **kwargs)
 
-    monkeypatch.setattr(processing, "perf_counter", lambda: clock[0])
-    monkeypatch.setattr(processing, "decode_duo_frame", decoding)
-    monkeypatch.setattr(processing, "map_luminance", brightness)
-    monkeypatch.setattr(processing, "encode_thumbnail", thumbnail)
+    monkeypatch.setitem(vars(processing), "perf_counter", lambda: clock[0])
+    monkeypatch.setitem(vars(processing), "decode_frame", decoding)
+    monkeypatch.setitem(vars(processing), "map_luminance", brightness)
+    monkeypatch.setitem(vars(processing), "encode_thumbnail", thumbnail)
     document, before, after = preview_document()
     frame, _ = frame_with_preview()
     processor = PipelineProcessor()

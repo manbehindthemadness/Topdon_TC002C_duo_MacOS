@@ -32,6 +32,7 @@ class SettingsController(SessionState):
                         name: getattr(self.renderer, name) for name in self.api.VIEW_DEFAULTS
                     },
                     "hardware": self.remembered_hardware,
+                    "spot_hardware": self.remembered_spot_hardware,
                     "ambient_input_celsius": self.ambient_input_celsius,
                     "spots": self.last_saved_spots,
                     "rotation": self.renderer.rotation,
@@ -54,7 +55,8 @@ class SettingsController(SessionState):
                     ),
                     "emissivity_calibration": self.emissivity_calibration.reference,
                     "reflected_calibration": self.reflected_calibration.reference,
-                }
+                },
+                **({"profile": self.camera_profile} if self.camera_profile.id != "duo" else {}),
             )
         except OSError as exc:
             self.api.LOG.warning("Could not save Camera settings: %s", exc)
@@ -120,12 +122,9 @@ class SettingsController(SessionState):
             self.reflected_calibration.cancel()
         self.spot_drag.cancel()
         # Rotate the stored sensor coordinates with the image, preserving samples.
-        sensor_height = (
-            self.api.SENSOR_HEIGHT if self.renderer.rotation in (0, 180) else self.api.SENSOR_WIDTH
-        )
-        sensor_width = (
-            self.api.SENSOR_WIDTH if self.renderer.rotation in (0, 180) else self.api.SENSOR_HEIGHT
-        )
+        sensor_width, sensor_height = self.spots.native_size
+        if self.renderer.rotation in (90, 270):
+            sensor_width, sensor_height = sensor_height, sensor_width
         self.spots.mirror(
             sensor_width,
             sensor_height,
@@ -197,7 +196,7 @@ class SettingsController(SessionState):
         """
         Set pipeline.
         """
-        candidate = self.api.validate_pipeline(document)
+        candidate = self.api.validate_pipeline(document, hardware_profile=self.camera_profile.id)
         previous_pipeline = self.pipeline
         self.pipeline_hardware.apply(candidate, previous_document=previous_pipeline)
         if self.hardware.tone_busy and self.tone_previous_pipeline is None:
@@ -206,9 +205,9 @@ class SettingsController(SessionState):
         next_mirrors = self.api.geometry(candidate, self.renderer.rotation)
         if previous_mirrors != next_mirrors:
             width, height = (
-                (self.api.SENSOR_WIDTH, self.api.SENSOR_HEIGHT)
+                self.spots.native_size
                 if self.renderer.rotation in (0, 180)
-                else (self.api.SENSOR_HEIGHT, self.api.SENSOR_WIDTH)
+                else self.spots.native_size[::-1]
             )
             self.spots.mirror(
                 width,
@@ -327,6 +326,15 @@ class SettingsController(SessionState):
             }
         return {
             **self.renderer.view_settings(),
+            "camera_profile": self.camera_profile.as_dict(),
+            "camera_capabilities": self.hardware.capabilities(),
+            "spot_hardware": (
+                self.hardware.spot_state() if self.camera_profile.id != "duo" else {}
+            ),
+            "reported_readings": (
+                [self.api.asdict(reading) for reading in self.rendered.reported_readings]
+                if hasattr(self, "rendered") else []
+            ),
             "status_error": bool(self.pipeline_error or self.hardware.error),
             "pipeline": self.pipeline,
             "apple_acceleration": self.apple_capability,

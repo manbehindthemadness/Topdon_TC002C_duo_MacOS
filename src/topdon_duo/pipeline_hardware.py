@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from .camera import CameraError
+from .camera_backends.controls import DeviceControls
 from .pipeline import active_nodes, preview_required, validate_pipeline
 
 PIPELINE_FIELDS = {
@@ -32,6 +33,8 @@ def desired_hardware(document: dict[str, Any]) -> tuple[dict[str, Any], str, int
             continue
         if kind in ("brightness", "contrast"):
             controls[kind] = p["value"]
+        elif kind == "device_control" and p["control"]:
+            controls[p["control"]] = p["value"]
         elif kind == "camera_colors":
             controls["palette"] = p["palette"]
         elif kind == "noise":
@@ -73,7 +76,13 @@ class PipelineHardware:
         """
         Apply changed hardware settings and roll back rejected configurations.
         """
-        candidate = validate_pipeline(document)
+        candidate = validate_pipeline(
+            document, hardware_profile=self.hardware.profile.id
+            if isinstance(self.hardware, DeviceControls) else "duo",
+        )
+        if isinstance(self.hardware, DeviceControls):
+            self._apply_device(candidate)
+            return
         if (
             not self.hardware.original
             and previous_document is not None
@@ -84,7 +93,10 @@ class PipelineHardware:
             # hardware edits still require validation and readback.
             self.document = candidate
             return
-        desired = desired_hardware(candidate)
+        applicable = deepcopy(candidate)
+        applicable["hardware"] = [item for item in candidate["hardware"]
+                                  if item["type"] != "device_control"]
+        desired = desired_hardware(applicable)
         preset_active = preview_required(candidate) and any(
             item["type"] == "preset" for item in active_nodes(candidate, "hardware")
         )
@@ -116,6 +128,45 @@ class PipelineHardware:
         self.document = deepcopy(candidate)
         self._desired = desired
 
+    def _apply_device(self, document: dict[str, Any]) -> None:
+        """
+        Apply supported display settings with target rules and restore only pipeline ownership.
+        """
+        hw = self.hardware
+        hw.validate_pipeline(document)
+        applicable = deepcopy(document)
+        nodes = hw.capabilities()["nodes"]
+        applicable["hardware"] = [item for item in document["hardware"]
+                                  if item["type"] == "device_control"
+                                  or nodes.get(item["type"], {}).get("supported")]
+        desired = desired_hardware(applicable)
+        controls = desired[0]
+        specs = hw.specs
+        selected = {name: value for name, value in controls.items()
+                    if name in specs and specs[name].supported and specs[name].scope == "device"}
+        if any(specs[name].effect != "preview" for name in selected):
+            raise ValueError("Measurement corrections belong to Camera settings, outside pipelines")
+        for name, value in selected.items():
+            specs[name].validate(value)
+        if desired == self._desired:
+            self.document = deepcopy(document)
+            return
+        previous = self._desired[0] if self._desired is not None else {}
+        try:
+            for name in set(previous) - set(selected):
+                if name in hw.enabled:
+                    hw.set(name, hw.original[name], False)
+            for name, value in selected.items():
+                if name not in hw.enabled or hw.values[name] != value:
+                    hw.set(name, value, True)
+        except CameraError:
+            for name in set(selected) | set(previous):
+                if name in specs and name in hw.original:
+                    hw.set(name, previous.get(name, hw.original[name]), name in previous)
+            raise
+        self.document = deepcopy(document)
+        self._desired = ({**selected}, *desired[1:])
+
     def _apply(
         self, desired: tuple[dict[str, Any], str, int, int, bool], force: bool = False,
         verify_preset: bool = False,
@@ -125,6 +176,8 @@ class PipelineHardware:
         """
         controls, preset, gamma, boost, fixed = desired
         hw = self.hardware
+        if set(controls) - PIPELINE_FIELDS:
+            raise ValueError("Unsupported display control or measurement correction in pipeline")
         if not hw.original:
             hw.load()
         current = hw.state()

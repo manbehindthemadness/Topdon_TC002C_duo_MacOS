@@ -49,6 +49,21 @@ class Parameter:
             raise ValueError(f"Invalid {self.title}")
 
 
+class HardwareValueParameter(Parameter):
+    """
+    Preserve primitive hardware values; the selected backend validates bounds and choices.
+    """
+
+    def validate(self, value: Any) -> None:
+        """
+        Reject nested or non-finite values without invoking a camera command.
+        """
+        if (type(value) not in (str, bool, int, float)
+                or isinstance(value, str) and len(value) > 200
+                or isinstance(value, (int, float)) and not math.isfinite(value)):
+            raise ValueError("Invalid hardware control value")
+
+
 def choice(title: Any, default: Any, options: Any) -> Any:
     """
     Choice.
@@ -81,6 +96,10 @@ CAMERA_GRADIENTS = {
 }
 PALETTES = {**COLOR_PALETTES, **CAMERA_GRADIENTS}
 HARDWARE_NODES = {
+    "device_control": (
+        "Camera hardware control",
+        {"control": Parameter("Control", ""), "value": HardwareValueParameter("Value", 0)},
+    ),
     "preset": (
         "Camera processing preset",
         {

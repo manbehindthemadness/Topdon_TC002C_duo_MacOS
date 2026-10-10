@@ -1,13 +1,16 @@
 """Connected pipeline tabs: numerical blends, frame coherence and lazy threads."""
 
+from collections.abc import Callable
 from copy import deepcopy
 from threading import Barrier, current_thread
+from typing import Any
 
 import numpy as np
 import pytest
 from test_render import frame_with_preview
 
 from topdon_duo.camera import decode_duo_frame
+from topdon_duo.camera_backends import CameraFrame
 from topdon_duo.pipeline import (
     default_pipeline,
     execution_dependencies,
@@ -20,11 +23,27 @@ from topdon_duo.pipeline_processing import PipelineProcessor, combine_images
 from topdon_duo.processing.branch import BranchProcessor
 
 
-def connect(document, target, owner="A", **params):
+def connect(
+    document: dict[str, Any], target: str, owner: str = "A", **params: Any,
+) -> dict[str, Any]:
+    """
+    Insert a branch connection and return its editable node.
+    """
     nodes = document["software"] if owner == "A" else document["branches"][owner]
-    nodes.insert(
-        -1 if owner == "A" else len(nodes), node("software", "combine", tab=target, **params)
-    )
+    item = node("software", "combine", tab=target, **params)
+    nodes.insert(-1 if owner == "A" else len(nodes), item)
+    return item
+
+
+def raw_branches_document() -> dict[str, Any]:
+    """
+    Create bare raw-source branches for numerical blend comparisons.
+    """
+    document = default_pipeline()
+    document["software"] = [document["software"][0], document["software"][-1]]
+    document["software"][0]["params"]["source"] = "raw"
+    document["branches"]["B"][0]["params"]["source"] = "raw"
+    return document
 
 
 def test_migration_preserves_single_pipeline_and_all_tabs_persist(tmp_path, monkeypatch):
@@ -67,7 +86,12 @@ def test_migration_preserves_single_pipeline_and_all_tabs_persist(tmp_path, monk
         lambda d: d["branches"]["D"][0].update(id=d["software"][0]["id"]),
     ],
 )
-def test_invalid_connections_and_pinned_endpoints_rejected(mutation):
+def test_invalid_connections_and_pinned_endpoints_rejected(
+    mutation: Callable[[dict[str, Any]], Any],
+) -> None:
+    """
+    Reject invalid dependencies and malformed pinned source/output nodes.
+    """
     document = default_pipeline()
     mutation(document)
     with pytest.raises(ValueError):
@@ -135,7 +159,12 @@ def test_weighted_mask_resize_and_overlay_upper_branch():
     assert np.allclose(combine_images(base, incoming, p), 255 - 2 * 75 * 55 / 255)
 
 
-def test_connected_branches_run_once_on_separate_threads_using_same_frame(monkeypatch):
+def test_connected_branches_run_once_on_separate_threads_using_same_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Share one decoded frame and native average across concurrent dependent branches.
+    """
     processor = PipelineProcessor()
     document = default_pipeline()
     connect(document, "B")
@@ -145,14 +174,22 @@ def test_connected_branches_run_once_on_separate_threads_using_same_frame(monkey
     tabs = {"A": document["software"], **document["branches"]}
     identity = {nodes[0]["id"]: tab for tab, nodes in tabs.items()}
     calls = []
+    decoded_frames = []
     barrier = Barrier(2)
     frame, _ = frame_with_preview()
     _, raw, _ = decode_duo_frame(frame)
     averaged = raw.astype(np.float32)
 
-    def fake(self, incoming_frame, average, branch, palette, inputs):
+    def fake(
+        _self: BranchProcessor, incoming_frame: CameraFrame, average: np.ndarray,
+        branch: dict[str, Any], _palette: int, inputs: dict[str, Any],
+    ) -> tuple[np.ndarray, str]:
+        """
+        Record frame identity and require independent branch threads to overlap.
+        """
         tab = identity[branch["software"][0]["id"]]
-        assert incoming_frame is frame and average is averaged
+        assert incoming_frame.source_bytes is frame and average is averaged
+        decoded_frames.append(incoming_frame)
         calls.append((tab, current_thread().name, tuple(inputs)))
         if tab in "BC":
             barrier.wait(timeout=3)  # Both must be running concurrently.
@@ -163,6 +200,7 @@ def test_connected_branches_run_once_on_separate_threads_using_same_frame(monkey
         image, _ = processor.process(frame, averaged, document, scale=1)
         assert image.shape == (192, 256, 3)
         assert sorted(tab for tab, *_ in calls) == list("ABCD")
+        assert len({id(decoded) for decoded in decoded_frames}) == 1
         assert len({thread for _, thread, _ in calls}) == 4
         assert {tab: set(inputs) for tab, _, inputs in calls} == {
             "A": {"B", "C"},
@@ -186,10 +224,7 @@ def test_combine_occurs_in_node_order_and_raw_readings_unchanged():
     frame, _ = frame_with_preview()
     _, raw, _ = decode_duo_frame(frame)
     snapshot = raw.copy()
-    document = default_pipeline()
-    document["software"] = [document["software"][0], document["software"][-1]]
-    document["software"][0]["params"]["source"] = "raw"
-    document["branches"]["B"][0]["params"]["source"] = "raw"
+    document = raw_branches_document()
     document["branches"]["B"].append(node("software", "brightness", amount=20.0))
     connect(document, "B", opacity=1.0)
     document["software"].insert(-1, node("software", "gamma", amount=2.0))
@@ -268,10 +303,7 @@ def test_camera_raw_and_pipeline_inputs_and_masks_use_the_current_frame(blend_in
     frame, _ = frame_with_preview()
     _, raw, preview = decode_duo_frame(frame)
     before = raw.copy()
-    document = default_pipeline()
-    document["software"] = [document["software"][0], document["software"][-1]]
-    document["software"][0]["params"]["source"] = "raw"
-    document["branches"]["B"][0]["params"]["source"] = "raw"
+    document = raw_branches_document()
     document["branches"]["B"].append(node("software", "brightness", amount=15.0))
     connect(document, blend_input, mask_source=mask_source, raw_low=10, raw_high=60)
     processor = PipelineProcessor()

@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 import cv2
 import numpy as np
 
-from .camera import (
-    IMAGE_OFFSET,
-    decode_duo_frame,
-    has_yuy2_preview,
-    measurement_frame_status,
-    raw_temperatures,
-)
+from .camera import raw_temperatures
+from .camera_backends import DUO_PROFILE, CameraFrame, CameraProfile, ReportedReading, decode_frame
 from .pipeline import geometry, thermal_source, validate_pipeline
 from .pipeline_processing import PipelineProcessor
 from .upsampling import VisionUpsampler
@@ -46,11 +42,14 @@ class RenderedThermalFrame:
     image: np.ndarray
     stats: TemperatureStats
     temperatures_celsius: np.ndarray
-    raw_counts: np.ndarray
+    raw_counts: np.ndarray | None
     image_source: str = "raw"
     display_settings: dict = field(default_factory=dict)
     measurements_valid: bool = True
     measurement_status: str = ""
+    camera_profile: CameraProfile = DUO_PROFILE
+    reported_readings: tuple[ReportedReading, ...] = ()
+    radiometry_available: bool = True
 
 
 def draw_temperature_readout(
@@ -99,6 +98,20 @@ def draw_temperature_readout(
 class ThermalRenderer:
     raw_temperature_low: float
     raw_temperature_high: float
+    upsampling: str
+    enhancement_amount: float
+    enhancement_input: str
+    image_filter: str
+    color_palette: str
+    palette_source: str
+    raw_upsampling: str
+    raw_sharpen_amount: float
+    raw_anime4k_passes: int
+    raw_palette: str
+    anime4k_passes: int
+    antialiasing: bool
+    mirror_horizontal: bool
+    mirror_vertical: bool
 
     def __init__(
         self,
@@ -125,7 +138,9 @@ class ThermalRenderer:
         self.rotation = rotation
         self.temperature_unit = temperature_unit
         self._average_raw: np.ndarray | None = None
-        self._last_valid_frame: bytes | None = None
+        self._last_valid_frame: bytes | CameraFrame | None = None
+        self.current_frame: CameraFrame | None = None
+        self.camera_profile = DUO_PROFILE
         self._recover_measurements = False
         self.measurement_status = ""
         self.native_temperatures = False
@@ -153,7 +168,7 @@ class ThermalRenderer:
         self.rotation = (self.rotation + 90) % 360
         return self.rotation
 
-    def render(self, frame: bytes) -> tuple[np.ndarray, TemperatureStats]:
+    def render(self, frame: bytes | CameraFrame) -> tuple[np.ndarray, TemperatureStats]:
         rendered = self.render_detailed(frame)
         image = draw_temperature_readout(
             rendered.image, rendered.stats, self.ambient_celsius, self.temperature_unit
@@ -172,7 +187,7 @@ class ThermalRenderer:
         return settings
 
     @property
-    def last_valid_frame(self) -> bytes | None:
+    def last_valid_frame(self) -> bytes | CameraFrame | None:
         """
         Return the latest valid sensor frame for display processing.
         """
@@ -198,8 +213,11 @@ class ThermalRenderer:
         """
         self._recover_measurements = True
 
-    def set_pipeline(self, document):
-        self.pipeline = validate_pipeline(document)
+    def set_pipeline(self, document: dict[str, Any]) -> None:
+        """
+        Restore geometry from a structurally valid pipeline for the current profile.
+        """
+        self.pipeline = validate_pipeline(document, hardware_profile=self.camera_profile.id)
         self.image_source = self.pipeline["software"][0]["params"]["source"]
         self.mirror_horizontal, self.mirror_vertical = geometry(self.pipeline, self.rotation)
         self.analyze_mode = False
@@ -213,8 +231,8 @@ class ThermalRenderer:
             return
         if name == "raw_anime4k":
             name, value = "raw_upsampling", "anime4k09" if value else "off"
-        low = value if name == "raw_temperature_low" else self.raw_temperature_low
-        high = value if name == "raw_temperature_high" else self.raw_temperature_high
+        low = cast(float, value) if name == "raw_temperature_low" else self.raw_temperature_low
+        high = cast(float, value) if name == "raw_temperature_high" else self.raw_temperature_high
         if low >= high:
             raise ValueError("Raw thermal From temperature must be below To temperature")
         if name in ("upsampling", "raw_upsampling") and value != getattr(self, name):
@@ -276,7 +294,7 @@ class ThermalRenderer:
 
     def _render_raw(self, counts: np.ndarray) -> np.ndarray:
         # Fixed hardware conversion; never anchor display colors to scene statistics.
-        temperatures = raw_temperatures(counts, offset=50)
+        temperatures = self.convert_counts(counts)
         intensity = np.clip(
             (temperatures - self.raw_temperature_low)
             * (255.0 / (self.raw_temperature_high - self.raw_temperature_low)),
@@ -299,39 +317,53 @@ class ThermalRenderer:
         return self._colorize(rgb[..., 0], self.raw_palette)
 
     def render_detailed(
-        self, frame: bytes, *, update_measurements: bool = True, image_processing: bool = True
+        self, frame: bytes | CameraFrame, *, update_measurements: bool = True,
+        image_processing: bool = True,
     ) -> RenderedThermalFrame:
-        telemetry, raw, preview = decode_duo_frame(frame)
-        self.measurement_status = measurement_frame_status(telemetry, raw)
-        measurements_valid = not self.measurement_status
+        """
+        Render decoded backend data while keeping held measurements separate from preview.
+        """
+        decoded = decode_frame(frame)
+        if self.current_frame is not None and decoded.profile != self.current_frame.profile:
+            self.reset_measurement_average()
+            self._last_valid_frame = None
+        self.current_frame = decoded
+        self.camera_profile = decoded.profile
+        raw, preview = decoded.raw_counts, decoded.preview
+        radiometry = raw is not None
+        self.measurement_status = decoded.measurement_status or (
+            "Radiometry unavailable for this camera" if not radiometry else ""
+        )
+        measurements_valid = radiometry and not self.measurement_status
         if measurements_valid and update_measurements:
+            assert raw is not None
             if self._average_raw is None or self._recover_measurements:
                 self._average_raw = raw.astype(np.float32)
             else:
                 cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
             self._last_valid_frame = frame
             self._recover_measurements = False
-        elif not measurements_valid:
+        elif radiometry and not measurements_valid:
             self._recover_measurements = True
             if self._last_valid_frame is not None:
                 frame = self._last_valid_frame
-                _, raw, preview = decode_duo_frame(frame)
+                decoded = decode_frame(frame)
+                raw, preview = decoded.raw_counts, decoded.preview
+                self.current_frame = decoded
 
         averaged = self._average_raw
         if averaged is None:
             # Remain responsive if the first frames arrive during calibration.
-            averaged = np.zeros(raw.shape, np.float32)
-            celsius = self._orient(np.full(raw.shape, np.nan, np.float32))
+            shape = decoded.profile.native_size[::-1]
+            averaged = np.zeros(shape, np.float32)
+            celsius = self._orient(np.full(shape, np.nan, np.float32))
         else:
             celsius = self._orient(
-                raw_temperatures(
-                    averaged,
-                    ambient_celsius=self.ambient_celsius,
-                    offset=50 if self.native_temperatures else None,
-                )
+                decoded.temperatures(averaged, ambient_celsius=self.ambient_celsius,
+                                     native=self.native_temperatures)
             )
-        oriented_raw = self._orient(raw)
-        native_size = (oriented_raw.shape[1], oriented_raw.shape[0])
+        oriented_raw = self._orient(raw) if raw is not None else None
+        native_size = (celsius.shape[1], celsius.shape[0])
         center_y, center_x = celsius.shape[0] // 2, celsius.shape[1] // 2
         stats = TemperatureStats(
             minimum=float(celsius.min()),
@@ -351,7 +383,9 @@ class ThermalRenderer:
                 heatmap = cv2.resize(heatmap, (celsius.shape[1] * self.scale, celsius.shape[0] * self.scale))
                 source = "raw" if self.pipeline is not None and thermal_source(self.pipeline) else self.image_source
             return RenderedThermalFrame(heatmap, stats, celsius, oriented_raw, source,
-                                        self.view_settings(), measurements_valid, self.measurement_status)
+                                       self.view_settings(), measurements_valid,
+                                       self.measurement_status, decoded.profile, decoded.readings,
+                                       radiometry)
 
         # Image processing and measurement data remain independent. Some modes
         # leave the preview empty; those retain the radiometric visualization.
@@ -359,12 +393,23 @@ class ThermalRenderer:
             not (self.camera_color and self.palette_source == "app")
             and self.image_source == "preview"
             and not self.analyze_mode
-            and has_yuy2_preview(frame)
-            and (self.camera_preview or bool(np.any(preview)))
+            and decoded.preview_bgr is not None
+            and (decoded.profile.id != "duo" or self.camera_preview or bool(np.any(preview)))
         )
+        if not radiometry:
+            if decoded.preview_bgr is None:
+                raise ValueError("Camera has neither radiometry nor a usable preview")
+            use_preview = True
         # The latest valid sensor image stays responsive; only measurements use
         # the temporal average. Calibration still holds the last valid frame.
-        image_plane = self._orient(preview) if use_preview else oriented_raw
+        if use_preview:
+            assert preview is not None
+            image_plane = self._orient(preview)
+        else:
+            image_plane = oriented_raw
+        if image_plane is None:
+            raise ValueError("Selected camera image source is unavailable")
+        normalized = np.zeros(image_plane.shape, dtype=np.uint8)
         if not self.analyze_mode:
             low, high = np.percentile(image_plane, (1.0, 99.0))
             if high <= low:
@@ -375,14 +420,12 @@ class ThermalRenderer:
                     .round()
                     .astype(np.uint8)
                 )
-        if use_preview and self.camera_preview:
+        if use_preview and (self.camera_preview or decoded.profile.id != "duo"):
             # Keep actual camera intensities so brightness/contrast remain visible.
-            if self.camera_color and has_yuy2_preview(frame):
-                yuyv = np.frombuffer(frame, dtype=np.uint8, offset=IMAGE_OFFSET * 2).reshape(
-                    *preview.shape, 2
-                )
+            if self.camera_color or decoded.profile.id != "duo":
+                assert decoded.preview_bgr is not None
                 heatmap = self._enhance_image(
-                    self._filter_image(self._orient(cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2))),
+                    self._filter_image(self._orient(decoded.preview_bgr)),
                     native_size,
                 )
             else:
@@ -394,6 +437,7 @@ class ThermalRenderer:
                 self._enhance_image(self._filter_image(normalized), native_size)
             )
         elif self.analyze_mode:
+            assert oriented_raw is not None
             heatmap = self._render_raw(oriented_raw)
         else:
             heatmap = self._colorize(
@@ -410,11 +454,11 @@ class ThermalRenderer:
         interpolation = cv2.INTER_NEAREST
         if self.antialiasing:
             interpolation = cv2.INTER_AREA if self.scale == 1 and use_preview else cv2.INTER_CUBIC
-            if heatmap.shape[1] > oriented_raw.shape[1] * self.scale:
+            if heatmap.shape[1] > native_size[0] * self.scale:
                 interpolation = cv2.INTER_AREA
         heatmap = cv2.resize(
             heatmap,
-            (oriented_raw.shape[1] * self.scale, oriented_raw.shape[0] * self.scale),
+            (native_size[0] * self.scale, native_size[1] * self.scale),
             interpolation=interpolation,
         )
 
@@ -427,10 +471,27 @@ class ThermalRenderer:
             display_settings=self.view_settings(),
             measurements_valid=measurements_valid,
             measurement_status=self.measurement_status,
+            camera_profile=decoded.profile,
+            reported_readings=decoded.readings,
+            radiometry_available=radiometry,
         )
 
+    def convert_counts(self, counts: np.ndarray | None) -> np.ndarray:
+        """
+        Convert current-camera counts for calibration without using display or average data.
+        """
+        if counts is None:
+            raise ValueError("Camera radiometry is unavailable")
+        if self.current_frame is None:
+            if self.camera_profile.id != "duo":
+                raise ValueError("No decoded camera frame is available for conversion")
+            return raw_temperatures(counts, offset=50)
+        return self.current_frame.temperatures(counts)
 
-def decode_temperatures(frame: bytes) -> np.ndarray:
-    """Public helper for consumers that need the radiometric values."""
-    _, raw, _ = decode_duo_frame(frame)
-    return raw_temperatures(raw)
+
+def decode_temperatures(frame: bytes | CameraFrame) -> np.ndarray:
+    """
+    Decode backend radiometry, preserving legacy Duo callers' ambient-anchored conversion.
+    """
+    decoded = decode_frame(frame)
+    return decoded.temperatures(ambient_celsius=22.0, native=False)

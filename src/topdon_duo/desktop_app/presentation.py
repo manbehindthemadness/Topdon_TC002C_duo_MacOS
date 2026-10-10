@@ -104,7 +104,8 @@ class PresentationController(SessionState):
             self.frame, update_measurements=self.fresh_frame, image_processing=False
         )
         image_frame = (
-            self.frame if self.rendered.measurements_valid else self.renderer.last_valid_frame
+            self.frame if self.rendered.measurements_valid or not self.rendered.radiometry_available
+            else self.renderer.last_valid_frame
         )
         if image_frame is not None:
             palette = self.renderer.hardware_settings.get("palette", {}).get("value", 1)
@@ -159,7 +160,7 @@ class PresentationController(SessionState):
             if self.emissivity_calibration.active and self.rendered.measurements_valid:
                 previous_reference = self.emissivity_calibration.reference
                 self.emissivity_calibration.update(
-                    self.api.raw_temperatures(self.rendered.raw_counts, offset=50),
+                    self.renderer.convert_counts(self.rendered.raw_counts),
                     self.api.time.monotonic(),
                 )
                 if previous_reference != self.emissivity_calibration.reference:
@@ -174,7 +175,7 @@ class PresentationController(SessionState):
             previous_reference = self.reflected_calibration.reference
             if self.rendered.measurements_valid:
                 self.reflected_calibration.update(
-                    self.api.raw_temperatures(self.rendered.raw_counts, offset=50),
+                    self.renderer.convert_counts(self.rendered.raw_counts),
                     self.api.time.monotonic(),
                 )
             if previous_reference != self.reflected_calibration.reference:
@@ -475,9 +476,7 @@ class PresentationController(SessionState):
                             pixel,
                             self.rendered.temperatures_celsius.shape[::-1],
                             float(
-                                self.api.raw_temperatures(
-                                    self.rendered.raw_counts[pixel[1], pixel[0]], offset=50
-                                )
+                                self.renderer.convert_counts(self.rendered.raw_counts)[pixel[1], pixel[0]]
                             ),
                         )
                         self.notify(self.emissivity_calibration.message)

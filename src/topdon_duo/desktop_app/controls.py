@@ -27,6 +27,10 @@ class ControlsController(SessionState):
             for name, value in self.remembered_hardware.items():
                 if name in self.api.PIPELINE_FIELDS:
                     continue
+                if self.camera_profile.id != "duo" and not self.hardware.state().get(
+                    name, {},
+                ).get("available"):
+                    continue
                 try:
                     self.hardware.set(name, value, True)
                 except (self.api.CameraError, ValueError, TypeError) as exc:
@@ -44,12 +48,22 @@ class ControlsController(SessionState):
             self.hardware.error = str(exc)
             self.api.LOG.warning("Could not read hardware settings: %s", exc)
             return False
-        try:
-            self.hardware.set_auto_calibrate(self.auto_calibrate)
-            self.calibration_available = True
-        except self.api.CameraError as exc:
-            self.hardware.error = f"Could not set Auto calibrate: {exc}"
-            self.api.LOG.warning("%s", self.hardware.error)
+        features = self.hardware.capabilities().get("features", {})
+        if self.camera_profile.id != "duo":
+            for spot_id, values in self.remembered_spot_hardware.items():
+                for name, value in values.items():
+                    try:
+                        self.hardware.set_spot(name, value, spot_id, True)
+                    except (self.api.CameraError, ValueError, TypeError) as exc:
+                        self.hardware.error = f"Could not restore spot {spot_id} {name}: {exc}"
+                        self.api.LOG.warning("%s", self.hardware.error)
+        if features.get("auto_calibrate"):
+            try:
+                self.hardware.set_auto_calibrate(self.auto_calibrate)
+                self.calibration_available = bool(features.get("calibrate_now"))
+            except self.api.CameraError as exc:
+                self.hardware.error = f"Could not set Auto calibrate: {exc}"
+                self.api.LOG.warning("%s", self.hardware.error)
         try:
             self.pipeline_hardware.apply(self.pipeline)
             if self.hardware.tone_busy:
@@ -147,7 +161,9 @@ class ControlsController(SessionState):
             if command.get("action") == "pipeline":
                 try:
                     command["hardware_operation"] = (
-                        self.api.desired_hardware(self.api.validate_pipeline(command["document"]))
+                        self.api.desired_hardware(self.api.validate_pipeline(
+                            command["document"], hardware_profile=self.camera_profile.id,
+                        ))
                         != self.pipeline_hardware.applied_state
                     )
                 except (ValueError, TypeError, KeyError):
@@ -162,6 +178,16 @@ class ControlsController(SessionState):
                 self.api.LOG.info("Camera operation started: %s", command)
                 self.view_panel.update(self.view_state())
             try:
+                if self.camera_profile.id != "duo":
+                    required = {
+                        "auto_calibrate": "auto_calibrate", "processing_preset": "preset",
+                        "tone": "gamma", "cancel_tone": "gamma", "fixed_range": "fixed_detail",
+                        "distance_calibration": "host_distance_calibration",
+                        "emissivity_calibration": "host_emissivity_calibration",
+                        "reflected_calibration": "host_reflected_calibration",
+                    }.get(str(command.get("action", "")))
+                    if required and not self.hardware.capabilities()["features"].get(required):
+                        raise ValueError("Camera operation is not supported by this device")
                 if self.reflected_calibration.active and command.get("action") in (
                     "hardware",
                     "distance_calibration",
@@ -253,10 +279,24 @@ class ControlsController(SessionState):
                     self.persist_settings()
                     self.hardware.error = ""
                 elif command.get("action") == "hardware":
+                    if command.get("spot_id") is not None:
+                        spot_id = command["spot_id"]
+                        self.hardware.set_spot(
+                            command["name"], command["value"], spot_id, command["enabled"],
+                        )
+                        values = self.remembered_spot_hardware.setdefault(spot_id, {})
+                        if command["enabled"]:
+                            values[command["name"]] = command["value"]
+                        else:
+                            values.pop(command["name"], None)
+                        self.persist_settings()
+                        self.renderer.reset_measurement_average()
+                        self.hardware.error = ""
+                        continue
                     if self.emissivity_calibration.active:
                         self.emissivity_calibration.cancel()
                     value = command["value"]
-                    if command["name"] == "ambient":
+                    if command["name"] == "ambient" and self.camera_profile.id == "duo":
                         spec = self.api.HARDWARE_CONTROLS["ambient"]
                         if (
                             isinstance(value, bool)
@@ -392,6 +432,7 @@ class ControlsController(SessionState):
                     self.remembered_processing_preset = self.hardware.processing_preset
                     self.remembered_fixed_range = False
                     self.remembered_hardware.clear()
+                    self.remembered_spot_hardware.clear()
                     self.ambient_input_celsius = None
                     self.persist_settings()
                     self.hardware.error = ""

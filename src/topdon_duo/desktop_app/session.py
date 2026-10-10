@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from ..camera_backends import CameraProfile
 from .capture import CaptureController
 from .controls import ControlsController
 from .presentation import PresentationController
@@ -21,8 +22,28 @@ class DesktopSession(
         """
         super().__init__(api=api)
         self.args = self.api.parse_args(argv)
-        self.saved_settings = self.api.load_settings()
+        self.camera = self.api.create_camera(
+            self.args.camera, duo_factory=self.api.TC002CDuoCamera,
+        )
+        profile = getattr(self.camera, "profile", None)
+        self.camera_profile = profile if isinstance(profile, CameraProfile) else (
+            self.api.DUO_PROFILE
+        )
+        if self.args.timelapse_fpm is not None and self.args.timelapse_fpm > (
+            self.camera_profile.frame_rate * 60
+        ):
+            raise ValueError("Timelapse rate exceeds the selected camera's frame rate")
+        if self.camera_profile.id == "duo":
+            self.camera.usb_queue_depth = self.args.usb_queue_depth
+            self.hardware = self.api.HardwareControls(self.camera)
+            self.saved_settings = self.api.load_settings()
+        else:
+            self.hardware = self.camera.create_controls()
+            if getattr(self.hardware, "profile", None) != self.camera_profile:
+                raise ValueError("Camera controls do not match the selected device profile")
+            self.saved_settings = self.api.load_settings(self.camera_profile, self.hardware.specs)
         self.remembered_hardware = self.saved_settings.get("hardware", {}).copy()
+        self.remembered_spot_hardware = self.saved_settings.get("spot_hardware", {}).copy()
         self.advanced_auto = self.saved_settings.get("advanced_auto", True)
         self.auto_calibrate = self.saved_settings.get("auto_calibrate", False)
         self.remembered_fixed_range = self.saved_settings.get("fixed_range", False)
@@ -61,6 +82,7 @@ class DesktopSession(
             else self.saved_settings.get("rotation", 0),
             image_source=self.args.image_source or "preview",
         )
+        self.renderer.camera_profile = self.camera_profile
         for name in ("raw_temperature_low", "raw_temperature_high"):
             setattr(
                 self.renderer,
@@ -102,11 +124,10 @@ class DesktopSession(
             self.api.LOG.warning(
                 "--ambient is ignored; set hardware ambient temperature in Camera."
             )
-        self.camera = self.api.TC002CDuoCamera()
-        self.camera.usb_queue_depth = self.args.usb_queue_depth
         self.display_awake = self.api.DisplayAwake()
         self.picker = self.api.MousePicker()
         self.spots = self.api.SampleSpots()
+        self.spots.native_size = self.camera_profile.native_size
         if "spots" in self.saved_settings:
             self.spots.restore_saved_state(
                 self.saved_settings["spots"],
@@ -129,11 +150,11 @@ class DesktopSession(
             else self.api.MacSaveDialog()
         )
         self.recorder = self.api.VideoRecorder()
+        self.recorder.fps = self.camera_profile.frame_rate
         self.capture_panel = self.api.CapturePanel()
         self.view_panel = self.api.ViewPanel()
         self.graph_panel = self.api.GraphPanel()
         self.spots_panel = self.api.SpotsPanel()
-        self.hardware = self.api.HardwareControls(self.camera)
         self.pipeline_hardware = self.api.PipelineHardware(self.hardware)
         self.emissivity_calibration = self.api.EmissivityCalibrator(
             self.hardware, self.saved_settings.get("emissivity_calibration")
@@ -183,10 +204,14 @@ class DesktopSession(
         self.frame_pump = None
         try:
             self.diagnostics.stage("camera_open")
-            self.camera.stream_observer = self.diagnostics.stream if self.args.diagnostics else None
-            self.camera.rejected_frame_observer = (
-                self.diagnostics.rejected_frame if self.args.diagnostics else None
-            )
+            if hasattr(self.camera, "stream_observer"):
+                self.camera.stream_observer = (
+                    self.diagnostics.stream if self.args.diagnostics else None
+                )
+            if hasattr(self.camera, "rejected_frame_observer"):
+                self.camera.rejected_frame_observer = (
+                    self.diagnostics.rejected_frame if self.args.diagnostics else None
+                )
             self.camera.open()
             # Submit bulk reads immediately after UVC COMMIT. In particular, macOS
             # can stop delivering this mode if the SDK/settings handshake occupies
@@ -274,10 +299,11 @@ class DesktopSession(
             self.hardware.restore()
         except (self.api.CameraError, ValueError) as exc:
             self.api.LOG.error("Could not restore camera settings: %s", exc)
-        try:
-            self.hardware.restore_auto_calibrate()
-        except self.api.CameraError as exc:
-            self.api.LOG.error("Could not restore automatic camera calibration: %s", exc)
+        if self.hardware.capabilities().get("features", {}).get("auto_calibrate"):
+            try:
+                self.hardware.restore_auto_calibrate()
+            except self.api.CameraError as exc:
+                self.api.LOG.error("Could not restore automatic camera calibration: %s", exc)
         self.display_awake.close()
         if self.frame_pump is not None:
             self.frame_pump.close()

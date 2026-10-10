@@ -1,13 +1,15 @@
 # Integrating another camera into this program
 
-Paths below describe the repository as inspected on 2026-10-07. Re-read the
+Paths below describe the repository as inspected on 2026-10-10. Re-read the
 current files before implementation; earlier research documents describe old UI
-and capture behavior. This is a map, not a claim that a generic adapter exists.
+and capture behavior. Read [camera-backends.md](../../../../docs/camera-backends.md)
+for the implemented contract; another physical camera still needs protocol evidence.
 
 ## Current responsibilities
 
 | Files | Responsibility and relevant invariants |
 | --- | --- |
+| `camera_backends/` | Explicit factories, compatible profiles, immutable decoded planes, reported readings, control metadata and reversible device/spot ownership |
 | `src/topdon_duo/camera.py` | `TC002CDuoCamera`, UVC negotiation, frame assembly, queued/synchronous reads, Duo decode, temperature conversion and validity detection |
 | `queued_usb.py`, `frame_pump.py` | Continuous acquisition; queued bulk transfers, cancellation and latest-complete-frame consumption independent of UI |
 | `hardware_controls.py`, `tone_curves.py` | Target-specific blocks, SDK initialization, saved originals, status polling, presets, shutter and incremental LUT upload/restore |
@@ -22,11 +24,12 @@ and capture behavior. This is a map, not a claim that a generic adapter exists.
 | `viewer_diagnostics.py`, `tools/watch_ui.py` | Opt-in stage timing, stream health and thread/stall observations |
 | `tools/inspect_telemetry.py` | Offline Duo-frame explorer; hardcodes Duo offsets and is not a generic parser |
 
-The current Duo decoder returns telemetry uint16 words, a 192×256 native count
-plane and an 8-bit preview luminance plane. The pipeline has additional Duo
-preview extraction and geometry assumptions. Shared rendering, calibration,
-graphs, GUI coordinates and recordings also refer to fixed native dimensions.
-Simply changing VID/PID or `SENSOR_WIDTH` is not new-camera support.
+The Duo decoder returns telemetry uint16 words, a 192×256 native count plane
+and an 8-bit preview luminance plane. Its bridge preserves the byte-frame API.
+Other backends supply decoded native planes, conversion and capability metadata;
+shared rendering, pipelines, spot mapping and recording use profile geometry/rate.
+Duo control serializers, telemetry tools and host calibration remain specific
+to the Duo. Simply changing VID/PID or `SENSOR_WIDTH` is not new-camera support.
 
 ## Choose the smallest honest support boundary
 

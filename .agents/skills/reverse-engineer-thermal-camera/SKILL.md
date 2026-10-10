@@ -24,7 +24,8 @@ capture backend is a valid first milestone; lack of safe controls must not block
   for the next experiment; continue independent offline work while waiting.
 - Read [program-integration.md](references/program-integration.md) to locate the
   capture, control, radiometry and pipeline boundaries. This program currently
-  hardcodes Duo assumptions in several modules; it has no universal camera adapter.
+  has explicit backend/frame/capability contracts. The Duo transport and host
+  calibration remain target-specific; a new camera still requires its own verified backend.
 
 ## Keep the camera recoverable
 

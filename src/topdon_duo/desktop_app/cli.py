@@ -21,6 +21,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     Parse args.
     """
     parser = argparse.ArgumentParser(description="Native TOPDON TC002C Duo viewer")
+    parser.add_argument("--camera", default="duo", help="Registered camera backend (default: duo)")
     parser.add_argument("--ambient", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=None)
     parser.add_argument(
@@ -67,6 +68,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Queued USB requests (2-128; 0: synchronous; default: 32 on macOS/Linux)",
     )
     args = parser.parse_args(argv)
-    if args.timelapse_fpm is not None and not 1 <= args.timelapse_fpm <= TIMELAPSE_MAX_FPM:
-        parser.error(f"--timelapse-fpm must be between 1 and {TIMELAPSE_MAX_FPM}")
+    if args.timelapse_fpm is not None and (
+        args.timelapse_fpm < 1 or args.camera == "duo" and args.timelapse_fpm > TIMELAPSE_MAX_FPM
+    ):
+        parser.error(f"--timelapse-fpm must be between 1 and {TIMELAPSE_MAX_FPM} for the Duo")
     return args

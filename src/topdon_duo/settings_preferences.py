@@ -5,6 +5,8 @@ import math
 from typing import Any, cast
 
 from .camera import FRAME_RATE
+from .camera_backends import CameraProfile, ControlSpec
+from .camera_backends.preferences import DEVICE_KEYS, settings_path
 from .distance_calibration import DistanceReference
 from .emissivity_calibration import validate_reference
 from .graph_settings import validate_graph_settings
@@ -18,16 +20,28 @@ from .view_settings import VIEW_DEFAULTS, validate_view_setting
 from .window_preferences import _path
 
 
-def load_settings() -> dict[str, Any]:
+def load_settings(
+    profile: CameraProfile | None = None, specs: dict[str, ControlSpec] | None = None,
+) -> dict[str, Any]:
     """
     Restore validated preferences and migrate removed pipeline correction controls.
     """
     try:
-        saved = json.loads(_path().with_name("settings.json").read_text())
+        saved = json.loads(settings_path(_path(), profile).read_text())
     except (OSError, ValueError):
-        return {}
+        if profile is None or profile.id == "duo":
+            return {}
+        saved = {}
     if not isinstance(saved, dict):
         return {}
+    if profile is not None and profile.id != "duo":
+        try:
+            shared = json.loads(_path().with_name("settings.json").read_text())
+        except (OSError, ValueError):
+            shared = {}
+        if isinstance(shared, dict):
+            saved = {**{key: value for key, value in shared.items() if key not in DEVICE_KEYS},
+                     **saved}
     result: dict[str, Any] = {"display": {}, "hardware": {}}
     for section in ("display", "hardware"):
         values = saved.get(section, {})
@@ -38,12 +52,40 @@ def load_settings() -> dict[str, Any]:
                 if section == "display":
                     validate_view_setting(name, value)
                 else:
-                    spec = HARDWARE_CONTROLS[name]
-                    spec.apply(bytearray(BLOCK_LENGTHS[spec.selector, spec.command]), value)
+                    if profile is not None and profile.id != "duo":
+                        if specs is not None and name in specs and specs[name].supported:
+                            specs[name].validate(value)
+                        elif (type(value) not in (str, bool, int, float)
+                              or isinstance(value, (int, float)) and not math.isfinite(value)):
+                            continue
+                    else:
+                        spec = HARDWARE_CONTROLS[name]
+                        spec.apply(bytearray(BLOCK_LENGTHS[spec.selector, spec.command]), value)
             except (KeyError, TypeError, ValueError, OverflowError):
                 continue
             result[section][name] = value
     display = result["display"]
+    spot_hardware = saved.get("spot_hardware")
+    if specs is not None and isinstance(spot_hardware, dict):
+        result["spot_hardware"] = {}
+        for spot_id, values in spot_hardware.items():
+            if not isinstance(spot_id, str) or not isinstance(values, dict):
+                continue
+            accepted = {}
+            for name, value in values.items():
+                spec = specs.get(name)
+                if spec is not None and spec.scope != "spot":
+                    continue
+                try:
+                    if spec is not None and spec.supported:
+                        spec.validate(value)
+                    elif (type(value) not in (str, bool, int, float)
+                          or isinstance(value, (int, float)) and not math.isfinite(value)):
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                accepted[name] = value
+            result["spot_hardware"][spot_id] = accepted
     if "raw_anime4k" in display:
         enabled = display.pop("raw_anime4k")
         display.setdefault("raw_upsampling", "anime4k09" if enabled else "off")
@@ -64,7 +106,9 @@ def load_settings() -> dict[str, Any]:
     ):
         result["ambient_input_celsius"] = ambient
     try:
-        result["spots"] = validate_spots(saved.get("spots"))
+        result["spots"] = validate_spots(
+            saved.get("spots"), native_size=profile.native_size if profile else None,
+        )
     except (TypeError, ValueError):
         pass
     try:
@@ -72,7 +116,8 @@ def load_settings() -> dict[str, Any]:
     except (TypeError, ValueError, OverflowError):
         pass
     rate = saved.get("timelapse_fpm")
-    if type(rate) is int and 1 <= cast(int, rate) <= FRAME_RATE * 60:
+    frame_rate = profile.frame_rate if profile else FRAME_RATE
+    if type(rate) is int and 1 <= cast(int, rate) <= frame_rate * 60:
         result["timelapse_fpm"] = rate
     rotation = saved.get("rotation")
     if type(rotation) is int and rotation in (0, 90, 180, 270):
@@ -119,8 +164,13 @@ def load_settings() -> dict[str, Any]:
     except (TypeError, ValueError, OverflowError):
         pass
     try:
-        result["pipeline"] = validate_pipeline(saved.get("pipeline"))
-        for name, value in legacy_calibration_values(saved["pipeline"]).items():
+        result["pipeline"] = validate_pipeline(
+            saved.get("pipeline"), hardware_profile=profile.id if profile else "duo",
+        )
+        legacy_values = legacy_calibration_values(saved["pipeline"]) if (
+            profile is None or profile.id == "duo"
+        ) else {}
+        for name, value in legacy_values.items():
             if name == "humidity":
                 result["hardware"].setdefault(name, value)
             else:
@@ -130,9 +180,20 @@ def load_settings() -> dict[str, Any]:
     return result
 
 
-def save_settings(settings: dict[str, Any]) -> None:
+def save_settings(settings: dict[str, Any], profile: CameraProfile | None = None) -> None:
     """
     Atomically persist settings without sharing temporary files with other saves.
     """
-    path = _path().with_name("settings.json")
+    path = settings_path(_path(), profile)
+    path.parent.mkdir(parents=True, exist_ok=True)
     save_json(path, settings, indent=2)
+    if profile is not None and profile.id != "duo":
+        shared_path = _path().with_name("settings.json")
+        try:
+            shared = json.loads(shared_path.read_text())
+        except (OSError, ValueError):
+            shared = {}
+        if not isinstance(shared, dict):
+            shared = {}
+        shared.update({key: value for key, value in settings.items() if key not in DEVICE_KEYS})
+        save_json(shared_path, shared, indent=2)

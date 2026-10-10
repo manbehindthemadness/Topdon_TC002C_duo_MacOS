@@ -42,6 +42,7 @@ from ..pipeline_presets import load_presets, save_presets
 from ..pipeline_titles import node_title
 from .compute import configure_backend_row, state_backend, update_compute_devices
 from .custom import CustomControls
+from .hardware import HardwareControlFields
 from .presets import pipeline_content, rename_current_preset
 from .state import update_editor_state
 from .transfer.actions import export_pipelines, import_pipelines
@@ -57,6 +58,7 @@ class PipelineEditor(QWidget):
         """
         super().__init__()
         self.send, self.row_class = send, row_class
+        self.last_state = {}
         self.document = default_pipeline()
         self.accepted_document = deepcopy(self.document)
         self.tab = "A"
@@ -67,6 +69,7 @@ class PipelineEditor(QWidget):
         self.rebuilding = False
         self.widgets: dict[str, tuple[str, dict[str, ControlRow], Any, Any, Any]] = {}
         self.custom_widgets: dict[str, CustomControls] = {}
+        self.hardware_widgets: dict[str, HardwareControlFields] = {}
         self.preview_widgets = {}
         self.preview_timing_widgets = {}
         self.preview_cache = {}
@@ -202,7 +205,7 @@ class PipelineEditor(QWidget):
             self.delete_current_preset()
             return
         if action == "load":
-            self.document = validate_pipeline(self.presets[name])
+            self.document = self.validate_document(self.presets[name])
             self.current_preset_name = name
             self.recognize_preset = True
             self.rebuild()
@@ -232,7 +235,7 @@ class PipelineEditor(QWidget):
                 return
         self.commit_pending_inputs()
         try:
-            candidate = {**self.presets, name: validate_pipeline(self.document)}
+            candidate = {**self.presets, name: self.validate_document(self.document)}
             save_presets(candidate)
         except (OSError, ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Could not save preset", str(exc))
@@ -246,7 +249,9 @@ class PipelineEditor(QWidget):
         """
         Include spinbox edits that are still waiting on their debounce timer.
         """
-        for _, controls, *_ in list(self.widgets.values()):
+        control_groups = [controls for _, controls, *_ in list(self.widgets.values())]
+        control_groups.extend(fields.rows for fields in self.hardware_widgets.values())
+        for controls in control_groups:
             for row in controls.values():
                 if hasattr(row.input, "interpretText"):
                     row.input.interpretText()
@@ -327,12 +332,19 @@ class PipelineEditor(QWidget):
         if hasattr(self, "last_state"):
             self.update_state(self.last_state, self.locked)
 
+    def validate_document(self, document: dict[str, Any]) -> dict[str, Any]:
+        """
+        Apply structural validation with the currently selected camera's rules.
+        """
+        profile = self.last_state.get("camera_profile", {}).get("id", "duo")
+        return validate_pipeline(document, hardware_profile=profile)
+
     def publish(self) -> None:
         """
         Publish.
         """
         try:
-            validate_pipeline(self.document)
+            self.validate_document(self.document)
         except ValueError as exc:
             QMessageBox.warning(self, "Pipeline rejected", str(exc))
             self.document = deepcopy(self.accepted_document)
@@ -519,6 +531,7 @@ class PipelineEditor(QWidget):
         self.rebuilding = True
         self.widgets = {}
         self.custom_widgets = {}
+        self.hardware_widgets = {}
         self.preview_widgets = {}
         self.preview_timing_widgets = {}
         for stack, listing in self.stacks.items():
@@ -593,6 +606,11 @@ class PipelineEditor(QWidget):
                 fields.setContentsMargins(4, 0, 4, 0)
                 controls = {}
                 definitions = CATALOG[stack][item["type"]][1]
+                if item["type"] == "device_control":
+                    hardware = HardwareControlFields(self, item)
+                    self.hardware_widgets[item["id"]] = hardware
+                    fields.addWidget(hardware)
+                    definitions = {}
                 if item["type"] == "custom":
                     custom = CustomControls(self, item)
                     self.custom_widgets[item["id"]] = custom
