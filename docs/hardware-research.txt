@@ -2864,3 +2864,41 @@ cleanup restored automatic operation. Four settings blocks matched their before
 bytes afterward. No NVM/factory command sent. Regression tests cover cold-start
 block reads, cold auto-toggle without load, protocol reset, replacement device,
 invalid versions and the existing unsupported-layout rejection. 535 tests passed.
+
+Preset baseline software correction (2026-10-10)
+----------------------------------------------
+The initial Shadow/Soft guard required legacy getter bank1, while existing
+post-write verification already accepted Balanced banks1/4 (Shadow2/5, Soft3/6).
+Corrected the initial guard to accept both documented Balanced gain banks. The
+factory ISP hash/layout and original SDK mode1 requirements are retained. Failed
+baseline checks now include original SDK AGC mode and current getter bank; no
+unknown bank is translated into a wire mode or silently reset. Guard originally
+landed October6 (ad3c931), not in recent custom-node/UI changes. Fake-device tests
+cover both gain banks, preset-only pipelines, UI expansion without writes,
+restoration, and rejected states. This is an offline software correction using
+existing protocol evidence; no new live gain-bank trial is claimed.
+
+Live-bank/SDK baseline mismatch correction (2026-10-10)
+-----------------------------------------------------
+User supplied viewer log: startup SDK AGC mode1 but current legacy bank3, followed
+by a successful Balanced + detail pipeline operation. Bank3 is the already-known
+Soft preset; the SDK snapshot and live legacy selection can diverge. The old
+first-use guard wrongly treated that known live selection as an incompatible
+baseline. Selecting Balanced also previously did nothing unless this controller
+already owned a preset change; its cached label alone did not verify hardware.
+
+Normal preset selection now accepts known live banks1..6 with the verified
+factory ISP and original SDK mode1 still required. It captures the first observed
+live preset separately, maps banks to known preset names, writes only the audited
+modes1/2/0, and verifies the corresponding bank pair. Balanced is explicitly
+applied when not already owned. Restoration targets the captured live preset,
+after SDK controls are restored because their refresh can overwrite bank state.
+Fixed detail's selected-Balanced constraint is unchanged. Unknown live banks and
+unverified SDK/ISP layouts still reject without speculative resetting. New tests
+cover all known initial banks, all three requested presets, the logged bank3
+case, failed selection/cleanup ownership, and SDK-before-preset restore ordering.
+No new independent live camera access/trial was performed for this correction.
+Pipeline application verifies the first active, explicit preset node even when
+its requested Balanced value matches the controller's default label. Introducing
+such a node to an already-empty preview pipeline also verifies it. Implicit
+Balanced defaults and raw-only pipelines do not add preset reads/writes.

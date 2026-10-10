@@ -80,7 +80,16 @@ class PipelineHardware:
             self.document = candidate
             return
         desired = desired_hardware(candidate)
-        if desired == self._desired:
+        preset_active = preview_required(candidate) and any(
+            item["type"] == "preset" for item in active_nodes(candidate, "hardware")
+        )
+        previous_preset_active = (
+            self.document is not None
+            and preview_required(self.document)
+            and any(item["type"] == "preset" for item in active_nodes(self.document, "hardware"))
+        )
+        verify_preset = preset_active and (self._desired is None or not previous_preset_active)
+        if desired == self._desired and not verify_preset:
             self.document = candidate
             return  # Reordering/collapse/software edits perform no USB operations.
         if not self.hardware.original and desired == ({}, "balanced", 50, 0, False):
@@ -90,7 +99,7 @@ class PipelineHardware:
             return
         previous = self._desired
         try:
-            self._apply(desired)
+            self._apply(desired, verify_preset=verify_preset)
         except (CameraError, ValueError, TypeError) as exc:
             try:
                 self._apply(previous or ({}, "balanced", 50, 0, False), force=True)
@@ -104,6 +113,7 @@ class PipelineHardware:
 
     def _apply(
         self, desired: tuple[dict[str, Any], str, int, int, bool], force: bool = False,
+        verify_preset: bool = False,
     ) -> None:
         """
         Apply only pipeline-owned fields, preserving standalone calibration settings.
@@ -158,7 +168,7 @@ class PipelineHardware:
         for name in order:
             if name in changed:
                 hw.set(name, controls.get(name, current[name]["value"]), name in controls)
-        if force or hw.processing_preset != preset:
+        if force or verify_preset or hw.processing_preset != preset:
             hw.set_processing_preset(preset)
         if tone_changes and (gamma != 50 or boost):
             hw.set_tone(gamma, boost)

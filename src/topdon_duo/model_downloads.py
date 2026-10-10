@@ -79,5 +79,18 @@ class ModelDownloads:
         with self.lock:
             return " · ".join(job["message"] for job in self.jobs.values() if job["message"])
 
+    def clear_cache(self) -> tuple[int, int]:
+        """
+        Delete downloaded files under the job lock, refusing active installations.
+        """
+        from .model_cache import clear_downloaded_models
+
+        with self.lock:
+            if any(job["state"] == "pending" for job in self.jobs.values()):
+                raise ValueError("Wait for model downloads to finish before clearing the cache")
+            result = clear_downloaded_models()
+            self.jobs.clear()
+            return result
+
 
 MODEL_DOWNLOADS = ModelDownloads()

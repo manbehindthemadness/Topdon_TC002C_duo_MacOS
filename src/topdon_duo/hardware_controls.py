@@ -106,6 +106,7 @@ HARDWARE_CONTROLS = {
 }
 BLOCK_LENGTHS = {(2, 1): 2, (2, 2): 2, (2, 5): 79, (3, 1): 80}
 PROCESSING_PRESETS = {"balanced": 1, "shadow": 2, "soft": 0}
+PROCESSING_BANKS = {"balanced": (1, 4), "shadow": (2, 5), "soft": (3, 6)}
 
 
 def camera_operation_title(command: dict) -> str | None:
@@ -149,6 +150,7 @@ class HardwareControls:
         self._fixed_range_bounds: tuple[int, int] | None = None
         self.processing_preset = "balanced"
         self._processing_preset_owned = False
+        self._original_processing_preset: str | None = None
         self.gamma = 50
         self.boost = 0
         self._tone_owned = False
@@ -289,26 +291,49 @@ class HardwareControls:
             raise CameraError(f"Processing preset transfer failed: {exc}") from exc
 
     def _apply_processing_preset(self, preset: str) -> None:
+        """
+        Apply a verified wire mode and accept either gain's corresponding bank.
+        """
         mode = PROCESSING_PRESETS[preset]
         self._processing_command(mode)
         # The getter returns a bank, not the setter's mode. Gain selects
         # a second set of banks; never use the returned bank as a restore mode.
-        if self._processing_command() not in {1: (1, 4), 2: (2, 5), 0: (3, 6)}[mode]:
+        if self._processing_command() not in PROCESSING_BANKS[preset]:
             raise CameraError("Camera processing bank did not match the selected preset")
 
     def set_processing_preset(self, preset: str) -> None:
+        """
+        Preserve the live preset, then select a preview preset on the verified factory ISP.
+        """
         if not isinstance(preset, str) or preset not in PROCESSING_PRESETS:
             raise ValueError("Unknown camera processing preset")
         if self._fixed_range_owned:
             raise CameraError("Turn off fixed mode before changing processing presets")
-        if preset == "balanced":
+        if (
+            preset == "balanced" and self._processing_preset_owned
+            and self._original_processing_preset in (None, "balanced")
+        ):
             self.restore_processing_preset()
             return
         self.load()
         if not self._processing_preset_owned:
             self._fixed_range_baseline()  # Same verified factory ISP table.
-            if self.original[2, 5][23] != 1 or self._processing_command() != 1:
-                raise CameraError("Processing presets require the tested Balanced camera baseline")
+            original_mode = self.original[2, 5][23]
+            current_bank = self._processing_command()
+            current_preset = next(
+                (name for name, banks in PROCESSING_BANKS.items() if current_bank in banks), None
+            )
+            if (
+                original_mode != PROCESSING_PRESETS["balanced"]
+                or current_preset is None
+            ):
+                raise CameraError(
+                    "Processing presets require the verified SDK/ISP baseline "
+                    f"(startup AGC mode={original_mode}, current bank={current_bank}; "
+                    "expected startup mode=1 and a known processing bank 1–6)"
+                )
+            if self._original_processing_preset is None:
+                self._original_processing_preset = current_preset
         self._processing_preset_owned = True
         try:
             self._apply_processing_preset(preset)
@@ -320,10 +345,14 @@ class HardwareControls:
             self.set_tone(self.gamma, self.boost)
 
     def restore_processing_preset(self) -> None:
+        """
+        Restore the observed live preset, retaining ownership if restoration fails.
+        """
         if self._processing_preset_owned:
-            self._apply_processing_preset("balanced")
+            original = self._original_processing_preset or "balanced"
+            self._apply_processing_preset(original)
             self._processing_preset_owned = False
-        self.processing_preset = "balanced"
+            self.processing_preset = original
 
         if self._tone_owned:
             self.set_tone(self.gamma, self.boost)
@@ -598,11 +627,14 @@ class HardwareControls:
             self.set_tone(self.gamma, self.boost)
 
     def restore(self) -> None:
+        """
+        Restore SDK controls before the live preset, since SDK writes can reload its bank.
+        """
         self.restore_tone()
         self.restore_fixed_range()
-        self.restore_processing_preset()
         for name in tuple(self.enabled):
             self.set(name, self.values[name], False)
+        self.restore_processing_preset()
 
     @property
     def tone_progress(self) -> int:

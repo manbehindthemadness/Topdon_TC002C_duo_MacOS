@@ -327,6 +327,7 @@ class SettingsController(SessionState):
             }
         return {
             **self.renderer.view_settings(),
+            "status_error": bool(self.pipeline_error or self.hardware.error),
             "pipeline": self.pipeline,
             "apple_acceleration": self.apple_capability,
             "nvidia_acceleration": self.nvidia_capability,

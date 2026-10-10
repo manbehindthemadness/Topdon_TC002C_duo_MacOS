@@ -181,7 +181,7 @@ assert "Redneck Combat GPU" in editor.presets
 assert "Yautja" in editor.presets
 assert "Yautja GPU" in editor.presets
 baseline_count = editor.preset_combo.count()
-assert baseline_count == len(editor.presets) + 5
+assert baseline_count == len(editor.presets) + 6
 editor.insert("software", "enhance", 1)
 enhance = editor.document["software"][1]
 assert enhance["params"]["passes"] == 3

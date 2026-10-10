@@ -464,9 +464,11 @@ class ViewWindow(QWidget):
         rows.addStretch()
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
-        self.status = QLabel()
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
+        from .error_status import ErrorStatus
+
+        self.status_alert = ErrorStatus()
+        self.status = self.status_alert.message
+        layout.addWidget(self.status_alert)
         buttons = QHBoxLayout()
         self.restore_button = QPushButton("Restore camera settings")
         self.restore_button.clicked.connect(self._restore_hardware)
@@ -568,7 +570,7 @@ class ViewWindow(QWidget):
             row.update_state(setting.get("value", HARDWARE_CONTROLS[name].minimum), available)
         for tool, key in ((self.distance_calibration, "distance_calibration"), (self.emissivity_calibration, "emissivity_calibration"), (self.reflected_calibration, "reflected_calibration")):
             tool.update_state(state.get(key, {}), unit, locked)
-        self.status.setText(state.get("status", ""))
+        self.status_alert.update_status(state.get("status", ""), bool(state.get("status_error")))
         if state.get("raise_window"):
             self.showNormal()
             self.raise_()

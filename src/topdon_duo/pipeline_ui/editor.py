@@ -135,6 +135,7 @@ class PipelineEditor(QWidget):
         self.preset_combo.addItem("Rename current pipeline…", ("rename", ""))
         self.preset_combo.addItem("Save current pipeline as…", ("save", ""))
         self.preset_combo.addItem("Delete current pipeline…", ("delete", ""))
+        self.preset_combo.addItem("Clear downloaded model cache…", ("clear_cache", ""))
         if self.presets:
             self.preset_combo.insertSeparator(self.preset_combo.count())
         for name in sorted(self.presets, key=str.casefold):
@@ -180,6 +181,17 @@ class PipelineEditor(QWidget):
         if self.locked or choice is None:
             return
         action, name = choice
+        if action == "clear_cache":
+            if QMessageBox.question(
+                self, "Clear downloaded model cache",
+                "Delete downloaded models from the local cache? Bundled models, local exports "
+                "and registered local files are retained. Active pipelines may download their "
+                "models again. Downloads must finish first.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) == QMessageBox.StandardButton.Yes:
+                self.send({"action": "clear_model_cache"})
+            return
         if action == "rename":
             rename_current_preset(self)
             return

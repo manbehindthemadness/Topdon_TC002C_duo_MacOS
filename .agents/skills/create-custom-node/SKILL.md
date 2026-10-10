@@ -80,7 +80,7 @@ name from the algorithm actually executed.
   independent background workers or long-lived resources without accounting for
   the runtime's actual cleanup contract; unloading does not call a user teardown
   hook. Keep code imports free of unnecessary side effects.
-- Only Python and JSON files are embedded, <=128 files and <=2 MiB serialized.
+- Only Python and JSON files are embedded, without a fixed package-size or file-count limit.
   Hidden files and caches are excluded; symbolic links and unsafe paths are
   refused. Non-code assets such as ONNX weights remain external. Document a
   supported format and model source. Use the shared `ModelResolver` API described

@@ -29,6 +29,14 @@ bar appears only for valid moves within the same stack; Source and Output remain
 fixed. It clears when the drag leaves the stack, is cancelled, or is dropped.
 
 The pipeline presets dropdown beside Import, Export, and Restore defaults
+also offers **Clear downloaded model cache…**. After confirmation, this removes
+recognized catalog/custom downloads and their checksum files from the shared
+model cache, reporting the file count and disk space freed. Bundled models,
+local exports, registered local files, unknown files, and symlinks are retained.
+Clearing is unavailable during model downloads, logging, or calibration. Active
+pipelines can download missing models again; saved pipelines are unchanged.
+
+The dropdown
 offers bundled and user-saved presets. Choose **Save current pipeline as…** to
 name and save your own preset; select its name to apply it later. Presets include
 the hardware stack and all four software tabs, persist across restarts, and can
@@ -108,6 +116,11 @@ Advanced / Auto placeholder and Analyze mode switch are removed.
 
 Fixed detail requires enabled detail enhancement, Balanced processing,
 gamma 50 and boost Off. Invalid combinations are rejected before writing.
+Normal preset switching accepts all known Balanced, Shadow and Soft processing
+banks, including their gain-paired banks. It retains the verified factory SDK/ISP
+checks, saves the observed live preset for restoration, and applies Balanced
+explicitly when selected. Only Fixed detail requires Balanced to remain selected.
+A rejected SDK/ISP baseline reports the original AGC mode and current bank.
 Gamma uploads retain progress and cancellation. Camera controls that affect
 only preview are inactive when no connected tab or combine input/mask uses
 camera preview; their selected values remain saved for returning to Camera preview. Measurement controls work in
@@ -437,7 +450,10 @@ Image processing uses a coordinator and one worker per connected tab, with only
 the latest pending frame.
 Old pipeline-revision results are ignored. Temperature sampling, graphs and UI
 input continue while an image is being processed. Camera status shows latency
-and warns above 500 ms; slow pipelines are allowed. Intermediate images are
+and warns above 500 ms; slow pipelines are allowed.
+Camera status adds a flashing red warning icon after the message while a hardware
+or image-processing error is active. The marker stops and disappears when the
+error clears; slow processing alone does not flash it. Intermediate images are
 limited to four megapixels, and oversize chains report an error instead of
 skipping a node. Enhancement changes display detail, not sensor resolution.
 

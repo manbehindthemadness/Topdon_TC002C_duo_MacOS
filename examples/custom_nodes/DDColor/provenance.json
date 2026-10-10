@@ -1,0 +1,24 @@
+{
+  "wrapper_repository": "https://github.com/instant-high/DDColor-onnx",
+  "wrapper_revision": "fa513b61fdb987398f03d3ebd9b5205f310262bf",
+  "original_model_project": "https://github.com/piddnad/DDColor",
+  "original_project_license": "Apache-2.0; retained in LICENSE-DDColor.txt",
+  "original_onnx_archive": {
+    "source": "https://drive.google.com/file/d/1R05w65qEWW_H4lcW1NdfcqAEPdWvjqEW/view",
+    "sha256": "2a9da012515517afde4d646101edb703c7aec0687328eb1a0d708bbdc37424c9",
+    "tested_member": "ddcolor_paper_tiny.onnx",
+    "member_sha256": "65c365579ccdcdc1e49663cd39b4573ba56d9caeaf5a31c100a6df1b9bed4dc6",
+    "member_bytes": 270220918,
+    "input_shape": [1, 3, 256, 256]
+  },
+  "automatic_model": {
+    "publisher": "https://huggingface.co/edgetools/ddcolor",
+    "revision": "c4c98361d19eda29908cc960be39e8eeb44fc530",
+    "filename": "ddcolor-tiny-fp16.onnx",
+    "sha256": "2653da00dc15e54a45e5200b61dbf82ee9ceaf56b02bb9b9657569ac775e82e6",
+    "input_shape": [1, 3, 512, 512],
+    "note": "Separate DDColor tiny export with FP16 weights and float32 input/output; not a file from the instant-high archive"
+  },
+  "implementation": "Independent viewer package following instant-high's Lab preprocessing and chroma reconstruction; optional strength, polarity and reversible input rotation added",
+  "verification": "Both tested models match the linked wrapper's rounded uint8 CPU output exactly on the saved thermal frame"
+}

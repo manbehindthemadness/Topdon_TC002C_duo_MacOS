@@ -182,6 +182,26 @@ existing dependencies. Its README explains model setup and the supported export.
 Select the `examples/custom_nodes/Classless YOLO` folder to load it; its pinned
 model downloads automatically, or you can supply a local model-file override.
 
+[Based GAN](../examples/custom_nodes/based-gan/README.md) is a standalone
+Thermal2RGB-compatible ONNX prototype in its own Git submodule under
+`examples/custom_nodes/`. Select `examples/custom_nodes/based-gan/nodes/Based GAN`
+to load its Custom package. Its pinned default model downloads in the worker;
+Browse can override it with a local converted model. Its README
+documents the conversion tools, actual Apple GPU measurements, model provenance
+and local demo pipeline. It processes display pixels only; generated colors and
+textures are predictions. Versioned model assets and upstream attribution live
+in the Based GAN repository's release and README.
+For a fresh viewer checkout, initialize its source with
+`git submodule update --init -- examples/custom_nodes/based-gan`. Optional model
+conversion is documented in that repository.
+
+[DDColor](../examples/custom_nodes/DDColor/README.md) is a separate colorization
+example. Select `examples/custom_nodes/DDColor`; it predicts Lab chroma and retains
+the original-resolution lightness. Its pinned 512 tiny export downloads in the
+worker, or Browse can select the faster tested 256 tiny export from the linked
+upstream archive. Both CPU and Apple GPU inference were tested on a saved thermal
+frame; the README records timings, cold compilation cost and source attribution.
+
 ## Shared model downloader
 
 Custom packages can use the viewer's background downloader:
@@ -254,8 +274,8 @@ Python and JSON files are embedded in saved presets and pipeline exports, so the
 original folder is no longer required. Select the folder again to load changes
 from disk, including its configuration defaults; files are not watched automatically.
 Hidden files and `__pycache__` are excluded, other file types are not bundled,
-and symbolic links are refused. Packages need a root `__init__.py` and are limited
-to 128 files and a 2 MiB serialized bundle. JSON resources may be read relative
+and symbolic links are refused. Packages need a root `__init__.py`; package size
+and file count have no fixed limit. JSON resources may be read relative
 to `__file__`; each loaded package has its own temporary directory.
 
 Package loading in the editor and pipeline document validation check paths,

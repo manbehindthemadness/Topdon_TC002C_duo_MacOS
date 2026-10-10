@@ -124,6 +124,7 @@ class ControlsController(SessionState):
                 or self.reflected_calibration.running
             ) and command.get("action") in (
                 "pipeline",
+                "clear_model_cache",
                 "setting",
                 "hardware",
                 "advanced_auto",
@@ -180,6 +181,13 @@ class ControlsController(SessionState):
                     if command["action"] == "pipeline":
                         self.set_pipeline(command["document"])
                         self.hardware.error = ""
+                elif command.get("action") == "clear_model_cache":
+                    try:
+                        count, size = self.api.MODEL_DOWNLOADS.clear_cache()
+                    except OSError as exc:
+                        raise ValueError(f"Could not clear downloaded model cache: {exc}") from exc
+                    freed_mb = float(size) / 1_000_000
+                    self.notify(f"Model cache cleared: {count} files, {freed_mb:.1f} MB freed")
                 elif command.get("action") == "setting":
                     self.set_view_setting(command["name"], command["value"])
                 elif command.get("action") in (

@@ -10,7 +10,6 @@ from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-MAX_PACKAGE_BYTES = 2 * 1024 * 1024
 MAX_CONFIG_BYTES = 64 * 1024
 
 
@@ -21,13 +20,15 @@ def reject_constant(value: str) -> None:
     raise ValueError(f"Invalid JSON constant: {value}")
 
 
-def read_json_object(text: str, maximum: int = MAX_CONFIG_BYTES) -> dict[str, Any]:
+def read_json_object(text: str, maximum: int | None = MAX_CONFIG_BYTES) -> dict[str, Any]:
     """
-    Decode a bounded JSON object with finite numbers.
+    Decode a JSON object with finite numbers and an optional size limit.
     """
-    if not isinstance(text, str) or len(text.encode("utf-8")) > maximum:
-        raise ValueError("Custom JSON exceeds its size limit")
     try:
+        if not isinstance(text, str):
+            raise TypeError("Custom JSON must be text")
+        if maximum is not None and len(text.encode("utf-8")) > maximum:
+            raise ValueError("Custom JSON exceeds its size limit")
         result = json.loads(text, parse_constant=reject_constant)
         if not isinstance(result, dict):
             raise TypeError("Custom JSON must be an object")
@@ -42,11 +43,11 @@ def checked_files(text: str) -> tuple[tuple[str, str], ...]:
     """
     Validate embedded paths and syntax before materializing a package.
     """
-    files = read_json_object(text, MAX_PACKAGE_BYTES)
+    files = read_json_object(text, None)
     if not files:
         return ()
-    if len(files) > 128 or "__init__.py" not in files:
-        raise ValueError("Custom package needs __init__.py and at most 128 files")
+    if "__init__.py" not in files:
+        raise ValueError("Custom package needs __init__.py")
     for name, source in files.items():
         path = PurePosixPath(name)
         if (
@@ -87,7 +88,6 @@ def load_folder(folder: Path) -> dict[str, str]:
     Snapshot Python/JSON package files, excluding caches and refusing symbolic links.
     """
     files: dict[str, str] = {}
-    total = 0
     for path in sorted(folder.rglob("*")):
         relative = path.relative_to(folder)
         if any(part.startswith(".") or part == "__pycache__" for part in relative.parts):
@@ -96,9 +96,6 @@ def load_folder(folder: Path) -> dict[str, str]:
             raise ValueError("Custom packages cannot contain symbolic links")
         if not path.is_file() or path.suffix not in (".py", ".json"):
             continue
-        total += path.stat().st_size
-        if total > MAX_PACKAGE_BYTES or len(files) >= 128:
-            raise ValueError("Custom package exceeds 2 MiB or 128 files")
         files[relative.as_posix()] = path.read_text(encoding="utf-8")
     if not files:
         raise ValueError("Select a Python package folder containing __init__.py")

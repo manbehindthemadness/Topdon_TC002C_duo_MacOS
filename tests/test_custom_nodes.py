@@ -27,7 +27,6 @@ from topdon_duo.processing.branch import BranchProcessor
         {"__init__.py": "", "config.json": "[] trailing"},
         {"__init__.py": "", "config.json": '{"x": 1e999}'},
         {"__init__.py": "", "helper.py": "", "helper.py/data.json": "{}"},
-        {"__init__.py": "#" * (2 * 1024 * 1024)},
     ],
 )
 def test_package_document_validation_rejects_malformed_files(files: dict[str, Any]) -> None:
@@ -50,6 +49,34 @@ def test_folder_refuses_symlinks_and_missing_entrypoint(tmp_path: Path) -> None:
     (tmp_path / "link.py").symlink_to(tmp_path / "helper.py")
     with pytest.raises(ValueError, match="symbolic links"):
         load_folder(tmp_path)
+
+
+@pytest.mark.parametrize("large_resource", [False, True])
+def test_large_packages_survive_folder_loading_and_document_round_trip(
+    tmp_path: Path, large_resource: bool,
+) -> None:
+    """
+    Execute portable packages exceeding the former byte or file-count limits.
+    """
+    (tmp_path / "__init__.py").write_text(
+        "import json\nfrom pathlib import Path\n"
+        "def process(image, config):\n"
+        " data = json.loads(Path(__file__).with_name('data.json').read_text())\n"
+        " return image + data['amount']\n"
+    )
+    resource = {"amount": 12, "padding": "x" * (2 * 1024 * 1024) if large_resource else ""}
+    (tmp_path / "data.json").write_text(json.dumps(resource))
+    if not large_resource:
+        for index in range(128):
+            (tmp_path / f"helper_{index}.py").write_text("")
+    item = node("software", "custom", **load_folder(tmp_path))
+    document = validate_pipeline(json.loads(json.dumps(raw_pipeline(item))))
+    processor = CustomProcessor()
+    try:
+        result = processor.apply(np.zeros((3, 4, 3)), document["software"][2])
+        assert np.all(result == 12)
+    finally:
+        processor.close()
 
 
 def custom_item(source: str, config: str = "{}") -> dict[str, Any]:

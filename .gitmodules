@@ -1,0 +1,3 @@
+[submodule "examples/custom_nodes/based-gan"]
+	path = examples/custom_nodes/based-gan
+	url = https://github.com/manbehindthemadness/based-gan.git
