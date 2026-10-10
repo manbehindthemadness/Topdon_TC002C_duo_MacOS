@@ -560,7 +560,10 @@ preserving the camera baseline on the next launch; the physical baseline is
 still restored on exit. Restore camera settings also clears saved hardware
 overrides and bypasses optional hardware nodes; Restore default pipeline resets the stacks. Explicit
 `--rotate` and `--image-source` options override remembered values. Invalid saved
-fields are ignored independently so valid preferences can still load.
+fields, including numbers too large for their validators, are ignored independently
+so valid preferences can still load. Settings, window-size, preset and dialog-directory
+saves use atomic replacement with a separate temporary file for each writer;
+overlapping saves publish complete files, with the last replacement taking precedence.
 Ambient temperature inputs retain the value you enter (for example, 72°F), while
 the hardware write silently rounds to the control's Celsius step. The requested
 input is remembered across launches; measurements use the actual camera setting.

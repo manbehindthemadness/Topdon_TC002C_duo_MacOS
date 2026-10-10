@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 
+from .preference_io import save_json
 from .window_preferences import _path
 
 LOG = logging.getLogger(__name__)
@@ -33,20 +34,15 @@ def load_dialog_directory(kind, default_directory=None):
     return None
 
 
-def remember_dialog_directory(kind, selected_file):
+def remember_dialog_directory(kind: str, selected_file: str | Path) -> None:
+    """
+    Remember an accepted dialog directory, logging filesystem failures without failing capture.
+    """
     path = _directory_path(kind)
-    temporary = path.with_suffix(".json.tmp")
     try:
         directory = Path(selected_file).expanduser().resolve().parent
         if not directory.is_dir():
             return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_text(json.dumps(str(directory)) + "\n")
-        temporary.replace(path)
+        save_json(path, str(directory))
     except OSError as exc:
         LOG.warning("Could not remember %s dialog directory: %s", kind, exc)
-    finally:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass

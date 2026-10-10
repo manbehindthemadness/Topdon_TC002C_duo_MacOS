@@ -1,232 +1,70 @@
 """Camera and display controls in a separate Qt process."""
 
+import math
 import sys
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 from PySide6.QtCore import QPoint, QSettings, QSignalBlocker, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
-    QSlider,
     QVBoxLayout,
     QWidget,
 )
 
 from .capture_window import run_window
 from .hardware_controls import HARDWARE_CONTROLS, camera_operation_title
+from .view_controls import (
+    ControlRow,
+    NoWheelCheckBox,
+    NoWheelComboBox,
+    NoWheelSlider,
+    NoWheelSpinBox,
+)
 from .view_settings import DISTANCE_METERS_PER_UNIT, TEMPERATURE_UNITS, VIEW_DEFAULTS
 
-
-class NoWheelSlider(QSlider):
-    """Let the surrounding scroll area handle mouse-wheel input."""
-
-    def wheelEvent(self, event) -> None:
-        event.ignore()
-
-
-class NoWheelComboBox(QComboBox):
-    """Keep choices unchanged while scrolling the surrounding menu."""
-
-    def wheelEvent(self, event) -> None:
-        event.ignore()
-
-
-class NoWheelSpinBox(QDoubleSpinBox):
-    """Keep numeric values unchanged while scrolling the surrounding menu."""
-
-    def wheelEvent(self, event) -> None:
-        event.ignore()
+__all__ = [
+    "ControlRow",
+    "DistanceCalibrationControls",
+    "EmissivityCalibrationControls",
+    "NoWheelCheckBox",
+    "NoWheelComboBox",
+    "NoWheelSlider",
+    "NoWheelSpinBox",
+    "ReflectedCalibrationControls",
+    "ViewWindow",
+    "main",
+]
 
 
-class NoWheelCheckBox(QCheckBox):
-    def wheelEvent(self, event) -> None:
-        event.ignore()
-
-
-class ControlRow(QWidget):
-    """An editable value with a slider for range controls."""
-
-    def __init__(
-        self,
-        title,
-        changed,
-        *,
-        minimum=0,
-        maximum=1,
-        step=1,
-        options=(),
-        unit="",
-        preserve_input=False,
-    ):
-        super().__init__()
-        self.preserve_input = preserve_input
-        self.changed = changed
-        self.options = tuple(options)
-        self.is_switch = tuple(text for _, text in self.options) == ("Off", "On")
-        self.step = step
-        self.minimum = minimum
-        self.maximum = maximum
-        self.is_temperature = unit == "°C"
-        self.is_distance = unit == "m"
-        self.temperature_unit = "C"
-        self.timer = QTimer(self)
-        self.timer.setSingleShot(True)
-        self.timer.setInterval(250)
-        self.timer.timeout.connect(self._emit)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        label = QLabel(title)
-        label.setStyleSheet("font-weight: 600")
-        layout.addWidget(label)
-        line = QHBoxLayout()
-        if self.is_switch:
-            self.input = NoWheelCheckBox("Enabled")
-            self.input.toggled.connect(self._input_changed)
-        elif self.options:
-            self.input = NoWheelComboBox()
-            for value, text in self.options:
-                self.input.addItem(text, value)
-            self.input.currentIndexChanged.connect(self._input_changed)
-        else:
-            self.input = NoWheelSpinBox()
-            self.input.setRange(self._display_value(minimum), self._display_value(maximum))
-            self.input.setDecimals(
-                0 if self.is_distance else (2 if step == 0.01 else (1 if step == 0.1 else 0))
-            )
-            self.input.setSingleStep(step * 100 if self.is_distance else step)
-            self.input.setKeyboardTracking(False)
-            self.input.setSuffix(" cm" if self.is_distance else f" {unit}" if unit else "")
-            self.input.valueChanged.connect(self._input_changed)
-        self.input.setMinimumWidth(160)
-        self.input.setAccessibleName(title)
-        line.addWidget(self.input)
-        self.slider = None
-        if not self.options:
-            self.slider = NoWheelSlider(Qt.Horizontal)
-            self.slider.setAccessibleName(f"{title} slider")
-            self.slider.setRange(0, round((maximum - minimum) / step))
-            self.slider.valueChanged.connect(self._slider_changed)
-            self.slider.sliderReleased.connect(self._emit)
-            line.addWidget(self.slider, 1)
-        else:
-            line.addStretch()
-        layout.addLayout(line)
-
-    def value(self):
-        if self.is_switch:
-            return self.options[int(self.input.isChecked())][0]
-        if self.options:
-            return self.input.currentData()
-        value = self.input.value()
-        if self.is_temperature or self.is_distance:
-            if self.is_distance:
-                value *= DISTANCE_METERS_PER_UNIT[self.temperature_unit]
-            elif self.temperature_unit == "F":
-                value = (value - 32) / 1.8
-            if self.preserve_input:
-                return round(value, 10)
-            # Preserve hardware precision in Celsius and meters, regardless of display units.
-            value = self.minimum + round((value - self.minimum) / self.step) * self.step
-        return round(value, 2)
-
-    def _display_value(self, value):
-        if self.is_distance:
-            return value / DISTANCE_METERS_PER_UNIT[self.temperature_unit]
-        if self.temperature_unit == "F" and self.is_temperature:
-            return value * 1.8 + 32
-        return value
-
-    def set_display_unit(self, unit):
-        if not (self.is_temperature or self.is_distance) or unit == self.temperature_unit:
-            return
-        value = self.value()
-        self.temperature_unit = unit
-        if self.is_temperature:
-            decimals = 2 if unit == "F" else 1
-            step = self.step * 1.8 if unit == "F" else self.step
-            suffix = f" °{unit}"
-        else:
-            decimals = 2 if unit == "F" else 0
-            step = self.step / DISTANCE_METERS_PER_UNIT[unit]
-            suffix = " in" if unit == "F" else " cm"
-        with QSignalBlocker(self.input):
-            self.input.setDecimals(decimals)
-            self.input.setRange(
-                self._display_value(self.minimum), self._display_value(self.maximum)
-            )
-            self.input.setSingleStep(step)
-            self.input.setSuffix(suffix)
-        self._set_value(value)
-
-    def _set_value(self, value):
-        with QSignalBlocker(self.input):
-            if self.is_switch:
-                self.input.setChecked(value == self.options[1][0])
-                position = int(self.input.isChecked())
-            elif self.options:
-                index = self.input.findData(value)
-                self.input.setCurrentIndex(index)
-                position = max(0, index)
-            else:
-                self.input.setValue(self._display_value(value))
-                position = round((value - self.minimum) / self.step)
-        if self.slider is not None:
-            with QSignalBlocker(self.slider):
-                self.slider.setValue(position)
-
-    def _set_enabled(self, enabled):
-        if not enabled:
-            self.timer.stop()
-        self.input.setEnabled(enabled)
-        if self.slider is not None:
-            self.slider.setEnabled(enabled)
-
-    def set_numeric_limits(self, minimum, maximum):
-        """Change a live control's bounds without generating a user edit."""
-        self.minimum, self.maximum = minimum, maximum
-        with QSignalBlocker(self.input):
-            self.input.setRange(self._display_value(minimum), self._display_value(maximum))
-        if self.slider is not None:
-            with QSignalBlocker(self.slider):
-                self.slider.setRange(0, round((maximum - minimum) / self.step))
-
-    def _input_changed(self, *_args):
-        self._set_value(self.value())
-        if self.input.isEnabled():
-            self.timer.start()
-
-    def _slider_changed(self, position):
-        value = self.minimum + position * self.step
-        self._set_value(value)
-        if self.input.isEnabled() and not self.slider.isSliderDown():
-            self.timer.start()
-
-    def _emit(self):
-        self.timer.stop()
-        if self.input.isEnabled():
-            self.changed(self.value())
-
-    def update_state(self, value, available=True):
-        self._set_enabled(available)
-        if self.timer.isActive() or (self.slider is not None and self.slider.isSliderDown()):
-            return
-        if value != self.value():
-            self._set_value(value)
+def _finite_number(value: object) -> float | None:
+    """
+    Read optional numeric calibration telemetry without formatting malformed values.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    result = number if math.isfinite(number) else None
+    return result
 
 
 class DistanceCalibrationControls(QWidget):
-    def __init__(self, send):
+    def __init__(self, send: Callable[[dict[str, Any]], None]) -> None:
+        """
+        Build calibration inputs and actions using the viewer message callback.
+        """
         super().__init__()
         self._send = send
         self._unit = "C"
         self._reference = None
-        self._state = {}
+        self._state: dict[str, Any] = {}
         self._locked = False
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -282,8 +120,8 @@ class DistanceCalibrationControls(QWidget):
             (self.clear, "clear"),
         ):
             button.clicked.connect(
-                lambda _checked=False, operation=operation: self._send(
-                    {"action": "distance_calibration", "operation": operation}
+                lambda _checked=False, selected_operation=operation: self._send(
+                    {"action": "distance_calibration", "operation": selected_operation}
                 )
             )
         for controls in ((self.select, self.save), (self.measure, self.apply, self.clear)):
@@ -316,7 +154,10 @@ class DistanceCalibrationControls(QWidget):
                 }
             )
 
-    def _update_buttons(self, *_args):
+    def _update_buttons(self, *_args: Any) -> None:
+        """
+        Apply calibration availability and lock state to each action.
+        """
         selecting = bool(self._state.get("selecting"))
         self.select.setText("Cancel detection" if selecting else "Detect reference square")
         self.select.setEnabled(not self._locked)
@@ -327,21 +168,25 @@ class DistanceCalibrationControls(QWidget):
             and self.distance.value() > 0
         )
         self.measure.setEnabled(not self._locked and bool(self._reference) and not selecting)
-        estimated = self._state.get("estimated_m")
+        estimated = _finite_number(self._state.get("estimated_m"))
         self.apply.setEnabled(not self._locked and estimated is not None and 0.3 <= estimated <= 99)
         self.clear.setEnabled(not self._locked and bool(self._reference))
 
-    def update_state(self, state, unit, locked):
+    def update_state(self, state: dict[str, Any], unit: str, locked: bool) -> None:
+        """
+        Apply calibration state and display units without sending user edits.
+        """
         if unit != self._unit:
             self.side.interpretText()
             self.distance.interpretText()
         values = (self._meters(self.side), self._meters(self.distance))
         reference = state.get("reference")
         update_inputs = unit != self._unit or bool(reference and reference != self._reference)
-        if reference != self._reference and reference:
+        if isinstance(reference, dict) and reference != self._reference and reference:
+            reference = cast(dict[str, Any], reference)
             values = (reference["side_m"], reference["distance_m"])
         self._reference, self._state, self._unit, self._locked = reference, state, unit, locked
-        factor = 1 / DISTANCE_METERS_PER_UNIT[unit]
+        factor = float(1 / DISTANCE_METERS_PER_UNIT[unit])
         for control, value, maximum, step in (
             (self.side, values[0], 10, 0.001),
             (self.distance, values[1], 99, 0.01),
@@ -355,7 +200,7 @@ class DistanceCalibrationControls(QWidget):
                     self._physical_values[control] = (value, control.value())
             control.setEnabled(not locked)
         message = state.get("status", "Select a reference square to begin.")
-        estimated = state.get("estimated_m")
+        estimated = _finite_number(state.get("estimated_m"))
         if estimated is not None:
             message = (
                 f"Estimated distance: {estimated * factor:.2f} {'in' if unit == 'F' else 'cm'}. "
@@ -368,7 +213,10 @@ class DistanceCalibrationControls(QWidget):
 
 
 class EmissivityCalibrationControls(QWidget):
-    def __init__(self, send):
+    def __init__(self, send: Callable[[dict[str, Any]], None]) -> None:
+        """
+        Build calibration inputs and actions using the viewer message callback.
+        """
         super().__init__()
         self._send = send
         self._unit = "C"
@@ -411,8 +259,8 @@ class EmissivityCalibrationControls(QWidget):
             (self.cancel, "cancel"),
         ):
             button.clicked.connect(
-                lambda _checked=False, operation=operation: self._send(
-                    {"action": "emissivity_calibration", "operation": operation}
+                lambda _checked=False, selected_operation=operation: self._send(
+                    {"action": "emissivity_calibration", "operation": selected_operation}
                 )
             )
         self.fit.clicked.connect(self._fit)
@@ -440,7 +288,10 @@ class EmissivityCalibrationControls(QWidget):
                 }
             )
 
-    def update_state(self, state, unit, locked):
+    def update_state(self, state: dict[str, Any], unit: str, locked: bool) -> None:
+        """
+        Apply calibration state and display units without sending user edits.
+        """
         if unit != self._unit:
             self.known.interpretText()
             value = self._celsius()
@@ -451,16 +302,17 @@ class EmissivityCalibrationControls(QWidget):
                 self.known.setSuffix(f" °{unit}")
                 self.known.setValue(value * 1.8 + 32 if unit == "F" else value)
         reference = state.get("reference")
-        if reference and reference != self._reference:
+        if isinstance(reference, dict) and reference and reference != self._reference:
+            reference = cast(dict[str, Any], reference)
             with QSignalBlocker(self.known):
-                value = reference["known_celsius"]
+                value = float(reference["known_celsius"])
                 self.known.setValue(value * 1.8 + 32 if unit == "F" else value)
         self._reference = reference
         selection_id = state.get("selection_id")
         if state.get("selected_celsius") is not None and selection_id != self._selection_id:
-            value = state.get("known_celsius")
-            if value is None:
-                value = state["selected_celsius"]
+            known = state.get("known_celsius")
+            selected = known if known is not None else state["selected_celsius"]
+            value = float(cast(float, selected))
             with QSignalBlocker(self.known):
                 self.known.setValue(value * 1.8 + 32 if unit == "F" else value)
             self._selection_id = selection_id
@@ -479,19 +331,22 @@ class EmissivityCalibrationControls(QWidget):
         )
         self.cancel.setEnabled(bool(state.get("active")) and (not locked or running))
         message = state.get("status", "Select a point to begin.")
-        measured = state.get("measured_celsius")
+        measured = _finite_number(state.get("measured_celsius"))
         if measured is not None and state.get("point") is not None:
             display = measured * 1.8 + 32 if unit == "F" else measured
             message += f" Selected point: {display:.2f} °{unit}."
         if state.get("result") is not None:
             message += f" Fitted emissivity: {state['result']:.2f}."
-        elif reference:
+        elif isinstance(reference, dict) and reference:
             message += f" Saved emissivity: {reference['emissivity']:.2f}."
         self.status.setText(message)
 
 
 class ReflectedCalibrationControls(QWidget):
-    def __init__(self, send):
+    def __init__(self, send: Callable[[dict[str, Any]], None]) -> None:
+        """
+        Build calibration inputs and actions using the viewer message callback.
+        """
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -520,8 +375,8 @@ class ReflectedCalibrationControls(QWidget):
             (self.cancel, "cancel"),
         ):
             button.clicked.connect(
-                lambda _checked=False, operation=operation: send(
-                    {"action": "reflected_calibration", "operation": operation}
+                lambda _checked=False, selected_operation=operation: send(
+                    {"action": "reflected_calibration", "operation": selected_operation}
                 )
             )
         for buttons in ((self.select, self.measure), (self.apply, self.cancel)):
@@ -534,7 +389,10 @@ class ReflectedCalibrationControls(QWidget):
         layout.addWidget(self.status)
         self.update_state({}, "C", False)
 
-    def update_state(self, state, unit, locked):
+    def update_state(self, state: dict[str, Any], unit: str, locked: bool) -> None:
+        """
+        Apply calibration state and display units without sending user edits.
+        """
         running = bool(state.get("running"))
         self.select.setEnabled(not locked)
         self.measure.setEnabled(not locked and bool(state.get("active")))
@@ -542,8 +400,8 @@ class ReflectedCalibrationControls(QWidget):
         self.cancel.setEnabled(bool(state.get("active")) and (not locked or running))
         message = state.get("status", "Show the sampling target to begin.")
         reference = state.get("reference")
-        if reference:
-            value = reference["celsius"]
+        if isinstance(reference, dict) and reference:
+            value = float(reference["celsius"])
             if unit == "F":
                 value = value * 1.8 + 32
             message += f" Saved: {value:.1f} °{unit}."
@@ -631,15 +489,16 @@ class ViewWindow(QWidget):
         if sys.platform != "darwin":
             QTimer.singleShot(0, self._position_top_right)
 
-    def _position_top_right(self):
+    def _position_top_right(self) -> None:
+        """
+        Position non-macOS windows within the selected screen bounds.
+        """
         # Keep macOS's native placement; delayed Qt moves cause a visible jump.
         if sys.platform == "darwin":
             return
         point = self._anchor_top_right
         screen = QApplication.screenAt(point) if point is not None else self.screen()
         screen = screen or QApplication.primaryScreen()
-        if screen is None:
-            return
         bounds = screen.availableGeometry()
         right = point.x() if point is not None else bounds.right()
         top = point.y() if point is not None else bounds.top()
@@ -691,7 +550,7 @@ class ViewWindow(QWidget):
         if locked and not self._settings_locked:
             focused = QApplication.focusWidget()
             if focused is not None and self.isAncestorOf(focused):
-                self.setFocus(Qt.OtherFocusReason)
+                self.setFocus(Qt.FocusReason.OtherFocusReason)
         self._settings_locked = locked
         self.auto_calibrate.setEnabled(not locked)
         with QSignalBlocker(self.auto_calibrate):

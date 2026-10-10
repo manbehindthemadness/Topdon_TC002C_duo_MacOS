@@ -11,6 +11,7 @@ from .graph_settings import validate_graph_settings
 from .graphs import validate_graph_interval
 from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS, PROCESSING_PRESETS
 from .pipeline import legacy_calibration_values, validate_pipeline
+from .preference_io import save_json
 from .reflected_calibration import validate_reference as validate_reflected_reference
 from .spot_preferences import validate_spots
 from .view_settings import VIEW_DEFAULTS, validate_view_setting
@@ -39,7 +40,7 @@ def load_settings() -> dict[str, Any]:
                 else:
                     spec = HARDWARE_CONTROLS[name]
                     spec.apply(bytearray(BLOCK_LENGTHS[spec.selector, spec.command]), value)
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError, OverflowError):
                 continue
             result[section][name] = value
     display = result["display"]
@@ -58,8 +59,8 @@ def load_settings() -> dict[str, Any]:
     if (
         not isinstance(ambient, bool)
         and isinstance(ambient, (int, float))
-        and math.isfinite(ambient)
         and -50 <= ambient <= 100
+        and math.isfinite(ambient)
     ):
         result["ambient_input_celsius"] = ambient
     try:
@@ -68,7 +69,7 @@ def load_settings() -> dict[str, Any]:
         pass
     try:
         result["graph_settings"] = validate_graph_settings(saved.get("graph_settings"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     rate = saved.get("timelapse_fpm")
     if type(rate) is int and 1 <= cast(int, rate) <= FRAME_RATE * 60:
@@ -99,23 +100,23 @@ def load_settings() -> dict[str, Any]:
         result["camera_boost"] = boost
     try:
         result["graph_interval"] = validate_graph_interval(saved.get("graph_interval"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     try:
         result["distance_calibration"] = DistanceReference.from_dict(
             saved.get("distance_calibration")
         ).as_dict()
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     try:
         result["emissivity_calibration"] = validate_reference(saved.get("emissivity_calibration"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     try:
         result["reflected_calibration"] = validate_reflected_reference(
             saved.get("reflected_calibration")
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     try:
         result["pipeline"] = validate_pipeline(saved.get("pipeline"))
@@ -124,17 +125,14 @@ def load_settings() -> dict[str, Any]:
                 result["hardware"].setdefault(name, value)
             else:
                 result["hardware"][name] = value
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     return result
 
 
-def save_settings(settings: dict) -> None:
+def save_settings(settings: dict[str, Any]) -> None:
+    """
+    Atomically persist settings without sharing temporary files with other saves.
+    """
     path = _path().with_name("settings.json")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
-    try:
-        temporary.write_text(json.dumps(settings, indent=2, allow_nan=False) + "\n")
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    save_json(path, settings, indent=2)

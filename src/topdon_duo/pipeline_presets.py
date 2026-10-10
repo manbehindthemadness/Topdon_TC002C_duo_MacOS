@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from .pipeline import validate_pipeline
+from .preference_io import save_json
 from .window_preferences import _path
 
 
@@ -50,8 +51,6 @@ def load_presets() -> dict[str, dict]:
     return {name: document for name, document in saved.items() if document is not None}
 
 
-# Keep the same atomic replacement pattern as other preference writers.
-# noinspection DuplicatedCode
 def save_presets(presets: dict[str, dict]) -> None:
     """
     Persist the complete visible collection, including deletions of bundled presets.
@@ -63,10 +62,4 @@ def save_presets(presets: dict[str, dict]) -> None:
     validated = {name: doc for name, doc in validated.items() if doc != predefined.get(name)}
     validated.update({name: None for name in predefined if name not in presets})
     path = _path().with_name("pipeline-presets.json")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
-    try:
-        temporary.write_text(json.dumps(validated, indent=2, allow_nan=False) + "\n")
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    save_json(path, validated, indent=2)
