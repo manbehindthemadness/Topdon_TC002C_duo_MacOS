@@ -89,9 +89,9 @@ def test_separate_transformed_mask_samples_at_same_receiving_resolution() -> Non
         processor.close()
 
 
-def test_later_pixel_operations_clear_retained_transform_and_bypass_resets_it() -> None:
+def test_later_pixel_operations_materialize_detail_and_bypass_resets_it() -> None:
     """
-    Following filters operate on the declared canvas and stale geometry cannot leak frames.
+    Following filters receive preserved detail and stale geometry cannot leak frames.
     """
     transform = node("software", "transform", width=50, height=50)
     document = raw_pipeline(transform)
@@ -101,12 +101,48 @@ def test_later_pixel_operations_clear_retained_transform_and_bypass_resets_it() 
         assert image.shape == (192, 256, 3)
         assert processor.output_transform is not None
         document["software"].insert(-1, node("software", "brightness", amount=10))
-        processor.process(striped_frame(), None, document)
+        image, _ = processor.process(striped_frame(), None, document)
         assert processor.output_transform is None
+        assert image.shape == (384, 512, 3)
+        assert processor.output_logical_size == (256, 192)
         document["software"].pop(-2)
         transform["bypass"] = True
         processor.process(striped_frame(), None, document)
         assert processor.output_transform is None
+    finally:
+        processor.close()
+
+
+@pytest.mark.parametrize("kind,values,inverted", [
+    ("brightness", {"amount": 0}, False),
+    ("gamma", {"amount": 2}, False),
+    ("invert", {}, True),
+    ("colors", {"palette": "black_hot"}, True),
+    ("filter", {"filter": "threshold", "threshold": 127}, False),
+    ("interpolation", {"scale": 2, "method": "nearest"}, False),
+])
+@pytest.mark.parametrize("after_combine", [False, True])
+def test_downstream_processing_keeps_native_inset_detail(
+    kind: str, values: dict[str, object], inverted: bool, after_combine: bool,
+) -> None:
+    """
+    Pixel operations after either Transform or the receiving Combine cannot erase native stripes.
+    """
+    operation = node("software", kind, **values)
+    transform = node("software", "transform", width=50, height=50, method="nearest")
+    document = raw_pipeline(node("software", "brightness", amount=100))
+    document["branches"]["B"] = raw_pipeline(transform,
+        *([] if after_combine else [operation]))["software"][:-1]
+    document["software"].insert(-1, node("software", "combine", tab="B", mode="replace"))
+    if after_combine:
+        document["software"].insert(-1, operation)
+    processor = PipelineProcessor(apple_available=False, nvidia_available=False)
+    try:
+        output, _ = processor.process(striped_frame(), None, document, scale=2)
+        expected = np.arange(250) % 2 * 255
+        if inverted:
+            expected = 255 - expected
+        np.testing.assert_array_equal(output[20, :250, 0], expected)
     finally:
         processor.close()
 

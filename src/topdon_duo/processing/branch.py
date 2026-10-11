@@ -42,6 +42,7 @@ from .images import (
     map_luminance,
     resize,
 )
+from .resolution import bounded_promotion, model_geometry, raster_transform_params
 from .transforms import CanvasTransform
 
 
@@ -78,6 +79,10 @@ class BranchProcessor:
         self.output_transform: CanvasTransform | None = None
         self.display_size: tuple[int, int] | None = None
         self.display_interpolation = cv2.INTER_NEAREST
+        self.input_detail_sizes: dict[str, tuple[int, int] | None] = {}
+        self.output_logical_size = self.native_size
+        self.output_detail_size: tuple[int, int] | None = None
+        self.output_interpolation: int | None = None
 
     def close(self) -> None:
         """
@@ -97,6 +102,9 @@ class BranchProcessor:
         self.output_coverage = None
         self.input_transforms = {}
         self.output_transform = None
+        self.input_detail_sizes = {}
+        self.output_detail_size = None
+        self.output_interpolation = None
 
     def process(
         self,
@@ -117,6 +125,8 @@ class BranchProcessor:
         self.custom.labels = []
         self.output_coverage = None
         self.output_transform = None
+        self.output_interpolation = None
+        self.output_detail_size = None
         coverage: np.ndarray | None = None
         preview_overhead = 0.0
         decoded = decode_frame(frame)
@@ -128,6 +138,8 @@ class BranchProcessor:
             decoded, raw, preview, document, software, camera_palette
         )
         direct_preview: np.ndarray | None = None
+        logical_size = (image.shape[1], image.shape[0])
+        detail_size: tuple[int, int] | None = None
         available_inputs = inputs if inputs is not None else {}
 
         def resolve_input(source: str, params: dict[str, Any]) -> np.ndarray:
@@ -158,10 +170,22 @@ class BranchProcessor:
         first_range = True
         for index, item in enumerate(software):
             kind, p = item["type"], item["params"]
-            # Only a terminal canvas transform can be sampled at the consumer's resolution.
-            # Later pixel operations must receive the declared working canvas immediately.
             if kind not in ("preview", "output", "source") and not (kind == "range" and first_range):
+                if self.output_transform is not None:
+                    pending_transform = self.output_transform
+                    current_size = (image.shape[1], image.shape[0])
+                    desired_size = pending_transform.detail_size()
+                    size = bounded_promotion(
+                        current_size, desired_size, software[index:], self.native_size,
+                    )
+                    if size != current_size:
+                        image, coverage = pending_transform.render(size)
+                        self.output_interpolation = INTERPOLATIONS[
+                            pending_transform.params["method"]
+                        ]
+                    detail_size = (min(size[0], desired_size[0]), min(size[1], desired_size[1]))
                 self.output_transform = None
+            previous_size = (image.shape[1], image.shape[0])
             if kind == "preview" and item["expanded"] and self.collect_previews:
                 sampled_at = perf_counter()
                 self.last_preview_timings[item["id"]] = max(
@@ -178,15 +202,26 @@ class BranchProcessor:
                 incoming = resolve_input(p["tab"], p)
                 incoming_coverage = self.input_coverage.get(p["tab"])
                 deferred = self.input_transforms.get(p["tab"])
-                if (
-                    deferred is not None and self.display_size is not None
-                    and self.display_size[0] >= image.shape[1]
-                    and self.display_size[1] >= image.shape[0]
-                    and all(following["type"] in ("preview", "output")
-                            for following in software[index + 1:])
-                ):
-                    image = resize(image, self.display_size, self.display_interpolation)
+                requested_sizes = []
+                for source in dict.fromkeys((p["tab"], p["mask_source"])):
+                    transform = self.input_transforms.get(source)
+                    needed_size = (
+                        transform.detail_size() if transform is not None
+                        else self.input_detail_sizes.get(source)
+                    )
+                    if needed_size is not None:
+                        requested_sizes.append(needed_size)
+                if requested_sizes:
+                    if self.display_size is not None:
+                        requested_sizes.append(self.display_size)
+                    desired_size = (max(size[0] for size in requested_sizes),
+                                    max(size[1] for size in requested_sizes))
+                    size = bounded_promotion(previous_size, desired_size, software[index + 1:],
+                                             self.native_size)
+                    image = resize(image, size, self.display_interpolation)
                     coverage = resize_coverage(coverage, image.shape[:2])
+                    previous_size = (image.shape[1], image.shape[0])
+                    detail_size = previous_size
                 if deferred is not None and incoming.shape[:2] != image.shape[:2]:
                     incoming, incoming_coverage = deferred.render((image.shape[1], image.shape[0]))
                 mask_source = p["mask_source"]
@@ -236,12 +271,24 @@ class BranchProcessor:
             elif kind == "antialiasing" and p["amount"]:
                 image = cv2.GaussianBlur(image, (0, 0), p["amount"])
             elif kind == "transform":
+                next_logical = logical_size
+                target_size = previous_size
+                if p["resize_mode"] == "resolution":
+                    next_logical = (max(1, round(logical_size[0] * p["width"] / 100)),
+                                    max(1, round(logical_size[1] * p["height"] / 100)))
+                    target_size = (max(1, round(previous_size[0] * p["width"] / 100)),
+                                   max(1, round(previous_size[1] * p["height"] / 100)))
+                p = raster_transform_params(p, next_logical, target_size)
                 source_image = image
                 if self.track_coverage:
                     coverage = transform_coverage(coverage, image.shape[:2], p)
                 image, self.custom.labels = apply_transform(image, p, self.custom.labels)
                 if p["resize_mode"] == "canvas" and has_warp(p):
-                    self.output_transform = CanvasTransform(source_image, dict(p), coverage)
+                    self.output_transform = CanvasTransform(
+                        source_image, dict(p), coverage, detail_size,
+                    )
+                logical_size = next_logical
+                previous_size = (image.shape[1], image.shape[0])
             elif kind == "range":
                 if first_range:
                     # Defines the source normalization before earlier operations run.
@@ -258,6 +305,8 @@ class BranchProcessor:
                     )
                     mapping = p["low"], p["high"]
             elif kind == "interpolation":
+                if self.output_interpolation is not None:
+                    self.output_interpolation = INTERPOLATIONS[p["method"]]
                 image = resize(
                     image,
                     (image.shape[1] * p["scale"], image.shape[0] * p["scale"]),
@@ -273,9 +322,23 @@ class BranchProcessor:
                 image = self.apply_coreml(image, item)
             elif kind == "enhance" and p["model"] != "off" and p["amount"]:
                 image = self.apply_legacy(image, item)
+            size = (image.shape[1], image.shape[0])
+            if size != previous_size:
+                logical_size = (max(1, round(logical_size[0] * size[0] / previous_size[0])),
+                                max(1, round(logical_size[1] * size[1] / previous_size[1])))
+                if detail_size is not None:
+                    detail_size = (min(size[0], detail_size[0]), min(size[1], detail_size[1]))
+                    if kind not in ("interpolation", "transform"):
+                        detail_size = size
+            if model_geometry(item)[1]:
+                logical_size = size
+                detail_size = None
+                self.output_interpolation = None
             coverage = resize_coverage(coverage, image.shape[:2])
         self.prune_models(software)
         self.output_coverage = coverage
+        self.output_logical_size = logical_size
+        self.output_detail_size = detail_size
         source = document["software"][0]["params"]["source"]
         return image, "visible" if source == "visible" else "raw" if thermal else "preview"
 

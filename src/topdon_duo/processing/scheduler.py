@@ -144,6 +144,9 @@ class PipelineProcessor:
                         self.branches[tab].input_transforms = {
                             t: self.branches[t].output_transform for t in required
                         }
+                        self.branches[tab].input_detail_sizes = {
+                            t: self.branches[t].output_detail_size for t in required
+                        }
                         future = self.executors[tab].submit(
                             self.branches[tab].process,
                             frame,
@@ -202,6 +205,9 @@ class PipelineProcessor:
         target: tuple[int, int] = (width * scale, height * scale)
         if rotation in (90, 270):
             target = target[1], target[0]
+        sampling = self.branches["A"].output_interpolation
+        if sampling is not None and interpolation == cv2.INTER_NEAREST:
+            interpolation = sampling
         display = bytes_image(resize(image, target, interpolation))
         display = draw_display_labels(display, self.branches["A"].custom.labels, rotation)
         return display, source

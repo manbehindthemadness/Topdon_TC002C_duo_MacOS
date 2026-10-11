@@ -672,8 +672,9 @@ and **Replace** in the main pipeline's Combine node. See
 [Combine modes](docs/processing-pipelines.md#parallel-tabs-and-combine-nodes).
 A canvas Transform at the end of a branch retains its source detail and samples directly
 at the receiving Combine/viewer resolution, using its selected interpolation method.
-Keep inset Transform last in its branch and Combine after main-image processing to avoid
-shrinking native thermal detail before enlarging it for display.
+Nodes after Transform receive a denser processing canvas when needed to preserve
+source detail. This also works through Combine and its masks; Transform no longer
+needs to be the last processing node. Position controls retain their canvas units.
 
 Auto calibrate, units, ambient/reflected temperature, optical transmission, relative humidity,
 distance, emissivity and calibration tools remain separate. Optical transmission

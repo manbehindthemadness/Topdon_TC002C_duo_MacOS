@@ -142,10 +142,17 @@ or the viewer needs a different canvas resolution, it samples those pixels direc
 the Transform's interpolation choice. This avoids reducing a native thermal inset and then
 enlarging that reduced image. Pixel offsets still use the original working canvas's units;
 occupied Replace boundaries and label anchors retain their existing positions.
-Preview and Output nodes can follow without discarding the retained source. Other pixel
-processing nodes consume the transformed working canvas and discard that retained source,
-so put inset Transform after its filters. A final Combine can use the viewer's larger canvas;
-put it after main-image filters to retain detail through the last display resize.
+Preview and Output nodes can follow without discarding the retained source. Before a later
+pixel-processing node runs, a shrunk image is sampled onto a denser canvas so that the
+shrink itself does not discard native source pixels. Processing continues in its original
+order and Custom callbacks run once. Combine consumers, including masks and nested branches,
+retain this sampling density rather than shrinking it again before later processing.
+Pixel and percent positions still refer to the declared working canvas; the internal raster
+increase does not change saved controls or label anchors. Neighborhood filters and Custom
+callbacks operate on the denser raster, which can increase processing cost. Promotion reserves
+space for declared downstream upscales and stays within the 4-megapixel limit; near that limit
+it may preserve less detail. Explicit working-resolution reductions and model Native/Preview
+input choices still resize intentionally. Native measurements remain independent.
 
 Transforms never resample radiometric arrays or change temperature statistics.
 Mirror and working-resolution changes retain spatial measurements. Canvas scaling,
