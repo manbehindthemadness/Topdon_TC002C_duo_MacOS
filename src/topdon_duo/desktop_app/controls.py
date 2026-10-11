@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from .dual_camera import apply_camera_hardware
 from .state import SessionState
 
 if TYPE_CHECKING:
@@ -23,6 +24,8 @@ class ControlsController(SessionState):
         """
         try:
             self.hardware.load()
+            if getattr(self, "visible_hardware", None) is not None:
+                self.visible_hardware.load()
             self.hardware.error = ""
             for name, value in self.remembered_hardware.items():
                 if name in self.api.PIPELINE_FIELDS:
@@ -65,7 +68,7 @@ class ControlsController(SessionState):
                 self.hardware.error = f"Could not set Auto calibrate: {exc}"
                 self.api.LOG.warning("%s", self.hardware.error)
         try:
-            self.pipeline_hardware.apply(self.pipeline)
+            apply_camera_hardware(self, self.pipeline)
             if self.hardware.tone_busy:
                 self.tone_previous_pipeline = self.api.validate_pipeline(self.pipeline)
                 previous_tone = self.tone_previous_pipeline

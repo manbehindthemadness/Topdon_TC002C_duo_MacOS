@@ -46,6 +46,12 @@ class DesktopSession(
             if getattr(self.hardware, "profile", None) != self.camera_profile:
                 raise ValueError("Camera controls do not match the selected device profile")
             self.saved_settings = self.api.load_settings(self.camera_profile, self.hardware.specs)
+        self.visible_hardware: Any = None
+        if self.camera_profile.visible and hasattr(self.camera, "create_visible_controls"):
+            self.visible_hardware = self.camera.create_visible_controls()
+            if (self.visible_hardware is self.hardware
+                    or self.visible_hardware.profile != self.camera_profile):
+                raise ValueError("Visible-light controls require an independent matching owner")
         self.remembered_hardware = self.saved_settings.get("hardware", {}).copy()
         self.remembered_spot_hardware = self.saved_settings.get("spot_hardware", {}).copy()
         self.advanced_auto = self.saved_settings.get("advanced_auto", True)
@@ -162,6 +168,10 @@ class DesktopSession(
         self.graph_panel = self.api.GraphPanel()
         self.spots_panel = self.api.SpotsPanel()
         self.pipeline_hardware = self.api.PipelineHardware(self.hardware)
+        self.visible_pipeline_hardware = (
+            self.api.PipelineHardware(self.visible_hardware, source="visible")
+            if self.visible_hardware is not None else None
+        )
         self.emissivity_calibration = self.api.EmissivityCalibrator(
             self.hardware, self.saved_settings.get("emissivity_calibration")
         )
@@ -316,6 +326,11 @@ class DesktopSession(
             self.hardware.restore()
         except (self.api.CameraError, ValueError) as exc:
             self.api.LOG.error("Could not restore camera settings: %s", exc)
+        if self.visible_hardware is not None:
+            try:
+                self.visible_hardware.restore()
+            except (self.api.CameraError, ValueError) as exc:
+                self.api.LOG.error("Could not restore visible-light settings: %s", exc)
         if self.hardware.capabilities().get("features", {}).get("auto_calibrate"):
             try:
                 self.hardware.restore_auto_calibrate()

@@ -86,7 +86,8 @@ class PipelineTabs:
         """
         Offer native sources and existing branches other than the current branch.
         """
-        sources = [("preview", "Camera preview"), ("raw", "Raw thermal")]
+        sources = [("preview", "Thermal upsample"), ("raw", "Raw thermal"),
+                   ("visible", "Visible light (experimental)")]
         if key == "mask_source":
             sources = [("none", "None"), ("input", "Blend input"), *sources]
         return tuple(sources + [(tab, f"Tab {tab}") for tab in tab_names(self.document) if tab != self.tab])

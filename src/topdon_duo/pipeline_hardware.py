@@ -6,6 +6,7 @@ from typing import Any
 from .camera import CameraError
 from .camera_backends.controls import DeviceControls
 from .pipeline import active_nodes, preview_required, validate_pipeline
+from .pipeline_model.sources import source_required
 
 PIPELINE_FIELDS = {
     "brightness",
@@ -20,13 +21,15 @@ PIPELINE_FIELDS = {
 }
 
 
-def desired_hardware(document: dict[str, Any]) -> tuple[dict[str, Any], str, int, int, bool]:
+def desired_hardware(
+    document: dict[str, Any], source: str = "preview",
+) -> tuple[dict[str, Any], str, int, int, bool]:
     """
     Resolve preview-processing controls without owning permanent calibration fields.
     """
     controls = {}
     preset, gamma, boost, fixed = "balanced", 50, 0, False
-    thermal = not preview_required(document)
+    thermal = not source_required(document, source)
     for item in active_nodes(document, "hardware"):
         kind, p = item["type"], item["params"]
         if thermal:
@@ -52,8 +55,12 @@ def desired_hardware(document: dict[str, Any]) -> tuple[dict[str, Any], str, int
 
 
 class PipelineHardware:
-    def __init__(self, hardware):
+    def __init__(self, hardware: Any, *, source: str = "preview") -> None:
+        """
+        Keep applied state and ownership separate for each camera's display stream.
+        """
         self.hardware = hardware
+        self.source = source
         self.document = None
         self._desired = None
 
@@ -96,7 +103,7 @@ class PipelineHardware:
         applicable = deepcopy(candidate)
         applicable["hardware"] = [item for item in candidate["hardware"]
                                   if item["type"] != "device_control"]
-        desired = desired_hardware(applicable)
+        desired = desired_hardware(applicable, self.source)
         preset_active = preview_required(candidate) and any(
             item["type"] == "preset" for item in active_nodes(candidate, "hardware")
         )
@@ -139,7 +146,7 @@ class PipelineHardware:
         applicable["hardware"] = [item for item in document["hardware"]
                                   if item["type"] == "device_control"
                                   or nodes.get(item["type"], {}).get("supported")]
-        desired = desired_hardware(applicable)
+        desired = desired_hardware(applicable, self.source)
         controls = desired[0]
         specs = hw.specs
         selected = {name: value for name, value in controls.items()

@@ -34,6 +34,8 @@ def pipeline_content(document: dict[str, Any]) -> dict[str, Any]:
         "software": content(document["software"]),
         "branches": {tab: content(nodes) for tab, nodes in document["branches"].items()},
     }
+    if "visible_hardware" in document:
+        result["visible_hardware"] = content(document["visible_hardware"])
     return result
 
 

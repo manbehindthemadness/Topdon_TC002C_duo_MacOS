@@ -162,6 +162,8 @@ class ViewerController(SessionState):
             return
         if self.measurement_drawing_pointer(command):
             return
+        if hasattr(self, "rendered") and not self.rendered.measurement_mapping_valid and button == "left":
+            return
         pointer_event = cast(int, event)
         self.picker.callback(pointer_event, x, y, flags, None)
 

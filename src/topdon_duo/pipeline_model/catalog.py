@@ -205,7 +205,8 @@ SOFTWARE_NODES = {
             "source": choice(
                 "Image source",
                 "preview",
-                (("preview", "Camera preview"), ("raw", "Raw thermal image")),
+                (("preview", "Thermal upsample"), ("raw", "Raw thermal image"),
+                 ("visible", "Visible light (experimental)")),
             )
         },
     ),
@@ -219,8 +220,9 @@ SOFTWARE_NODES = {
                 "Blend input",
                 "preview",
                 options=(
-                    ("preview", "Camera preview"),
+                    ("preview", "Thermal upsample"),
                     ("raw", "Raw thermal"),
+                    ("visible", "Visible light (experimental)"),
                     *((t, f"Tab {t}") for t in "ABCD"),
                 ),
             ),
@@ -254,8 +256,9 @@ SOFTWARE_NODES = {
                 options=(
                     ("none", "None"),
                     ("input", "Blend input"),
-                    ("preview", "Camera preview"),
+                    ("preview", "Thermal upsample"),
                     ("raw", "Raw thermal"),
+                    ("visible", "Visible light (experimental)"),
                     *((t, f"Tab {t} output") for t in "ABCD"),
                 ),
             ),
@@ -730,6 +733,7 @@ SOFTWARE_NODES = {
         },
     ),
 }
-CATALOG = {"hardware": HARDWARE_NODES, "software": SOFTWARE_NODES}
+CATALOG = {"hardware": HARDWARE_NODES, "software": SOFTWARE_NODES,
+           "visible_hardware": {"device_control": HARDWARE_NODES["device_control"]}}
 # Import/runtime compatibility only: all new instances belong in AI enhancement.
 LEGACY_SOFTWARE_NODES = frozenset({"coreml_acnet", "onnx_superresolution", "onnx_denoise"})

@@ -8,6 +8,7 @@ from typing import Any
 from .contracts import CameraBackend, CameraProfile, ControlSpec
 from .duo import PROFILE as DUO_PROFILE
 from .frames import CameraFrame, ReportedReading, decode_frame
+from .visible import VisibleFrame
 
 _FACTORIES: dict[str, Callable[[], CameraBackend]] = {}
 
@@ -16,7 +17,7 @@ def register_backend(name: str, factory: Callable[[], CameraBackend]) -> None:
     """
     Register an application-owned backend without probing devices or running its factory.
     """
-    if not name or name == "duo" or name in _FACTORIES or not callable(factory):
+    if not name or name in ("duo", "virtual-dual") or name in _FACTORIES or not callable(factory):
         raise ValueError("Invalid or duplicate camera backend")
     _FACTORIES[name] = factory
 
@@ -34,6 +35,10 @@ def create_camera(name: str = "duo", *, duo_factory: Callable[[], Any] | None = 
 
         duo_factory = use_helper(duo_factory)
         return duo_factory()
+    if name == "virtual-dual":
+        from .virtual import VirtualDualCamera
+
+        return VirtualDualCamera()
     if name not in _FACTORIES:
         raise ValueError(f"Unknown camera backend: {name}")
     camera = _FACTORIES[name]()
@@ -51,6 +56,7 @@ __all__ = [
     "CameraProfile",
     "ControlSpec",
     "ReportedReading",
+    "VisibleFrame",
     "create_camera",
     "decode_frame",
     "register_backend",

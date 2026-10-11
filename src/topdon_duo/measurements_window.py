@@ -552,6 +552,8 @@ class MeasurementsWindow(QWidget):
         self._loading = False
         for control in (self.kind, self.create, self.draw_exclude, self.placing, self.clear):
             control.setEnabled(not locked)
+        for control in (self.create, self.placing):
+            control.setEnabled(not locked and state.get("mapping_available", True))
         selected = self._selected in new_items
         self.delete.setEnabled(selected and not locked)
         self.clear_history.setEnabled(

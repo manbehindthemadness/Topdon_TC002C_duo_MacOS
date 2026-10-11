@@ -27,6 +27,8 @@ class MeasurementDrawingController(SessionState):
         Arm a live-video tool without changing placement mode or saved geometry.
         """
         state = self.spots_state()
+        if not state.get("mapping_available", True):
+            raise ValueError("Optical registration is required before drawing thermal measurements")
         if state["locked"]:
             raise ValueError("Stop logging or close calibration before drawing measurements")
         if command.get("orientation") != state["orientation"]:
@@ -51,7 +53,8 @@ class MeasurementDrawingController(SessionState):
         if draft.kind is None:
             return
         state = self.spots_state()
-        if state["locked"] or tuple(state["orientation"]) != draft.orientation:
+        if (state["locked"] or not state.get("mapping_available", True)
+                or tuple(state["orientation"]) != draft.orientation):
             draft.cancel()
             self.notify("Measurement drawing cancelled because settings or view changed")
 

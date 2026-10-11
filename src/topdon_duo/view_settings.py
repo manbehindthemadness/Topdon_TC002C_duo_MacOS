@@ -1,12 +1,14 @@
 """Shared display options for the renderer and its separate Qt popup."""
 
 import math
+from typing import Any, cast
 
 TEMPERATURE_UNITS = {"C": "Metric (°C, cm)", "F": "Imperial (°F, in)"}
 DISTANCE_METERS_PER_UNIT = {"C": 0.01, "F": 0.0254}
 IMAGE_SOURCES = {
-    "preview": "Camera preview",
+    "preview": "Thermal upsample",
     "raw": "Raw thermal image",
+    "visible": "Visible light (experimental)",
     "analyze": "Analyze mode — fixed raw thermal",
 }
 PALETTE_SOURCES = {"app": "App colors", "camera": "Camera colors (preview)"}
@@ -67,6 +69,9 @@ VIEW_DEFAULTS = {
 
 
 def validate_view_setting(name: str, value: object) -> None:
+    """
+    Validate a display option and include arbitrary rejected values in diagnostic messages.
+    """
     options = {
         "temperature_unit": TEMPERATURE_UNITS,
         "image_source": IMAGE_SOURCES,
@@ -80,7 +85,7 @@ def validate_view_setting(name: str, value: object) -> None:
     }
     if name in options:
         if not isinstance(value, str) or value not in options[name]:
-            raise ValueError(f"Invalid {name}: {value!r}")
+            raise ValueError(f"Invalid {name}: {cast(Any, value)!r}")
     elif name in ("mirror_horizontal", "mirror_vertical", "antialiasing", "raw_anime4k", "analyze_mode"):
         if not isinstance(value, bool):
             raise ValueError(f"{name} must be a boolean")
@@ -94,7 +99,7 @@ def validate_view_setting(name: str, value: object) -> None:
             or not math.isfinite(value)
             or not limits[0] <= value <= limits[1]
         ):
-            raise ValueError(f"Invalid {name}: {value!r}")
+            raise ValueError(f"Invalid {name}: {cast(Any, value)!r}")
         if name in ("anime4k_passes", "raw_anime4k_passes") and int(value) != value:
             raise ValueError("Anime4K09 passes must be a whole number")
     else:

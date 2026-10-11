@@ -71,7 +71,7 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
     """
     if (
         not isinstance(document, dict)
-        or set(document)
+        or set(document) - ({"visible_hardware"} if document.get("version") == 4 else set())
         != (
             {"version", "hardware", "software", "branches"}
             if document.get("version") in (3, 4)
@@ -112,6 +112,8 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
     stacks = [("hardware", document["hardware"], HARDWARE_NODES)] + [
         ("software", nodes, SOFTWARE_NODES) for nodes in software_tabs(document).values()
     ]
+    if "visible_hardware" in document:
+        stacks.append(("visible_hardware", document["visible_hardware"], CATALOG["visible_hardware"]))
     for stack, nodes, catalog in stacks:
         if stack == "hardware":
             # Read older pipelines; these fields now belong to permanent calibration controls.
@@ -145,12 +147,12 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
             if not isinstance(kind, str) or kind not in catalog:
                 raise ValueError("Unknown pipeline node")
             identity = kind
-            if stack == "hardware" and kind == "device_control":
+            if stack in ("hardware", "visible_hardware") and kind == "device_control":
                 params = item.get("params")
                 if not isinstance(params, dict) or not isinstance(params.get("control"), str):
                     raise ValueError("Invalid hardware control identity")
                 identity = (kind, params["control"])
-            if (stack == "hardware" or kind in ("source", "output")) and identity in kinds:
+            if (stack in ("hardware", "visible_hardware") or kind in ("source", "output")) and identity in kinds:
                 raise ValueError("Camera controls may only be included once")
             kinds.add(identity)
             if type(item["bypass"]) is not bool or type(item["expanded"]) is not bool:
@@ -213,6 +215,9 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
                 raise ValueError("Raw input / mask From must be below To")
     tabs = software_tabs(document)
     for tab, software in tabs.items():
+        if (software and software[0]["params"].get("source") == "visible"
+                and any(n["type"] == "range" and not n["bypass"] for n in software)):
+            raise ValueError("Temperature range requires a thermal source, not visible light")
         for item in software:
             if item["type"] == "combine":
                 for key in ("tab", "mask_source"):
@@ -329,7 +334,8 @@ def preview_required(document: Any) -> Any:
     tabs = software_tabs(document)
     active = execution_dependencies(document)
     return any(
-        not thermal_source({"software": tabs[t]})
+        (tabs[t][0]["params"]["source"] == "preview"
+         and not thermal_source({"software": tabs[t]}))
         or any(
             n["type"] == "combine"
             and not n["bypass"]

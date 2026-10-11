@@ -18,8 +18,10 @@ from ..enhancement_limits import enhancement_pass_limits
 from ..feature_processing import feature_fields
 from ..image_filters import allowed_kernels, filter_fields
 from ..pipeline import preview_required, software_tabs
-from ..pipeline_hardware import desired_hardware
+from ..pipeline_model.sources import source_required
 from .compute import backend_status, configure_backend_row, state_backend, update_compute_devices
+from .dual import desired_camera_hardware as desired_hardware
+from .dual import stack_state
 from .hardware import node_capability
 from .presets import pipeline_content
 
@@ -29,6 +31,9 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
     Update state.
     """
     self.last_state = state
+    visible = bool(state.get("camera_profile", {}).get("visible"))
+    self.stacks["visible_hardware"].setVisible(visible)
+    self.stack_titles["visible_hardware"].setVisible(visible)
     download_status = state.get("model_download_status", "")
     self.download_status.setText(download_status)
     self.download_status.setVisible(bool(download_status))
@@ -57,14 +62,14 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                 self.recognize_preset = True
             old_structure = [
                 (n["id"], n["expanded"])
-                for stack in ("hardware", "software")
+                for stack in self.stacks
                 for n in self.nodes(stack)
             ]
             new_structure = [
                 (n["id"], n["expanded"])
-                for stack in ("hardware", "software")
+                for stack in self.stacks
                 for n in (
-                    incoming["hardware"] if stack == "hardware"
+                    incoming.get(stack, []) if stack != "software"
                     else software_tabs(incoming).get(self.tab, [])
                 )
             ]
@@ -73,7 +78,7 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                 self.document = incoming
                 self.rebuild()
             else:
-                for stack in ("hardware", "software"):
+                for stack in self.stacks:
                     for old, new in zip(self.nodes(stack), self.nodes(stack, incoming)):
                         old.update(new)
                 if self.tab != "A":
@@ -116,16 +121,17 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                 else None
             )
     thermal = not preview_required(self.document)
-    for stack in ("hardware", "software"):
+    for stack in self.stacks:
         for item in self.nodes(stack):
             _, controls, bypass, title, badge = self.widgets[item["id"]]
-            inactive = stack == "hardware" and thermal
-            capability = node_capability(item, state) if stack == "hardware" else {}
-            unavailable = stack == "hardware" and not capability.get("available", False)
+            inactive = (stack == "hardware" and thermal
+                        or stack == "visible_hardware" and not source_required(self.document, "visible"))
+            capability = node_capability(item, stack_state(state, stack)) if stack != "software" else {}
+            unavailable = stack != "software" and not capability.get("available", False)
             badge.setText(
                 capability.get("reason") or "Camera setting unavailable; value retained"
                 if unavailable
-                else "Inactive for thermal rendering; settings retained"
+                else "Source unused; settings retained"
                 if inactive
                 else "Bypassed"
                 if item["bypass"]
@@ -152,7 +158,9 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
             for key, row in controls.items():
                 row.set_display_unit(state.get("temperature_unit", "C"))
                 available = not locked and not inactive and not unavailable and not item["bypass"]
-                if item["type"] == "source" and key == "source" and "camera_profile" in state:
+                if ((item["type"] == "source" and key == "source"
+                     or item["type"] == "combine" and key in ("tab", "mask_source"))
+                        and "camera_profile" in state):
                     profile = state["camera_profile"]
                     combo = row.input
                     assert isinstance(combo, QComboBox)
@@ -160,7 +168,9 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                     assert isinstance(model, QStandardItemModel)
                     for index in range(combo.count()):
                         source = combo.itemData(index)
-                        supported = profile.get("radiometry") if source == "raw" else profile.get("preview")
+                        supported = (profile.get("radiometry") if source == "raw"
+                                     else profile.get("visible") if source == "visible"
+                                     else profile.get("preview") if source == "preview" else True)
                         entry = model.item(index)
                         if entry is not None:
                             entry.setEnabled(bool(supported))

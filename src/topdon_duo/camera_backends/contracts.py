@@ -81,6 +81,9 @@ class CameraProfile:
     calibration_key: str = ""
     firmware: str = ""
     device_id: str = ""
+    visible: bool = False
+    experimental: bool = False
+    visible_max_age: float = 0.25
 
     def __post_init__(self) -> None:
         """
@@ -89,7 +92,10 @@ class CameraProfile:
         if (not isinstance(self.id, str) or not self.id or len(self.native_size) != 2
                 or any(type(size) is not int or size <= 0 for size in self.native_size)
                 or math.prod(self.native_size) > 4_000_000
-                or not math.isfinite(self.frame_rate) or self.frame_rate <= 0):
+                or not math.isfinite(self.frame_rate) or self.frame_rate <= 0
+                or type(self.visible) is not bool or type(self.experimental) is not bool
+                or type(self.visible_max_age) not in (int, float)
+                or not math.isfinite(self.visible_max_age) or self.visible_max_age <= 0):
             raise ValueError("Invalid camera profile")
 
     @property

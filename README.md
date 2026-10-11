@@ -667,8 +667,8 @@ Snapshots remain under `$XDG_STATE_HOME/topdon-duo/camera-baselines`.
 
 The old Analyze toggle is replaced by repeatable Temperature range and Sensor
 interpolation nodes. A range fixes software temperature scaling, including when
-Camera preview is selected (then rendering uses thermal data and explicitly
-approximate camera-style colors). Camera preview effects are inactive in that
+Thermal upsample is selected (then rendering uses thermal data and explicitly
+approximate camera-style colors). Thermal upsample effects are inactive in that
 case. Bounds follow the selected temperature units and never change measurements.
 [Static board analysis examples](docs/processing-pipelines.md#static-board-analysis)
 show a useful starting pipeline.
@@ -700,13 +700,13 @@ different roles:
 - **App palette (raw / grayscale)** colors raw thermal data and grayscale previews
   in the program. It is inactive while camera color output is being displayed.
 - **Camera palette (color preview)** sets colors inside the camera. Selecting one
-  enables camera colors when **Image source → Camera preview** is selected. It
+  enables camera colors when **Image source → Thermal upsample** is selected. It
   is inactive when **Raw thermal image** is selected.
 
 Use **Color source → App colors** or **Camera colors (preview)** to choose which
 palette supplies the displayed colors. App colors use native thermal data when
 a colored camera preview is active, so the camera's palette cannot alter the app
-palette's appearance. Camera colors require **Image source → Camera preview**.
+palette's appearance. Camera colors require **Image source → Thermal upsample**.
 Selecting an app palette switches to App colors; selecting a camera palette
 switches to Camera colors. The active source is shown below the app palette.
 Only the palette for the selected Color source is editable: App colors disables
@@ -1104,6 +1104,15 @@ capability-driven controls. Device and camera-spot corrections can describe
 distance, humidity and ambient temperature independently; reported spot
 temperatures remain separate from native-grid measurements. The Duo remains the
 default and the only physical camera currently implemented.
+
+Experimental dual-camera support includes an offline virtual backend. Run
+`.venv/bin/topdon-duo-desktop --camera virtual-dual --image-source visible`
+without elevation or camera access. Visible light is selectable as a pipeline
+source, blend input and mask; a separate visible-light hardware stack appears
+only for a second camera and keeps its controls independent of thermal settings.
+Native thermal measurements remain separate. Spatial overlays on optical imagery
+require explicit registration; the virtual registration is synthetic. Physical
+dual-camera transport, synchronization and lens calibration remain untested.
 
 The repository includes the Codex skill
 [reverse-engineer-thermal-camera](.agents/skills/reverse-engineer-thermal-camera/SKILL.md)

@@ -4,7 +4,7 @@ Receive frames, present measurements, and handle desktop interaction.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from .. import macos_window
 from .state import SessionState
@@ -107,10 +107,7 @@ class PresentationController(SessionState):
         self.rendered = self.renderer.render_detailed(
             self.frame, update_measurements=self.fresh_frame, image_processing=False
         )
-        image_frame = (
-            self.frame if self.rendered.measurements_valid or not self.rendered.radiometry_available
-            else self.renderer.last_valid_frame
-        )
+        image_frame = self.renderer.current_frame
         if image_frame is not None:
             palette = self.renderer.hardware_settings.get("palette", {}).get("value", 1)
             self.pipeline_worker.submit(
@@ -123,6 +120,9 @@ class PresentationController(SessionState):
                 palette,
             )
         processed = self.pipeline_worker.latest(self.pipeline_revision)
+        result_metadata = {}
+        if hasattr(self.pipeline_worker, "latest_with_metadata"):
+            processed, result_metadata = self.pipeline_worker.latest_with_metadata(self.pipeline_revision)
         if processed is not None:
             previous_error = self.pipeline_error
             _, image, source, self.pipeline_elapsed_ms, self.pipeline_error = processed
@@ -130,7 +130,20 @@ class PresentationController(SessionState):
                 self.api.LOG.warning("Image pipeline failed: %s", self.pipeline_error)
                 self.notify(f"Image pipeline: {self.pipeline_error}")
             if image is not None:
-                self.rendered = self.api.replace(self.rendered, image=image, image_source=source)
+                mapping_valid = self.rendered.measurement_mapping_valid
+                if result_metadata.get("uses_visible"):
+                    timestamp = cast(float, result_metadata.get("timestamp"))
+                    current_time = cast(float, getattr(image_frame, "timestamp", None))
+                    mapping_valid &= bool(result_metadata.get("mapping_valid")) and (
+                        isinstance(timestamp, (int, float)) and isinstance(current_time, (int, float))
+                        and abs(current_time-timestamp) <= self.camera_profile.visible_max_age
+                    )
+                self.rendered = self.api.replace(
+                    self.rendered, image=image, image_source=source,
+                    measurement_mapping_valid=mapping_valid,
+                    streams={**self.rendered.streams,
+                             "display": result_metadata.get("streams", {})},
+                )
         if (
             not self.fresh_frame
             and self.last_frame_at is not None
@@ -250,7 +263,7 @@ class PresentationController(SessionState):
             self.renderer.scale,
             self.viewport_size,
             self.layout.height,
-            locked=self.spots_state()["locked"],
+            locked=self.spots_state()["locked"] or not self.rendered.measurement_mapping_valid,
         )
         pointer_toolbar_height = self.layout.height
         pointer_image_height = self.rendered.image.shape[0]
@@ -263,7 +276,8 @@ class PresentationController(SessionState):
             pointer_image_height = self.graph_layout.canvas_size[1] - pointer_toolbar_height
         self.display, selected = (
             (self.rendered.image, None)
-            if self.emissivity_calibration.active or self.reflected_calibration.active
+            if (self.emissivity_calibration.active or self.reflected_calibration.active
+                or not self.rendered.measurement_mapping_valid)
             else self.api.draw_picker(
                 self.rendered,
                 self.picker,
@@ -288,6 +302,8 @@ class PresentationController(SessionState):
         """
         if self.rendered.measurement_status:
             self.status = self.rendered.measurement_status
+        elif not self.rendered.measurement_mapping_valid:
+            self.status = "Optical registration unavailable; spatial measurements disabled"
         elif self.reflected_calibration.active:
             self.display = self.api.draw_reflector_target(
                 self.display,
@@ -331,6 +347,8 @@ class PresentationController(SessionState):
                 if self.pending_save_kind == "graph_log"
                 else f"Choose a filename for {self.pending_save_kind}..."
             )
+        elif not self.rendered.measurement_mapping_valid:
+            self.status = "Optical registration unavailable; spatial measurements disabled"
         elif self.reflected_calibration.active:
             self.status = self.reflected_calibration.message
         elif self.emissivity_calibration.active:
@@ -467,7 +485,8 @@ class PresentationController(SessionState):
                 self.show_instructions = not self.show_instructions
             elif action == "quit":
                 quit_requested = True
-            elif action is None and self.reflected_calibration.active:
+            elif action is None and (not self.rendered.measurement_mapping_valid
+                                     or self.reflected_calibration.active):
                 continue
             elif action is None and self.emissivity_calibration.active:
                 if self.emissivity_calibration.selecting and self.rendered.measurements_valid:

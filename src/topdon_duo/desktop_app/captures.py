@@ -90,6 +90,8 @@ def save_capture(
         "camera": rendered.camera_profile.title,
         "camera_profile": rendered.camera_profile.as_dict(),
         "radiometry_available": rendered.radiometry_available,
+        "measurement_mapping_valid": rendered.measurement_mapping_valid,
+        "streams": rendered.streams,
         "reported_readings": [asdict(reading) for reading in rendered.reported_readings],
         "sensor_shape": list(rendered.temperatures_celsius.shape),
         "ambient_celsius": ambient_celsius,

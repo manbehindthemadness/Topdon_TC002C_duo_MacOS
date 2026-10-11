@@ -21,6 +21,7 @@ from ..pipeline import (
     CATALOG,
     LEGACY_SOFTWARE_NODES,
 )
+from .dual import stack_state
 
 
 def decode_preview(payload: str | None) -> QPixmap:
@@ -390,8 +391,8 @@ class StackList(QListWidget):
         add = menu.addMenu(title)
         existing = {n["type"] for n in self.editor.nodes(self.stack)}
         for kind, (label, _) in CATALOG[self.stack].items():
-            if self.stack == "hardware":
-                capabilities = self.editor.last_state.get("camera_capabilities", {})
+            if self.stack != "software":
+                capabilities = stack_state(self.editor.last_state, self.stack).get("camera_capabilities", {})
                 if capabilities and kind == "device_control":
                     if capabilities.get("features", {}).get("duo_nodes"):
                         continue
@@ -415,5 +416,5 @@ class StackList(QListWidget):
                     self.stack, bound_kind, position
                 ),
             )
-            action.setEnabled(self.stack != "hardware" or kind == "device_control"
+            action.setEnabled(self.stack == "software" or kind == "device_control"
                               or kind not in existing)

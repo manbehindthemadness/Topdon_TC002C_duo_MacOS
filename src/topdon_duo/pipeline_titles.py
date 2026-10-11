@@ -31,7 +31,7 @@ def node_title(stack: str, item: dict[str, Any], temperature_unit: str = "C") ->
         return f"{p[key]:g}"
 
     suffix = ""
-    if stack == "hardware":
+    if stack in ("hardware", "visible_hardware"):
         if kind == "device_control":
             suffix = f"{p['control'] or 'Choose control'} · {p['value']}"
         elif kind == "camera_colors":

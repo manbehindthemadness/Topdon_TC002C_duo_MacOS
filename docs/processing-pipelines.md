@@ -133,7 +133,7 @@ then re-enables it; later expansion and software-only edits do not repeat these 
 A rejected SDK/ISP baseline reports the original AGC mode and current bank.
 Gamma uploads retain progress and cancellation. Camera controls that affect
 only preview are inactive when no connected tab or combine input/mask uses
-camera preview; their selected values remain saved for returning to Camera preview. Measurement controls work in
+camera preview; their selected values remain saved for returning to Thermal upsample. Measurement controls work in
 either source. Settings, drag operations and imports are locked during logging
 and calibration measurements. Mouse-wheel scrolling never edits inputs.
 
@@ -174,7 +174,7 @@ Blend input itself can also directly use camera preview or raw thermal.
 
 Raw inputs and masks use their explicit From/To temperature bounds, independent
 of scene statistics. These values are stored in Celsius and displayed in your
-selected units. Camera preview inputs use the actual camera colors; tab inputs
+selected units. Thermal upsample inputs use the actual camera colors; tab inputs
 use that tab's final processed colors. Inputs and masks resize to match the
 current image using the node's selected interpolation. This matches dimensions,
 not geometric registration: keep mirrors/orientation aligned, or use another
@@ -232,7 +232,7 @@ intensities no longer promise an exact temperature-to-color correspondence.
 Temperatures remain independently measured from the native sensor grid.
 Bounds are stored in Celsius and shown in the selected measurement units.
 
-With Camera preview selected, adding a range uses the radiometric source with
+With Thermal upsample selected, adding a range uses the radiometric source with
 an approximation of the selected camera palette. This is **thermal recoloring**,
 not a freeze of the hardware preview. Preview hardware effects become inactive unless another connected branch or
 combine input/mask still uses the real preview.
@@ -502,7 +502,26 @@ by default; uncheck it to retain the active pipeline. A hardware failure restore
 previously owned fields without resetting calibration fields.
 
 Clear current stack and Clear all retain each Image source and A’s fixed output. Restore default pipeline
-returns to Camera preview, Inferno app colors and antialiasing. Restore camera
+returns to Thermal upsample, Inferno app colors and antialiasing. Restore camera
 settings restores the original hardware and bypasses its optional nodes, keeping
 the software stack and saved calibration references. Exit restores physical
 camera overrides while retaining the pipeline choices for the next launch.
+
+## Experimental dual-camera pipelines
+
+A second camera adds **Visible light (experimental)** (`visible`) to Source,
+Combine input and mask selectors. Single-camera backends disable that selection.
+**Thermal upsample** keeps the saved `preview` identifier. Temperature Range
+requires a thermal source and rejects an optical source instead of silently
+substituting thermal pixels. Native measurements remain independent of all blends.
+
+The **Visible-light hardware** stack appears only when a backend advertises a
+second camera. Version-4 documents retain its optional `visible_hardware` list
+separately from thermal `hardware`, including on unsupported cameras. Each owner
+uses its own capabilities, baseline, rollback and restoration; same-name settings
+remain independent. Connected optical sources, direct blend inputs and masks
+activate optical controls; unused stacks retain settings without applying them.
+
+Use `--camera virtual-dual` for offline synthetic streams and independent brightness
+controls. This support is experimental and untested on physical dual-camera hardware.
+See [camera-backends.md](camera-backends.md) for timing, registration and capture metadata.

@@ -11,9 +11,9 @@ from typing import Any
 
 import cv2
 
-from ..pipeline import (
-    thermal_source,
-)
+from ..camera_backends import CameraFrame
+from ..camera_backends.visible import stream_metadata, visible_mapping_valid
+from ..pipeline_model.sources import display_source, source_required
 from .scheduler import PipelineProcessor
 
 
@@ -27,6 +27,7 @@ class PipelineWorker:
         self.condition = Condition()
         self.pending = None
         self.result = None
+        self.result_metadata: dict[str, Any] = {}
         self.preview_result = None
         self.preview_errors = {}
         self.preview_timings = {}
@@ -68,6 +69,15 @@ class PipelineWorker:
         """
         with self.condition:
             return self.result if self.result is not None and self.result[0] == revision else None
+
+    def latest_with_metadata(self, revision: int) -> tuple[Any, dict[str, Any]]:
+        """
+        Read completed pixels and their stream identity under the same result lock.
+        """
+        with self.condition:
+            if self.result is None or self.result[0] != revision:
+                return None, {}
+            return self.result, deepcopy(self.result_metadata)
 
     def enable_previews(self, enabled: Any) -> None:
         """
@@ -143,12 +153,18 @@ class PipelineWorker:
                 result = (
                     revision,
                     None,
-                    "raw" if thermal_source(document) else "preview",
+                    display_source(document),
                     (perf_counter() - started) * 1000,
                     str(exc),
                 )
             with self.condition:
                 self.result = result
+                self.result_metadata = ({
+                    "streams": stream_metadata(frame),
+                    "mapping_valid": visible_mapping_valid(frame),
+                    "uses_visible": source_required(document, "visible"),
+                    "timestamp": frame.timestamp,
+                } if isinstance(frame, CameraFrame) else {})
                 if previews is not None and self.preview_enabled:
                     self.preview_result = revision, previews
                     self.preview_errors = self.processor.last_preview_errors.copy()

@@ -10,7 +10,9 @@ import numpy as np
 
 from .camera import raw_temperatures
 from .camera_backends import DUO_PROFILE, CameraFrame, CameraProfile, ReportedReading, decode_frame
-from .pipeline import geometry, thermal_source, validate_pipeline
+from .camera_backends.visible import hold_thermal_frame, stream_metadata, visible_mapping_valid
+from .pipeline import default_pipeline, geometry, validate_pipeline
+from .pipeline_model.sources import display_source, source_required
 from .pipeline_processing import PipelineProcessor
 from .upsampling import VisionUpsampler
 from .view_settings import IMAGE_SOURCES, VIEW_DEFAULTS, validate_view_setting
@@ -50,6 +52,8 @@ class RenderedThermalFrame:
     camera_profile: CameraProfile = DUO_PROFILE
     reported_readings: tuple[ReportedReading, ...] = ()
     radiometry_available: bool = True
+    measurement_mapping_valid: bool = True
+    streams: dict = field(default_factory=dict)
 
 
 def draw_temperature_readout(
@@ -347,8 +351,8 @@ class ThermalRenderer:
         elif not measurements_valid:
             self._recover_measurements = True
             if self._last_valid_frame is not None:
-                frame = self._last_valid_frame
-                decoded = decode_frame(frame)
+                decoded = hold_thermal_frame(decoded, decode_frame(self._last_valid_frame))
+                frame = decoded
                 raw, preview = decoded.raw_counts, decoded.preview
                 radiometry = raw is not None
                 self.current_frame = decoded
@@ -374,20 +378,31 @@ class ThermalRenderer:
             center=float(celsius[center_y, center_x]),
         )
 
-        if not image_processing or self.pipeline is not None:
+        processing_document = self.pipeline
+        if processing_document is None and self.image_source == "visible":
+            processing_document = default_pipeline()
+            processing_document["software"][0]["params"]["source"] = "visible"
+            processing_document["software"] = [
+                processing_document["software"][0], processing_document["software"][-1]
+            ]
+        if not image_processing or processing_document is not None:
             if image_processing:
                 palette = self.hardware_settings.get("palette", {}).get("value", 1)
                 heatmap, source = self.pipeline_processor.process(
-                    frame, averaged, self.pipeline, self.scale, self.rotation, palette
+                    frame, averaged, processing_document, self.scale, self.rotation, palette
                 )
             else:
                 heatmap = np.zeros((*celsius.shape, 3), np.uint8)
                 heatmap = cv2.resize(heatmap, (celsius.shape[1] * self.scale, celsius.shape[0] * self.scale))
-                source = "raw" if self.pipeline is not None and thermal_source(self.pipeline) else self.image_source
+                source = display_source(self.pipeline) if self.pipeline is not None else self.image_source
+            mapping_valid = not (
+                source_required(self.pipeline, "visible") if self.pipeline is not None
+                else self.image_source == "visible"
+            ) or visible_mapping_valid(decoded)
             return RenderedThermalFrame(heatmap, stats, celsius, oriented_raw, source,
                                        self.view_settings(), measurements_valid,
                                        self.measurement_status, decoded.profile, decoded.readings,
-                                       radiometry)
+                                       radiometry, mapping_valid, stream_metadata(decoded))
 
         # Image processing and measurement data remain independent. Some modes
         # leave the preview empty; those retain the radiometric visualization.
@@ -476,6 +491,7 @@ class ThermalRenderer:
             camera_profile=decoded.profile,
             reported_readings=decoded.readings,
             radiometry_available=radiometry,
+            streams=stream_metadata(decoded),
         )
 
     def convert_counts(self, counts: np.ndarray | None) -> np.ndarray:

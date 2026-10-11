@@ -135,7 +135,7 @@ count = len(messages)
 editor.insert("software", "combine", 1)
 blend = editor.nodes("software")[1]
 controls = editor.widgets[blend["id"]][1]
-assert {controls["tab"].input.itemData(i) for i in range(controls["tab"].input.count())} == {"preview", "raw", "B", "C", "D", "E"}
+assert {controls["tab"].input.itemData(i) for i in range(controls["tab"].input.count())} == {"preview", "raw", "visible", "B", "C", "D", "E"}
 editor.change(blend, "mask_source", "E")
 editor.bypass(blend, True)
 editor.tab_bar.setCurrentIndex(4)

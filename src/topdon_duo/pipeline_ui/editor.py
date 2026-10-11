@@ -36,11 +36,11 @@ from ..pipeline import (
     software_tabs,
     validate_pipeline,
 )
-from ..pipeline_hardware import desired_hardware
 from ..pipeline_presets import load_presets, save_presets
 from ..pipeline_titles import node_title
 from .compute import configure_backend_row, state_backend, update_compute_devices
 from .custom import CustomControls
+from .dual import desired_camera_hardware as desired_hardware
 from .hardware import HardwareControlFields
 from .presets import pipeline_content, rename_current_preset
 from .state import update_editor_state
@@ -88,8 +88,10 @@ class PipelineEditor(PipelineTabs, QWidget):
         self.download_status.hide()
         layout.addWidget(self.download_status)
         self.stacks = {}
+        self.stack_titles = {}
         for stack, title in (
-            ("hardware", "Camera hardware · order organizes controls"),
+            ("hardware", "Thermal camera hardware · order organizes controls"),
+            ("visible_hardware", "Visible-light hardware · experimental; physical hardware untested"),
             ("software", "Software processing · runs from top to bottom"),
         ):
             if stack == "software":
@@ -110,10 +112,15 @@ class PipelineEditor(PipelineTabs, QWidget):
                 self.tab_status = QLabel()
                 self.tab_status.setWordWrap(True)
                 layout.addWidget(self.tab_status)
-            layout.addWidget(QLabel(title))
+            heading = QLabel(title)
+            self.stack_titles[stack] = heading
+            layout.addWidget(heading)
             listing = StackList(self, stack)
             self.stacks[stack] = listing
             layout.addWidget(listing)
+            if stack == "visible_hardware":
+                heading.hide()
+                listing.hide()
         buttons = QHBoxLayout()
         self.import_button = QPushButton("Import pipelines")
         self.export_button = QPushButton("Export pipelines")
@@ -315,8 +322,8 @@ class PipelineEditor(PipelineTabs, QWidget):
         """
         document = self.document if document is None else document
         return (
-            document[stack]
-            if stack == "hardware" or self.tab == "A"
+            document.get(stack, [])
+            if stack != "software" or self.tab == "A"
             else document["branches"][self.tab]
         )
 
@@ -324,7 +331,7 @@ class PipelineEditor(PipelineTabs, QWidget):
         """
         Set nodes.
         """
-        if stack == "hardware" or self.tab == "A":
+        if stack != "software" or self.tab == "A":
             self.document[stack] = nodes
         else:
             self.document["branches"][self.tab] = nodes
@@ -373,7 +380,9 @@ class PipelineEditor(PipelineTabs, QWidget):
         """
         if self.locked or kind in ("source", "output"):
             return
-        if stack == "hardware" and any(n["type"] == kind for n in self.nodes(stack)):
+        if stack != "software" and kind != "device_control" and any(
+            n["type"] == kind for n in self.nodes(stack)
+        ):
             return
         item = node(stack, kind)
         if stack == "hardware":
@@ -399,6 +408,8 @@ class PipelineEditor(PipelineTabs, QWidget):
         item["expanded"] = kind != "preview"
         if stack == "software":
             position = max(1, min(position, len(self.nodes(stack)) - (self.tab == "A")))
+        if stack == "visible_hardware":
+            self.document.setdefault(stack, [])
         self.nodes(stack).insert(position, item)
         self.rebuild()
         self.publish()
@@ -421,6 +432,8 @@ class PipelineEditor(PipelineTabs, QWidget):
             return
         if stack in (None, "hardware"):
             self.document["hardware"] = []
+        if stack in (None, "visible_hardware") and "visible_hardware" in self.document:
+            self.document["visible_hardware"] = []
         if stack in (None, "software"):
             tabs = (
                 software_tabs(self.document)
@@ -607,7 +620,7 @@ class PipelineEditor(PipelineTabs, QWidget):
                 controls = {}
                 definitions = CATALOG[stack][item["type"]][1]
                 if item["type"] == "device_control":
-                    hardware = HardwareControlFields(self, item)
+                    hardware = HardwareControlFields(self, item, stack=stack)
                     self.hardware_widgets[item["id"]] = hardware
                     fields.addWidget(hardware)
                     definitions = {}
@@ -714,7 +727,7 @@ class PipelineEditor(PipelineTabs, QWidget):
         Update titles.
         """
         unit = getattr(self, "last_state", {}).get("temperature_unit", "C")
-        for stack in ("hardware", "software"):
+        for stack in self.stacks:
             for item in self.nodes(stack):
                 title = self.widgets[item["id"]][3]
                 prefix = "" if item["type"] == "output" else "▾ " if item["expanded"] else "▸ "

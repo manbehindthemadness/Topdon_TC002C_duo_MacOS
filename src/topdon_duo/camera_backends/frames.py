@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 from .contracts import CameraProfile
+from .visible import VisibleFrame
 
 
 @dataclass(frozen=True)
@@ -53,11 +54,26 @@ class CameraFrame:
     readings: tuple[ReportedReading, ...] = ()
     timestamp: float | None = None
     sequence: int | None = None
+    visible: VisibleFrame | None = None
+    thermal_timestamp: float | None = None
+    thermal_sequence: int | None = None
 
     def __post_init__(self) -> None:
         """
         Validate shapes and own immutable copies before asynchronous processing.
         """
+        for timestamp in (self.timestamp, self.thermal_timestamp):
+            if timestamp is not None and (
+                type(timestamp) not in (int, float) or not math.isfinite(timestamp)
+            ):
+                raise ValueError("Invalid camera timestamp")
+        if any(value is not None and (type(value) is not int or value < 0)
+               for value in (self.sequence, self.thermal_sequence)):
+            raise ValueError("Invalid camera sequence")
+        if self.visible is not None and (
+            not isinstance(self.visible, VisibleFrame) or not self.profile.visible
+        ):
+            raise ValueError("Visible frames require an advertised optical capability")
         for name in ("raw_counts", "preview", "preview_bgr"):
             plane = getattr(self, name)
             if plane is None:
@@ -82,7 +98,8 @@ class CameraFrame:
             object.__setattr__(self, name, copied)
         if self.raw_counts is not None and (not self.profile.radiometry or self.converter is None):
             raise ValueError("Radiometric counts require a verified temperature converter")
-        if self.raw_counts is None and self.preview is None and self.preview_bgr is None:
+        if (self.raw_counts is None and self.preview is None and self.preview_bgr is None
+                and (self.visible is None or self.visible.bgr is None)):
             raise ValueError("Camera frame has no image planes")
         if self.preview is not None and self.preview_bgr is not None and (
             self.preview.shape != self.preview_bgr.shape[:2]

@@ -26,6 +26,11 @@ capture backend is a valid first milestone; lack of safe controls must not block
   capture, control, radiometry and pipeline boundaries. This program currently
   has explicit backend/frame/capability contracts. The Duo transport and host
   calibration remain target-specific; a new camera still requires its own verified backend.
+- For devices with thermal and visible-light cameras, read
+  [dual-camera.md](references/dual-camera.md). Distinguish an upsampled thermal
+  display from an optical camera stream; the application has experimental
+  optical sources and separate hardware owners, tested with an offline virtual
+  camera but untested on physical dual-camera hardware.
 
 ## Keep the camera recoverable
 

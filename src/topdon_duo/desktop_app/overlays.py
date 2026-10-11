@@ -146,6 +146,8 @@ def draw_sample_spots(
     """
     Draw sample spots.
     """
+    if not rendered.measurement_mapping_valid:
+        return image
     mask = np.zeros(image.shape[:2], dtype=np.uint8)
     text_mask = np.zeros_like(mask)
     labels, _occupied = label_layout(rendered, spots, scale, temperature_unit, place_temperature_label)

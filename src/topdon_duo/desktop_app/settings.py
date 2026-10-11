@@ -7,6 +7,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 from .. import macos_window
+from ..pipeline_model.sources import display_source
+from .dual_camera import apply_camera_hardware
 from .state import SessionState
 
 if TYPE_CHECKING:
@@ -222,7 +224,7 @@ class SettingsController(SessionState):
         """
         candidate = self.api.validate_pipeline(document, hardware_profile=self.camera_profile.id)
         previous_pipeline = self.pipeline
-        self.pipeline_hardware.apply(candidate, previous_document=previous_pipeline)
+        apply_camera_hardware(self, candidate, previous_document=previous_pipeline)
         if self.hardware.tone_busy and self.tone_previous_pipeline is None:
             self.tone_previous_pipeline = previous_pipeline
         previous_mirrors = self.renderer.mirror_horizontal, self.renderer.mirror_vertical
@@ -271,7 +273,7 @@ class SettingsController(SessionState):
         changed_image = signature(candidate) != signature(self.pipeline)
         self.pipeline = candidate
         self.renderer.set_pipeline(self.pipeline)
-        self.actual_image_source = "raw" if self.api.thermal_source(self.pipeline) else "preview"
+        self.actual_image_source = display_source(self.pipeline)
         if changed_image:
             self.pipeline_revision += 1
         for name in tuple(self.remembered_hardware):
@@ -293,6 +295,7 @@ class SettingsController(SessionState):
             "orientation": [self.renderer.rotation, self.renderer.mirror_horizontal,
                             self.renderer.mirror_vertical],
             "placing": self.spots.placing,
+            "mapping_available": not hasattr(self, "rendered") or self.rendered.measurement_mapping_valid,
             "calibration_available": self.calibration_available
             and not self.renderer.measurement_status,
             "locked": bool(
@@ -325,7 +328,12 @@ class SettingsController(SessionState):
         """
         View state.
         """
-        message = "Camera preview" if self.actual_image_source == "preview" else "Raw thermal image"
+        message = {"preview": "Thermal upsample", "visible": "Visible light (experimental)",
+                   "raw": "Raw thermal image"}.get(self.actual_image_source, "Camera image")
+        if self.camera_profile.experimental:
+            message += " · Experimental dual-camera support; physical hardware untested"
+        if hasattr(self, "rendered") and not self.rendered.measurement_mapping_valid:
+            message += " · Optical registration unavailable; spatial measurements disabled"
         if (
             self.pipeline["software"][0]["params"]["source"] == "preview"
             and self.actual_image_source == "raw"
@@ -352,10 +360,16 @@ class SettingsController(SessionState):
                 **ui_hardware,
                 "ambient": {**ui_hardware["ambient"], "value": self.ambient_input_celsius},
             }
+        visible_hardware: Any = getattr(self, "visible_hardware", None)
         return {
             **self.renderer.view_settings(),
             "camera_profile": self.camera_profile.as_dict(),
+            "streams": self.rendered.streams if hasattr(self, "rendered") else {},
             "camera_capabilities": self.hardware.capabilities(),
+            "visible_camera_capabilities": (visible_hardware.capabilities()
+                                            if visible_hardware is not None else {}),
+            "visible_hardware": (visible_hardware.state()
+                                 if visible_hardware is not None else {}),
             "spot_hardware": (
                 self.hardware.spot_state() if self.camera_profile.id != "duo" else {}
             ),

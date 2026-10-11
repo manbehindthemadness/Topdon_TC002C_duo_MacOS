@@ -13,6 +13,7 @@ import numpy as np
 from ..acceleration import select_backend
 from ..apple_acceleration import apple_acceleration
 from ..camera_backends import CameraFrame, decode_frame
+from ..camera_backends.visible import visible_image
 from ..coreml_upsampling import CoreMLUpsampler
 from ..custom_nodes.labels import DisplayLabel, transform_labels
 from ..custom_nodes.runtime import CustomProcessor
@@ -117,6 +118,8 @@ class BranchProcessor:
             Resolve input.
             """
             nonlocal direct_preview
+            if source == "visible":
+                return visible_image(decoded)
             if source == "preview":
                 if direct_preview is None:
                     if decoded.preview_bgr is None or (
@@ -226,7 +229,8 @@ class BranchProcessor:
             elif kind == "enhance" and p["model"] != "off" and p["amount"]:
                 image = self.apply_legacy(image, item)
         self.prune_models(software)
-        return image, "raw" if thermal else "preview"
+        source = document["software"][0]["params"]["source"]
+        return image, "visible" if source == "visible" else "raw" if thermal else "preview"
 
     def apply_onnx(self, image: np.ndarray, item: dict[str, Any], kind: str) -> np.ndarray:
         """
@@ -418,6 +422,8 @@ class BranchProcessor:
         # A complete 512x384 plane has a verified preview layout on either host.
         # Short frames retain the radiometric fallback.
         frame = frame if isinstance(frame, CameraFrame) else decode_frame(frame)
+        if document["software"][0]["params"]["source"] == "visible":
+            return visible_image(frame), None, False
         thermal = thermal_source(document) or frame.preview_bgr is None or (
             frame.profile.id == "duo" and not np.any(preview)
         )

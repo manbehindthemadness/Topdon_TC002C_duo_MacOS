@@ -54,6 +54,58 @@ are preserved by the Duo bridge; those rules do not apply to another backend.
 
 ## Capabilities, corrections and spots
 
+### Dual-camera support boundary
+
+**Thermal upsample** is the pipeline label for the legacy `preview` source: the
+processed thermal display. Saved source/input/mask identifiers remain unchanged.
+`CameraFrame.preview` and `preview_bgr` are grayscale/BGR versions of that same
+display, with shared geometry; they are not independent thermal/optical streams.
+
+Dual-camera support is **experimental and untested on physical dual-camera hardware**.
+The offline `virtual-dual` backend supplies an 80×60 thermal plane at 25 fps,
+a 160×120 thermal display and a 320×240 visible-light stream at 15 fps. Launch it
+without USB access or elevation:
+
+```sh
+.venv/bin/topdon-duo-desktop --camera virtual-dual --image-source visible
+```
+
+`CameraProfile.visible` advertises a second camera. `CameraFrame.visible` owns a
+separate immutable `VisibleFrame` with BGR pixels, timestamp, sequence, status and
+optional optical-to-thermal homography plus registration provenance. Both clocks
+must share a monotonic domain. Missing/invalid frames fail optical processing
+explicitly; timestamps differing by more than `visible_max_age` (default 0.25 s)
+are stale. Missing timing allows display but prevents spatial temperature overlays.
+Thermal FFC holds native readings and thermal display while optical video continues.
+Logging/calibration gaps still depend on thermal validity.
+
+Source, Combine input and mask choices include **Visible light (experimental)**,
+stored as `visible`. Unregistered images are display-only: temperature markers,
+pixel inspection and preview shape placement are unavailable. Native graphs and
+readings continue. A supplied homography warps optical pixels to the native thermal
+grid before processing; full coverage and fresh known timing are required for
+spatial measurements. A resize alone does not establish registration. The virtual
+camera's common coordinate grid is synthetic evidence, not real lens calibration.
+Physical registration must account for distortion, parallax and calibration scope.
+Capture JSON records each stream's timing, status and registration provenance.
+
+The editor shows a separate **Visible-light hardware** stack only when a second
+camera is advertised. Its optional version-4 `visible_hardware` list persists
+independently of thermal `hardware`, including when the selected camera cannot use
+it. A backend may implement `create_visible_controls()` returning an independent
+`DeviceControls` owner for the same profile; never return the thermal owner. Each
+owner snapshots, applies, rolls back and restores its own settings. Optical controls
+activate only when a connected source, blend or mask uses `visible`. Identical
+control names on the two cameras cannot overwrite each other's settings. The
+virtual backend provides synthetic brightness on both owners to test this isolation.
+A second camera with no verified controls may remain read-only.
+
+Use the research skill's [dual-camera guidance](../.agents/skills/reverse-engineer-thermal-camera/references/dual-camera.md)
+for physical stream discovery, synchronization, registration and control audits.
+The Duo remains the only implemented physical camera backend.
+
+### Controls and telemetry
+
 Declare each verified control with `ControlSpec`: title, numeric bounds/step/unit,
 boolean or choice options, default, support/reason, effect and scope. The Qt process
 uses this metadata without querying hardware. Unsupported saved nodes retain

@@ -15,7 +15,7 @@ for the implemented contract; another physical camera still needs protocol evide
 | `hardware_controls.py`, `tone_curves.py` | Target-specific blocks, SDK initialization, saved originals, status polling, presets, shutter and incremental LUT upload/restore |
 | `pipeline_hardware.py` | Applies owned fields in audited order, preserves calibration/correction fields, skips USB for software/reorder/collapse edits |
 | `render.py` | Native-grid measurements, invalid-frame handling, smoothing and geometry; display enhancement is separate |
-| `pipeline.py`, `pipeline_processing.py` | Versioned A–D pipelines, sources, filters/features, model processing, Combine masks, per-branch threads and preview timing |
+| `pipeline.py`, `pipeline_processing.py` | Versioned dynamic pipeline tabs, sources, filters/features, model processing, Combine masks, per-branch threads and preview timing |
 | `desktop.py`, `web.py` | Camera construction, acquisition/render integration and user-facing capability/control state |
 | `view_window.py`, `pipeline_editor.py` | Standalone measurement/calibration settings, hardware/software nodes and control availability |
 | `settings_preferences.py` | Validated persistence and migration; unit presentation must not change stored wire/calibration values |
@@ -30,6 +30,12 @@ Other backends supply decoded native planes, conversion and capability metadata;
 shared rendering, pipelines, spot mapping and recording use profile geometry/rate.
 Duo control serializers, telemetry tools and host calibration remain specific
 to the Duo. Simply changing VID/PID or `SENSOR_WIDTH` is not new-camera support.
+
+The source labelled **Thermal upsample** retains the serialized key `preview`.
+It is a processed thermal display, not a second optical camera. For dual-sensor
+investigations, read [dual-camera.md](dual-camera.md) before designing frame or
+integration. Experimental optical sources and separate hardware owners are
+implemented with an offline virtual backend; physical dual-camera support is untested.
 
 ## Choose the smallest honest support boundary
 

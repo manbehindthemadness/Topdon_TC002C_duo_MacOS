@@ -8,6 +8,7 @@ from typing import Any
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ..camera_backends.contracts import ControlSpec
+from .dual import stack_state
 
 
 def compatible_value(spec: dict[str, Any], value: Any) -> bool:
@@ -62,12 +63,12 @@ class HardwareControlFields(QWidget):
     Edit arbitrary backend-declared display controls while preserving unavailable selections.
     """
 
-    def __init__(self, editor: Any, item: dict[str, Any]) -> None:
+    def __init__(self, editor: Any, item: dict[str, Any], *, stack: str = "hardware") -> None:
         """
         Create fields using metadata already published by the viewer.
         """
         super().__init__()
-        self.editor, self.item = editor, item
+        self.editor, self.item, self.stack = editor, item, stack
         self.layout_rows = QVBoxLayout(self)
         self.signature = None
         self.rows: dict[str, Any] = {}
@@ -80,7 +81,7 @@ class HardwareControlFields(QWidget):
         """
         if self.editor.locked:
             return
-        spec = self.editor.last_state.get("camera_capabilities", {}).get("controls", {}).get(name)
+        spec = stack_state(self.editor.last_state, self.stack).get("camera_capabilities", {}).get("controls", {}).get(name)
         if not isinstance(spec, dict):
             return
         self.item["params"].update(control=name, value=spec.get("default", spec.get("minimum", 0)))
@@ -91,6 +92,7 @@ class HardwareControlFields(QWidget):
         """
         Rebuild only when metadata changes, retaining saved values and respecting locks.
         """
+        state = stack_state(state, self.stack)
         specs = state.get("camera_capabilities", {}).get("controls", {})
         choices = [(name, spec["title"]) for name, spec in specs.items()
                    if spec.get("supported") and spec.get("effect") == "preview"
