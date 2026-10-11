@@ -54,6 +54,10 @@ def test_native_content_size_waits_for_resize_then_preserves_chrome(
     assert monitor.window_size((930, 710)) == (930, 710)
     bounds.return_value = (50, 50, 2020, 788)
     assert monitor.window_size((930, 710)) == (2020, 760)
+    bounds.return_value = (0, 0, 2560, 1440)
+    assert monitor.window_size((930, 710), fullscreen=True) == (2560, 1440)
+    bounds.return_value = (50, 50, 2020, 788)
+    assert monitor.window_size((930, 710)) == (2020, 760)
     bounds.return_value = None
     assert monitor.window_size((930, 710)) is None
     monitor.close()

@@ -137,9 +137,11 @@ class PointerMonitor:
         x, y = position
         return left <= x < left + width and top + height * toolbar_fraction <= y < top + height
 
-    def window_size(self, requested_size: tuple[int, int] | None) -> tuple[int, int] | None:
+    def window_size(
+        self, requested_size: tuple[int, int] | None, *, fullscreen: bool = False
+    ) -> tuple[int, int] | None:
         """
-        Measure Cocoa content size, calibrating window chrome from the initial resize.
+        Measure Cocoa content size, subtracting calibrated chrome only in windowed mode.
         """
         if self._coregraphics is None or requested_size is None:
             return None
@@ -147,6 +149,8 @@ class PointerMonitor:
         if rectangle is None:
             return None
         width, outer_height = round(rectangle[2]), round(rectangle[3])
+        if fullscreen:
+            return (width, outer_height) if width > 0 and outer_height > 0 else None
         if self._mac_chrome_height is None:
             # Wait for the window server to reflect the requested initial size.
             difference = outer_height - requested_size[1]

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
+from .. import macos_window
 from .state import SessionState
 
 if TYPE_CHECKING:
@@ -66,8 +67,22 @@ class SettingsController(SessionState):
         Use native Cocoa content bounds or the existing Linux/OpenCV size detector.
         """
         size = self.api.window_resize_size(self.api.WINDOW_NAME)
-        if size is None and self.api.sys.platform == "darwin":
-            size = self.pointer_monitor.window_size(self.requested_window_size)
+        if self.api.sys.platform == "darwin":
+            fullscreen = macos_window.fullscreen_state(self.api.WINDOW_NAME)
+            if size is None:
+                size = self.pointer_monitor.window_size(
+                    self.requested_window_size,
+                    fullscreen=self.cocoa_fullscreen if fullscreen is None else fullscreen,
+                )
+            if fullscreen is False:
+                if self.cocoa_fullscreen and self.cocoa_windowed_size is not None:
+                    size = self.cocoa_windowed_size
+                    self.api.cv2.resizeWindow(self.api.WINDOW_NAME, *size)
+                    self.requested_window_size = size
+                elif size is not None:
+                    self.cocoa_windowed_size = size
+            if fullscreen is not None:
+                self.cocoa_fullscreen = fullscreen
         return size
 
     def toggle_graph(self: DesktopSession) -> None:

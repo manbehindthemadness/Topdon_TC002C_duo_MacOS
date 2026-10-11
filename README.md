@@ -142,6 +142,8 @@ The controls are available from the toolbar as well as the keyboard:
 | Quit | **Quit**, `Q`, or Escape |
 
 On macOS, Escape first leaves native fullscreen without closing the viewer.
+Leaving fullscreen restores the window size used before entering fullscreen.
+The fullscreen canvas fills the window height without reserving windowed title-bar space.
 Outside fullscreen it quits as usual; `Q` and **Quit** always close the viewer.
 
 ### Visual AI models

@@ -65,4 +65,6 @@ def test_fullscreen_selects_image_window_instead_of_toolbar(
     monitor._mac_chrome_height = 28
     assert monitor._mac_window_rect() == (0, 0, 2560, 1440)
     assert monitor.window_size((1536, 610)) == (2560, 1412)
+    assert monitor.window_size((1536, 610), fullscreen=True) == (2560, 1440)
+    assert monitor._mac_chrome_height == 28
     coregraphics.CFRelease.assert_called_with(windows)

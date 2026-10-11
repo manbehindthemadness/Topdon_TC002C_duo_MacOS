@@ -22,6 +22,7 @@ def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     Viewer.
     """
     parse_args = desktop.parse_args
+    monkeypatch.setattr("topdon_duo.macos_window.fullscreen_state", lambda _name: None)
     monkeypatch.setattr(desktop, "parse_args", lambda argv: parse_args(["--scale", "3", *argv]))
     monkeypatch.setattr(desktop.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))

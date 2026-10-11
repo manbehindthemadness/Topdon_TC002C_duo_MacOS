@@ -65,6 +65,39 @@ def _cocoa_api() -> _CocoaAPI:
     return api
 
 
+def _named_window(api: _CocoaAPI, window_name: str) -> Any:
+    """
+    Find the viewer among the application's native windows.
+    """
+    application_class = api.library.objc_getClass(b"NSApplication")
+    application = api.object(application_class, api.selector("sharedApplication"))
+    windows = api.object(application, api.selector("windows"))
+    for index in range(api.integer(windows, api.selector("count"))):
+        window = api.item(windows, api.selector("objectAtIndex:"), index)
+        title = api.object(window, api.selector("title"))
+        title_bytes = api.string(title, api.selector("UTF8String"))
+        if title_bytes == window_name.encode("utf-8"):
+            return window
+    return None
+
+
+def fullscreen_state(window_name: str) -> bool | None:
+    """
+    Read native fullscreen state, returning None when the window is unavailable.
+    """
+    if sys.platform != "darwin":
+        return None
+    try:
+        api = _cocoa_api()
+        window = _named_window(api, window_name)
+        if window:
+            fullscreen = bool(api.integer(window, api.selector("styleMask")) & FULLSCREEN_MASK)
+            return fullscreen
+    except (OSError, AttributeError, ValueError):
+        return None
+    return None
+
+
 def exit_fullscreen(window_name: str) -> bool:
     """
     Leave native fullscreen for the named viewer and report whether it was handled.
@@ -73,15 +106,8 @@ def exit_fullscreen(window_name: str) -> bool:
         return False
     try:
         api = _cocoa_api()
-        application_class = api.library.objc_getClass(b"NSApplication")
-        application = api.object(application_class, api.selector("sharedApplication"))
-        windows = api.object(application, api.selector("windows"))
-        for index in range(api.integer(windows, api.selector("count"))):
-            window = api.item(windows, api.selector("objectAtIndex:"), index)
-            title = api.object(window, api.selector("title"))
-            title_bytes = api.string(title, api.selector("UTF8String"))
-            if title_bytes != window_name.encode("utf-8"):
-                continue
+        window = _named_window(api, window_name)
+        if window:
             if not api.integer(window, api.selector("styleMask")) & FULLSCREEN_MASK:
                 return False
             api.action(window, api.selector("toggleFullScreen:"), None)
