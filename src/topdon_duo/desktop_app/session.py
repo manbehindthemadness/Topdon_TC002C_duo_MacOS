@@ -7,10 +7,12 @@ from .capture import CaptureController
 from .controls import ControlsController
 from .presentation import PresentationController
 from .settings import SettingsController
+from .viewer import ViewerController
 
 
 class DesktopSession(
-    SettingsController, CaptureController, ControlsController, PresentationController
+    SettingsController, CaptureController, ControlsController, PresentationController,
+    ViewerController,
 ):
     """
     Coordinate one viewer session while controllers own individual responsibilities.
@@ -223,11 +225,16 @@ class DesktopSession(
             self.hardware_setup_pending = not self.initialize_hardware()
             self.hardware_retry_deadline = None
             self.next_hardware_retry = 0.0
-            self.api.cv2.namedWindow(
-                self.api.WINDOW_NAME, self.api.cv2.WINDOW_NORMAL | self.api.cv2.WINDOW_GUI_NORMAL
-            )
-            self.api.cv2.setMouseCallback(self.api.WINDOW_NAME, self.picker.callback)
-            self.api.set_black_window_backgrounds(self.api.WINDOW_NAME)
+            self.viewer = self.api.ViewerPanel()
+            if self.viewer is not None:
+                self.viewer.open(self.viewer_state())
+            else:
+                # Retain the injectable HighGUI presentation boundary for existing callers.
+                self.api.cv2.namedWindow(
+                    self.api.WINDOW_NAME, self.api.cv2.WINDOW_NORMAL | self.api.cv2.WINDOW_GUI_NORMAL
+                )
+                self.api.cv2.setMouseCallback(self.api.WINDOW_NAME, self.picker.callback)
+                self.api.set_black_window_backgrounds(self.api.WINDOW_NAME)
             self.initial_window_size_set = False
             self.pipeline_worker = self.api.PipelineWorker(
                 apple_available=self.apple_capability["available"]
@@ -238,7 +245,7 @@ class DesktopSession(
                 self.frame = frame
                 if not self.tick():
                     break
-        except self.api.CameraError as exc:
+        except (self.api.CameraError, OSError) as exc:
             self.api.LOG.error("Unable to run desktop viewer: %s", exc)
             return 2
         finally:
@@ -249,6 +256,8 @@ class DesktopSession(
         """
         Process the latest frame and return whether the viewer should keep running.
         """
+        if not self.poll_viewer_commands():
+            return False
         received = self.receive_frame()
         if received is not None:
             return received
@@ -279,6 +288,10 @@ class DesktopSession(
         except self.api.CameraError as exc:
             self.api.LOG.error("Could not restore pre-calibration emissivity: %s", exc)
         self.persist_settings()
+        if self.viewer is not None:
+            # Fullscreen dimensions must never replace the user's windowed size.
+            self.last_window_size = self.viewer.windowed_size or self.last_window_size
+            self.viewer.close()
         if self.last_window_size is not None:
             try:
                 self.api.save_main_window_size(self.last_window_size)

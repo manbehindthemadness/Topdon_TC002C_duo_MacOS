@@ -2,7 +2,7 @@
 
 An experimental native thermal-camera viewer for the TOPDON TC002C Duo on
 Apple Silicon Macs and Ubuntu Linux. It reads the camera directly over USB, extracts the native
-`256x192` 16-bit radiometric plane, and provides both an OpenCV desktop app and
+`256x192` 16-bit radiometric plane, and provides both a Qt desktop app and
 a browser-based MJPEG viewer.
 
 ## Features
@@ -141,9 +141,15 @@ The controls are available from the toolbar as well as the keyboard:
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
 
-On macOS, Escape first leaves native fullscreen without closing the viewer.
+The top bar uses native Qt controls outside the thermal image and graph pixels.
+Graph reset, configuration, update interval and CSV controls share this toolbar.
+At smaller widths, additional controls are available from the toolbar overflow menu.
+Status messages appear in the window's status bar.
+
+Use **Fullscreen** to enter or leave fullscreen. Escape first leaves fullscreen
+without closing the viewer on macOS and Linux.
 Leaving fullscreen restores the window size used before entering fullscreen.
-The fullscreen canvas fills the window height without reserving windowed title-bar space.
+Qt lays out the toolbar and image area without reserving extra title-bar space.
 Outside fullscreen it quits as usual; `Q` and **Quit** always close the viewer.
 
 ### Visual AI models
@@ -382,9 +388,9 @@ their pane's displayed size, rather than enlarged from a fixed low-resolution pl
 
 **Show graph** doubles the main window width, keeping its height and displaying
 thermal history on the right. **Hide graph** halves the width again. The toggle
-is remembered across restarts. On macOS, chart toggles use the native window size,
-including manual resizes, and preserve its height. Native size detection selects
-the viewer's largest normal window, ignoring Cocoa's small fullscreen toolbar window.
+is remembered across restarts. Chart toggles use Qt's image-area dimensions,
+including manual resizes, and preserve its height. In fullscreen the image area
+is shared with the graph without resizing the fullscreen window.
 The master graph plots minimum,
 average, maximum and center temperatures; each placed spot gets its own graph in placement order.
 The graph pane grows with the window and uses the remaining width beside the
@@ -996,13 +1002,18 @@ callers. Their implementation lives in these packages:
   spot handling, overlays, dialogs, and capture helpers.
 - `pipeline_model/`: node catalog, validation, migration, and branch dependencies.
 - `pipeline_ui/`: the Qt editor, widgets, and runtime state updates.
+- `viewer_ui/` and `viewer_window.py`: the Qt main window, toolbar, image canvas,
+  pointer mapping and fullscreen behavior. `viewer_panel.py` bridges the session
+  using JSON controls and one acknowledged memory-mapped display buffer; frames
+  are dropped while Qt is still copying the previous frame rather than queued.
 - `processing/`: image operations, per-branch processing and model caches,
   dependency scheduling, and the asynchronous worker.
 
 Controllers use public renderer and hardware APIs to restart measurement
 averaging, inspect cached state, and report upload progress. Keep camera reads
 and audited hardware setup order intact when changing these boundaries. Qt
-popup processes continue to communicate through JSON separately from OpenCV.
+viewer and popup processes communicate through JSON separately from the capture
+and processing process. No Qt 6 binding is loaded alongside OpenCV's Qt binding.
 Shared test fixtures live in `tests/support/`; recording, pipeline, and ONNX
 tests are grouped by responsibility so each test module follows the same limit.
 

@@ -8,6 +8,16 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def no_live_viewer_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Keep GUI processes out of unit tests using the injectable HighGUI boundary.
+
+    Qt viewer integration tests explicitly install their bridge or use a subprocess.
+    """
+    monkeypatch.setattr("topdon_duo.desktop.ViewerPanel", lambda: None)
+
+
+@pytest.fixture(autouse=True)
 def no_live_nvidia_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Fake startup capabilities; CUDA tests opt in with explicit availability or mocks.

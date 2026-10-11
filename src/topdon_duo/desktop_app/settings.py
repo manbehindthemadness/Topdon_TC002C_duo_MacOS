@@ -64,8 +64,10 @@ class SettingsController(SessionState):
 
     def current_window_size(self: DesktopSession) -> tuple[int, int] | None:
         """
-        Use native Cocoa content bounds or the existing Linux/OpenCV size detector.
+        Use Qt image-area bounds or the injectable native HighGUI size detector.
         """
+        if self.viewer is not None:
+            return self.viewer.size
         size = self.api.window_resize_size(self.api.WINDOW_NAME)
         if self.api.sys.platform == "darwin":
             fullscreen = macos_window.fullscreen_state(self.api.WINDOW_NAME)
@@ -101,13 +103,17 @@ class SettingsController(SessionState):
         if not self.show_graph:
             self.graph_interval_editor.text = None
             self.graphs.pause()
-        self.requested_window_size = (
+        requested_size = (
             width * 2 if self.show_graph else max(1, round(width / 2)),
             height,
         )
-        self.api.cv2.resizeWindow(
-            self.api.WINDOW_NAME, *cast(tuple[int, int], self.requested_window_size)
-        )
+        self.requested_window_size = requested_size
+        if self.viewer is not None:
+            self.viewer.resize(requested_size)
+        else:
+            self.api.cv2.resizeWindow(
+                self.api.WINDOW_NAME, *cast(tuple[int, int], self.requested_window_size)
+            )
         self.last_window_size = self.requested_window_size
         self.picker.x = self.picker.y = None
         self.persist_settings()

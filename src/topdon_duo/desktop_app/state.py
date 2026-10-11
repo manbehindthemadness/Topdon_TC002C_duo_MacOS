@@ -107,4 +107,6 @@ class SessionState:
     timelapse_fpm: int = 0
     tone_previous_pipeline: dict[str, Any] | None = None
     view_panel: api_types.ViewPanel = field(init=False)
+    viewer: api_types.ViewerPanel | None = None
+    viewer_keys: list[int] = field(default_factory=list)
     viewport_size: tuple[int, int] | None = None

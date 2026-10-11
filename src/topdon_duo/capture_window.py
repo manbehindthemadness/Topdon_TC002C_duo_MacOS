@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer
 from PySide6.QtWidgets import (
@@ -126,7 +128,13 @@ class CaptureWindow(QWidget):
             self.activateWindow()
 
 
-def run_window(window_type, title: str) -> int:
+def run_window(
+    window_type: Callable[[Callable[[dict], None]], Any], title: str,
+    *, stays_on_top: bool = True, poll_ms: int = 30,
+) -> int:
+    """
+    Run a separate Qt presentation window with nonblocking JSON messages.
+    """
     app = QApplication(sys.argv)
     app.setApplicationName(title)
 
@@ -137,7 +145,7 @@ def run_window(window_type, title: str) -> int:
             app.quit()
 
     window = window_type(send)
-    window.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+    window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, stays_on_top)
     os.set_blocking(sys.stdin.fileno(), False)
     incoming = b""
 
@@ -163,7 +171,7 @@ def run_window(window_type, title: str) -> int:
 
     timer = QTimer()
     timer.timeout.connect(poll_parent)
-    timer.start(30)
+    timer.start(poll_ms)
     window.show()
     return app.exec()
 

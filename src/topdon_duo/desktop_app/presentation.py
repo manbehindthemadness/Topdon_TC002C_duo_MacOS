@@ -61,6 +61,9 @@ class PresentationController(SessionState):
                 (230, 230, 230),
                 1,
             )
+            if self.viewer is not None:
+                self.viewer.present(waiting, self.viewer_state())
+                return not self.viewer.closed
             self.api.cv2.imshow(self.api.WINDOW_NAME, waiting)
             return self.api.cv2.waitKey(1) & 0xFF not in (ord("q"), 27)
         else:
@@ -198,20 +201,25 @@ class PresentationController(SessionState):
             and self.distance_calibration.update(self.rendered.temperatures_celsius)
         ):
             self.notify(self.distance_calibration.message)
-        self.layout = self.api.toolbar_layout(self.rendered.image.shape[1])
+        self.layout = (
+            self.api.ToolbarLayout(0, {}) if self.viewer is not None
+            else self.api.toolbar_layout(self.rendered.image.shape[1])
+        )
         if not self.initial_window_size_set:
             width, height = self.saved_window_size or (
                 self.rendered.image.shape[1] * (2 if self.show_graph else 1),
                 self.rendered.image.shape[0] + self.layout.height,
             )
             self.requested_window_size = (width, height)
-            if self.api.sys.platform == "darwin":
+            if self.viewer is not None:
+                self.viewer.resize((width, height))
+            elif self.api.sys.platform == "darwin":
                 self.last_window_size = self.requested_window_size
                 self.cocoa_initial_resize_pending = True
             else:
                 self.api.cv2.resizeWindow(self.api.WINDOW_NAME, width, height)
             self.initial_window_size_set = True
-        self.event_viewport = self.api.mouse_viewport_size()
+        self.event_viewport = None if self.viewer is not None else self.api.mouse_viewport_size()
         current_size = self.current_window_size()
         if current_size is not None:
             self.last_window_size = current_size
@@ -260,7 +268,8 @@ class PresentationController(SessionState):
                 temperature_unit=self.renderer.temperature_unit,
                 spots=self.spots,
                 dragging_spot=self.spot_drag.number is not None,
-                pointer_over_image=self.pointer_monitor.over_image(
+                pointer_over_image=self.viewer.over_image if self.viewer is not None
+                else self.pointer_monitor.over_image(
                     pointer_image_height, pointer_toolbar_height
                 ),
             )
@@ -329,24 +338,25 @@ class PresentationController(SessionState):
         else:
             self.status = "Ready"
         self.capture_panel.update(self.capture_state())
-        self.display = self.api.draw_toolbar(
-            self.display,
-            self.renderer.ambient_celsius,
-            self.renderer.temperature_unit,
-            placing_spots=self.spots.placing,
-            recording_mode=self.recorder.mode,
-            pending_recording=self.pending_save_kind
-            if self.pending_save_kind in ("video", "timelapse")
-            else None,
-            status=self.status,
-            stats=self.rendered.stats,
-            show_graph=self.show_graph,
-            graph_locked=self.graphs.logging or self.pending_save_kind == "graph_log",
-            settings_locked=self.graphs.logging
-            or self.emissivity_calibration.running
-            or self.reflected_calibration.running,
-            spots_locked=self.spots_state()["locked"],
-        )
+        if self.viewer is None:
+            self.display = self.api.draw_toolbar(
+                self.display,
+                self.renderer.ambient_celsius,
+                self.renderer.temperature_unit,
+                placing_spots=self.spots.placing,
+                recording_mode=self.recorder.mode,
+                pending_recording=self.pending_save_kind
+                if self.pending_save_kind in ("video", "timelapse")
+                else None,
+                status=self.status,
+                stats=self.rendered.stats,
+                show_graph=self.show_graph,
+                graph_locked=self.graphs.logging or self.pending_save_kind == "graph_log",
+                settings_locked=self.graphs.logging
+                or self.emissivity_calibration.running
+                or self.reflected_calibration.running,
+                spots_locked=self.spots_state()["locked"],
+            )
 
         # Capture spot values in this frame's orientation, before click actions can rotate
         # coordinates or add/clear spots. The next frame supplies any changed selection.
@@ -385,7 +395,7 @@ class PresentationController(SessionState):
                     self.notify(f"Could not open spot menu: {exc}")
         for click_x, click_y in self.picker.consume_clicks():
             if (
-                self.show_graph
+                self.viewer is None and self.show_graph
                 and self.graph_layout
                 and self.graph_layout.graph_control_at(
                     click_x, click_y, self.api.graph_reset_rect, self.event_viewport
@@ -399,7 +409,7 @@ class PresentationController(SessionState):
                     self.notify("Chart data cleared")
                 continue
             if (
-                self.show_graph
+                self.viewer is None and self.show_graph
                 and self.graph_layout
                 and self.graph_layout.graph_control_at(
                     click_x, click_y, self.api.graph_config_rect, self.event_viewport
@@ -412,7 +422,7 @@ class PresentationController(SessionState):
                     self.notify(f"Could not open graph configuration: {exc}")
                 continue
             if (
-                self.show_graph
+                self.viewer is None and self.show_graph
                 and self.graph_layout
                 and self.graph_layout.graph_control_at(
                     click_x, click_y, self.api.graph_interval_rect, self.event_viewport
@@ -426,7 +436,7 @@ class PresentationController(SessionState):
                 continue
             self.graph_interval_editor.text = None
             if (
-                self.show_graph
+                self.viewer is None and self.show_graph
                 and self.graph_layout
                 and self.graph_layout.graph_control_at(
                     click_x, click_y, self.api.graph_log_button_rect, self.event_viewport
@@ -434,7 +444,7 @@ class PresentationController(SessionState):
             ):
                 self.toggle_graph_logging()
                 continue
-            action = self.api.toolbar_action_at(
+            action = None if self.viewer is not None else self.api.toolbar_action_at(
                 click_x,
                 click_y,
                 self.rendered.image.shape[1],
@@ -550,31 +560,43 @@ class PresentationController(SessionState):
                 )
             )
             self.graph_image = self.graphs.image(graph_size, resize=True).copy()
-            self.api.draw_graph_logging_control(
-                self.graph_image,
-                self.graphs.logging,
-                self.pending_save_kind == "graph_log",
-                interval=self.graph_interval,
-                edit_text=self.graph_interval_editor.text,
-            )
+            if self.viewer is not None and self.graph_image.shape[0] > 34:
+                # The cached capture graph retains its history heading. Qt owns
+                # that heading in the live window, so display only the charts.
+                self.graph_image = self.api.cv2.resize(self.graph_image[34:], graph_size)
+            if self.viewer is None:
+                self.api.draw_graph_logging_control(
+                    self.graph_image,
+                    self.graphs.logging,
+                    self.pending_save_kind == "graph_log",
+                    interval=self.graph_interval,
+                    edit_text=self.graph_interval_editor.text,
+                )
             self.display = graph_layout.compose(self.display, self.graph_image)
         else:
             self.graphs.pause()
         self.diagnostics.stage("imshow")
-        self.api.cv2.imshow(self.api.WINDOW_NAME, self.display)
-        if self.cocoa_initial_resize_pending and self.requested_window_size is not None:
+        if self.viewer is not None:
+            self.viewer.present(self.display, self.viewer_state())
+        else:
+            self.api.cv2.imshow(self.api.WINDOW_NAME, self.display)
+        if (
+            self.viewer is None and self.cocoa_initial_resize_pending
+            and self.requested_window_size is not None
+        ):
             # Cocoa's first imshow resets the content size to its bitmap size.
             self.api.cv2.resizeWindow(self.api.WINDOW_NAME, *self.requested_window_size)
             self.cocoa_initial_resize_pending = False
         self.diagnostics.stage("waitKey")
-        key = self.api.cv2.waitKey(1) & 0xFF
+        key = self.viewer_key() if self.viewer is not None else self.api.cv2.waitKey(1) & 0xFF
         self.diagnostics.stage("window_geometry")
         current_size = self.current_window_size()
         if current_size is not None:
             self.last_window_size = current_size
         try:
             if (
-                self.api.cv2.getWindowProperty(self.api.WINDOW_NAME, self.api.cv2.WND_PROP_VISIBLE)
+                self.viewer is None
+                and self.api.cv2.getWindowProperty(self.api.WINDOW_NAME, self.api.cv2.WND_PROP_VISIBLE)
                 == 0
             ):
                 return False
@@ -598,7 +620,7 @@ class PresentationController(SessionState):
             return True
         self.diagnostics.stage("keyboard_controls")
         if (
-            key == 27 and self.api.sys.platform == "darwin"
+            self.viewer is None and key == 27 and self.api.sys.platform == "darwin"
             and macos_window.exit_fullscreen(self.api.WINDOW_NAME)
         ):
             self.notify("Left fullscreen")

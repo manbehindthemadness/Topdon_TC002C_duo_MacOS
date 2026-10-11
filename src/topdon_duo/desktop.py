@@ -1,4 +1,4 @@
-"""Native OpenCV desktop viewer with per-pixel inspection and radiometric saves."""
+"""Desktop acquisition and processing with a separate Qt viewer and radiometric saves."""
 
 from __future__ import annotations
 
@@ -83,6 +83,7 @@ from .spots_panel import SpotsPanel
 from .view_panel import ViewPanel
 from .view_settings import VIEW_DEFAULTS
 from .viewer_diagnostics import ViewerDiagnostics
+from .viewer_panel import ViewerPanel
 from .window_preferences import load_main_window_size, save_main_window_size
 from .window_style import set_black_window_backgrounds, window_resize_size
 
@@ -204,6 +205,7 @@ __all__ = [
     "VideoRecorder",
     "ViewPanel",
     "ViewerDiagnostics",
+    "ViewerPanel",
     "apple_acceleration",
     "argparse",
     "asdict",
