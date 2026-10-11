@@ -141,6 +141,9 @@ The controls are available from the toolbar as well as the keyboard:
 | Show control help | **Help** or Space |
 | Quit | **Quit**, `Q`, or Escape |
 
+On macOS, Escape first leaves native fullscreen without closing the viewer.
+Outside fullscreen it quits as usual; `Q` and **Quit** always close the viewer.
+
 ### Visual AI models
 
 Install the optional weights once (not while capturing):
@@ -378,7 +381,9 @@ their pane's displayed size, rather than enlarged from a fixed low-resolution pl
 **Show graph** doubles the main window width, keeping its height and displaying
 thermal history on the right. **Hide graph** halves the width again. The toggle
 is remembered across restarts. On macOS, chart toggles use the native window size,
-including manual resizes, and preserve its height. The master graph plots minimum,
+including manual resizes, and preserve its height. Native size detection selects
+the viewer's largest normal window, ignoring Cocoa's small fullscreen toolbar window.
+The master graph plots minimum,
 average, maximum and center temperatures; each placed spot gets its own graph in placement order.
 The graph pane grows with the window and uses the remaining width beside the
 camera image. The camera image scales without changing its aspect ratio; unused

@@ -158,12 +158,14 @@ class PointerMonitor:
 
     def _mac_window_rect(self) -> tuple[float, float, float, float] | None:
         """
-        Read the current process's normal on-screen window bounds through CoreGraphics.
+        Read the largest normal on-screen window owned by this viewer process.
         """
         cg = self._coregraphics
         if cg is None:
             return None
         windows = None
+        largest_rectangle = None
+        largest_area = 0.0
         try:
             pid_key = C.c_void_p.in_dll(cg, "kCGWindowOwnerPID").value
             bounds_key = C.c_void_p.in_dll(cg, "kCGWindowBounds").value
@@ -195,10 +197,17 @@ class PointerMonitor:
                     and rect.size.width > 0
                     and rect.size.height > 0
                 ):
-                    return rect.origin.x, rect.origin.y, rect.size.width, rect.size.height
+                    # Cocoa fullscreen adds a separate small toolbar window before
+                    # the image window. Qt controls live in separate processes.
+                    area = rect.size.width * rect.size.height
+                    if area > largest_area:
+                        largest_area = area
+                        largest_rectangle = (
+                            rect.origin.x, rect.origin.y, rect.size.width, rect.size.height
+                        )
         except (OSError, AttributeError, ValueError):
             return None
         finally:
             if windows:
                 cg.CFRelease(windows)
-        return None
+        return largest_rectangle

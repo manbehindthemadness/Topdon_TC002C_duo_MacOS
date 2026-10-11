@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .. import macos_window
 from .state import SessionState
 
 if TYPE_CHECKING:
@@ -596,6 +597,12 @@ class PresentationController(SessionState):
                 self.notify("Enter an update interval between 0.1 and 60 seconds.")
             return True
         self.diagnostics.stage("keyboard_controls")
+        if (
+            key == 27 and self.api.sys.platform == "darwin"
+            and macos_window.exit_fullscreen(self.api.WINDOW_NAME)
+        ):
+            self.notify("Left fullscreen")
+            return True
         if key in (ord("q"), 27):
             return False
         if key == ord("o"):

@@ -4,6 +4,7 @@ Display-only markers, labels, and calibration overlays.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import cv2
@@ -337,7 +338,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     """
     result = image.copy()
     panel_width = min(390, result.shape[1] - 20)
-    panel_height = min(349, result.shape[0] - 20)
+    panel_height = min(374 if sys.platform == "darwin" else 349, result.shape[0] - 20)
     x0, y0 = 10, result.shape[0] - panel_height - 10
     x1, y1 = x0 + panel_width, y0 + panel_height
 
@@ -346,7 +347,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     cv2.addWeighted(overlay, 0.82, result, 0.18, 0, result)
     cv2.rectangle(result, (x0, y0), (x1, y1), (120, 130, 150), 1)
 
-    lines = (
+    lines: tuple[tuple[str, tuple[int, int, int]], ...] = (
         ("Controls", (255, 255, 255)),
         ("Mouse move   Inspect pixel temperature", (210, 215, 225)),
         ("P / Add spots  Toggle spot placement", (210, 215, 225)),
@@ -359,8 +360,10 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
         ("G            Show / hide graph area", (210, 215, 225)),
         ("L            Start / stop CSV logging", (210, 215, 225)),
         ("Space        Hide controls", (210, 215, 225)),
-        ("Q / Esc      Quit", (210, 215, 225)),
+        ("Q            Quit" if sys.platform == "darwin" else "Q / Esc      Quit", (210, 215, 225)),
     )
+    if sys.platform == "darwin":
+        lines += (("Esc          Leave fullscreen / quit", (210, 215, 225)),)
     for index, (line, color) in enumerate(lines):
         cv2.putText(
             result,
