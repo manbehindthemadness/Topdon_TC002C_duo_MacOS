@@ -117,8 +117,8 @@ class MeasurementDrawingController(SessionState):
         if button == "right" and kind == "release":
             if point is not None:
                 self.measurement_drawing_action("draw_finish")
-        elif draft.pointer(kind, button, point):
-            self.measurement_drawing_action("draw_finish")
+        else:
+            draft.pointer(kind, button, point)
         return True
 
     def draw_measurement_draft(self: DesktopSession, image: np.ndarray) -> np.ndarray:

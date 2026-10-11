@@ -128,7 +128,7 @@ The controls are available from the toolbar as well as the keyboard:
 | Stop/start spot placement | `P` again; existing measurements remain |
 | Reposition a measurement | Left-click its crosshair or area and drag |
 | Manage measurements | **Measurements** or right-click the thermal image |
-| Draw a measurement on video | **Measurements → choose shape → Draw on preview** |
+| Draw a measurement on video | **Measurements → choose shape → Create → draw → Enter** |
 | Clear all measurements | **Measurements → Clear all measurements** |
 | Adjust ambient temperature | Camera popup hardware ambient row |
 | Save image data | **Capture** → **Save image data**, or `S` |
@@ -469,19 +469,20 @@ for creating, naming, enabling, disabling, deleting and configuring spots,
 rectangles, ovals, polygons and closed cubic Bézier areas. Spots have linked
 radius and diameter controls in **native sensor pixels**; radius zero keeps the
 original single-pixel reading. `P` toggles quick spot placement on the image.
-Create an area, edit its coordinates or drag vertices/control handles in the
+After drawing an area, edit its coordinates or drag vertices/control handles in the
 popup grid, then select **Apply configuration**. Valid edits also apply when
 selecting another measurement. Drag a spot's crosshair or an area's body in the
 thermal image to move it while preserving its name, number and graph identity.
 
-To draw directly on live video, select a shape and **Draw on preview**. The popup
+To draw directly on live video, select a shape and **Create**. The popup
 hides to uncover the image. Drag a spot from its center to set its radius, or
 click for a single-pixel spot. Drag opposite corners for rectangles/ovals. Click
 polygon vertices; for Bézier areas, click-and-drag each anchor to set its tangent.
-Close polygons/curves with **Finish**, Enter or a right-click (Control-click on
+Complete any shape with **Finish**, Enter or a right-click (Control-click on
 macOS). Backspace/**Undo** removes the last anchor, and Esc/**Cancel** discards
-the draft. **Draw exclusion** starts an exclusion shape. Draft outlines follow
-the live image; finishing saves the measurement and reopens its configuration.
+the draft. **Exclusion** starts an exclusion shape. Draft outlines follow
+the live image; releasing a drag keeps its draft pending until Enter/Finish.
+Finishing saves the measurement and reopens its configuration.
 Drawing ignores graphs and image padding, and cancels if a lock or camera-view
 orientation changes. In fullscreen, Esc cancels drawing before exiting fullscreen.
 

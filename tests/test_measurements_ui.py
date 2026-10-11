@@ -40,11 +40,13 @@ for index, kind in enumerate(KINDS):
     window.kind.setCurrentIndex(index)
     window.create.click()
     command = messages[-1]
-    assert command["action"] == "create" and command["region"]["kind"] == kind
+    assert command["action"] == "draw" and command["kind"] == kind
+    assert not window.isVisible()
+    center, region = initial_region(kind, (32, 24))
     entry = {"number": index+1, "name": kind, "enabled": True,
-             "pixel": command["pixel"], "region": command["region"]}
+             "pixel": list(center), "region": region}
     state["spots"].append(entry)
-    window.update_state(deepcopy(state))
+    window.update_state({**deepcopy(state), "raise_window": True})
     assert window._selected == index+1
     if kind == "spot":
         window.diameter.setValue(7)

@@ -17,9 +17,11 @@ locks apply to all mutations.
 
 ## Drawing on live video
 
-Choose the shape and **Draw on preview** in the popup; **Draw exclusion** chooses
+Choose the shape and **Create** in the popup; **Exclusion** chooses
 subtraction behavior. The popup hides and the viewer gains contextual drawing
 controls. Completed shapes reopen the popup for names, labels and detailed edits.
+Releasing a spot/rectangle/oval drag leaves a fixed draft; press Enter to save it,
+or drag again to replace its geometry before completing it.
 
 | Tool | Gesture |
 | --- | --- |
@@ -28,7 +30,7 @@ controls. Completed shapes reopen the popup for names, labels and detailed edits
 | Polygon | Click successive vertices; at least three are required |
 | Bézier | Click-and-drag successive anchors to set tangent direction/length; at least two anchors are required |
 
-For polygons/curves, **Finish**, Enter or right-click closes the shape. macOS
+For every shape, **Finish**, Enter or right-click closes the shape. macOS
 Control-click also finishes. **Undo**/Backspace removes the last anchor or cancels
 the current drag; **Cancel**/Esc discards the draft without creating a measurement.
 In fullscreen, this first Esc cancels drawing and preserves fullscreen. Polygon

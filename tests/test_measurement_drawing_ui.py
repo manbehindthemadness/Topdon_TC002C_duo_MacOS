@@ -27,14 +27,14 @@ popup.update_state(state)
 popup.show()
 popup.kind.setCurrentIndex(3)
 popup.draw_exclude.setChecked(True)
-popup.draw.click()
+popup.create.click()
 assert commands[-1] == {"action": "draw", "kind": "polygon", "exclude": True, "orientation": [0,False,False]}
 assert not popup.isVisible()
 popup.update_state({**state, "raise_window": True, "locked": True})
 assert popup.isVisible()
 count = len(commands)
-assert not popup.draw.isEnabled() and not popup.draw_exclude.isEnabled()
-popup.draw.click()
+assert not popup.create.isEnabled() and not popup.draw_exclude.isEnabled()
+popup.create.click()
 assert len(commands) == count
 popup.close()
 

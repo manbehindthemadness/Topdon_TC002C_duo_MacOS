@@ -21,9 +21,11 @@ def test_single_drag_builds_native_geometry_and_outside_release_discards(kind: s
     """
     draft = MeasurementDrawing()
     draft.begin(kind, False, (50, 40), [0, False, False])
-    assert not draft.pointer("press", "left", (5, 7))
-    assert not draft.pointer("move", "left", (8, 11))
-    assert draft.pointer("release", "left", (8, 11))
+    draft.pointer("press", "left", (5, 7))
+    draft.pointer("move", "left", (8, 11))
+    draft.pointer("release", "left", (8, 11))
+    assert draft.state()["finish"]
+    draft.pointer("move", "left", (30, 30))
     center, region = draft.geometry()
     if kind == "spot":
         assert center == (5, 7) and region["radius"] == 5
@@ -31,7 +33,7 @@ def test_single_drag_builds_native_geometry_and_outside_release_discards(kind: s
         assert center == (6, 9) and region["points"] == [[5, 7], [8, 11]]
     assert not region["exclude"]
     draft.pointer("press", "left", (2, 2))
-    assert not draft.pointer("release", "left", None)
+    draft.pointer("release", "left", None)
     with pytest.raises(ValueError):
         draft.geometry()
     draft.cancel()
@@ -157,6 +159,10 @@ def test_parent_drawing_maps_resized_camera_pane_and_suppresses_placement(
     assert np.any(overlay != source)
     assert np.array_equal(source, original)
     pointer(session, "release", *end)
+    assert session.spots.numbers == []
+    assert session.measurement_drawing.state()["finish"]
+    pointer(session, "move", 0, 0)
+    session.measurement_drawing_action("draw_finish")
     assert session.spots.region(1)["points"] == expected
     assert session.spots.pixels == [(64, 80)]
     assert session.spots.placing
@@ -293,6 +299,7 @@ def test_full_session_popup_tool_draws_on_video_and_persists_completed_shape(
             {"action": "pointer", "kind": "move", "button": "left", "x": 90, "y": 90, "flags": 1},
         ],
         [{"action": "pointer", "kind": "release", "button": "left", "x": 90, "y": 90}],
+        [{"action": "draw_finish"}],
         [{"action": "quit"}],
     ]
     panel = Mock()
@@ -308,6 +315,7 @@ def test_full_session_popup_tool_draws_on_video_and_persists_completed_shape(
         [],
         [],
         [],
+        [],
     ]
     monkeypatch.setattr("topdon_duo.desktop.ViewerPanel", lambda: native_viewer)
     monkeypatch.setattr("topdon_duo.desktop.SpotsPanel", lambda: panel)
@@ -320,7 +328,7 @@ def test_full_session_popup_tool_draws_on_video_and_persists_completed_shape(
         call.args[1]["measurement_drawing"]["active"]
         for call in native_viewer.present.call_args_list
     ]
-    assert states == [True, True, False]
+    assert states == [True, True, True, False]
     assert not np.array_equal(
         native_viewer.present.call_args_list[0].args[0],
         native_viewer.present.call_args_list[1].args[0],

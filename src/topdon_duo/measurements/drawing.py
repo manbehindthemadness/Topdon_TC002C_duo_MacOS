@@ -74,27 +74,28 @@ class MeasurementDrawing:
             self.tangents.pop()
         self.pressed = None
 
-    def pointer(self, kind: str, button: str, point: Point | None) -> bool:
+    def pointer(self, kind: str, button: str, point: Point | None) -> None:
         """
-        Update draft gestures, returning whether a single-drag shape is complete.
+        Update draft gestures, retaining released geometry until explicit completion.
 
         Releases outside the camera image discard the current gesture. Polygon
         vertices and Bezier anchors are capped at the persisted topology limit.
         """
-        if point is not None:
+        single_drag = self.kind in ("spot", "rectangle", "oval")
+        if point is not None and not (single_drag and self.released and kind != "press"):
             self.cursor = point
         if button != "left":
-            return False
+            return
         if kind == "press":
             self.pressed = point
             self.released = False
         elif kind == "release":
             if point is None or self.pressed is None:
                 self.pressed = None
-                return False
-            if self.kind in ("spot", "rectangle", "oval"):
+                return
+            if single_drag:
                 self.released = True
-                return True
+                return
             limit = 64 if self.kind == "bezier" else 192
             if len(self.anchors) >= limit:
                 self.pressed = None
@@ -106,7 +107,6 @@ class MeasurementDrawing:
             self.anchors.append(anchor)
             self.tangents.append(tangent)
             self.pressed = None
-        return False
 
     def geometry(self, *, preview: bool = False) -> tuple[Point, dict]:
         """
@@ -167,20 +167,28 @@ class MeasurementDrawing:
         Expose only drawing controls and instructions to the Qt viewer.
         """
         hints = {
-            "spot": "Drag center to radius; click for a single-pixel spot",
-            "rectangle": "Drag opposite corners",
-            "oval": "Drag opposite corners of the bounding box",
+            "spot": "Drag center to radius or click for a pixel; Enter to finish",
+            "rectangle": "Drag opposite corners; Enter to finish",
+            "oval": "Drag opposite corners of the bounding box; Enter to finish",
             "polygon": "Click vertices; Enter or right-click to finish",
             "bezier": "Click/drag anchors and tangents; Enter or right-click to finish",
         }
         minimum = 2 if self.kind == "bezier" else 3
+        drag_ready = (
+            self.kind in ("spot", "rectangle", "oval")
+            and self.released
+            and self.pressed is not None
+        )
+        path_ready = (
+            self.kind in ("polygon", "bezier")
+            and len(self.anchors) >= minimum
+            and self.pressed is None
+        )
         return {
             "active": self.kind is not None,
             "kind": self.kind,
             "hint": hints.get(self.kind or "", ""),
             "exclude": self.exclude,
-            "finish": self.kind in ("polygon", "bezier")
-            and len(self.anchors) >= minimum
-            and self.pressed is None,
+            "finish": drag_ready or path_ready,
             "undo": bool(self.anchors or self.pressed),
         }
