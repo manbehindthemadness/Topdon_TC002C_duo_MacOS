@@ -67,6 +67,9 @@ class MeasurementsWindow(QWidget):
         self.create = QPushButton("Create")
         self.create.clicked.connect(self._create)
         self.draw_exclude = QCheckBox("Exclusion")
+        self.auto_hide = QCheckBox("Auto-hide")
+        self.auto_hide.setChecked(True)
+        self.auto_hide.setToolTip("Hide Measurements while drawing a new shape on the preview")
         self.placing = QCheckBox("Place spots on image (P)")
         self.placing.toggled.connect(
             lambda enabled: self.send({"action": "placing", "enabled": enabled})
@@ -76,6 +79,7 @@ class MeasurementsWindow(QWidget):
         header.addWidget(self.kind)
         header.addWidget(self.create)
         header.addWidget(self.draw_exclude)
+        header.addWidget(self.auto_hide)
         header.addWidget(self.placing)
         header.addStretch()
         header.addWidget(self.calibrate)
@@ -155,10 +159,16 @@ class MeasurementsWindow(QWidget):
         right.addLayout(point_buttons)
         self.apply = QPushButton("Apply configuration")
         self.apply.clicked.connect(self._apply)
-        right.addWidget(self.apply)
         split.addWidget(self.editor_panel)
         split.setSizes([240, 700])
         layout.addWidget(split, 1)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        actions.addWidget(self.apply)
+        self.close_button = QPushButton("Close")
+        self.close_button.clicked.connect(self.close)
+        actions.addWidget(self.close_button)
+        layout.addLayout(actions)
         self.status = QLabel(
             "Create a shape, then edit its coordinates or drag its handles in the grid."
         )
@@ -197,7 +207,8 @@ class MeasurementsWindow(QWidget):
                    "exclude": self.draw_exclude.isChecked(),
                    "orientation": self._state.get("orientation")})
         self._creating = True
-        self.hide()
+        if self.auto_hide.isChecked():
+            self.hide()
 
     def _delete(self) -> None:
         """
@@ -550,6 +561,7 @@ class MeasurementsWindow(QWidget):
         )
         self.calibrate.setEnabled(not locked and state.get("calibration_available", False))
         self.editor_panel.setEnabled(selected and not locked)
+        self.apply.setEnabled(selected and not locked)
         if changed_ids or changed_view or locked or not self._dirty:
             self._load_selected()
         if locked:

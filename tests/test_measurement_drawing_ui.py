@@ -30,13 +30,26 @@ popup.draw_exclude.setChecked(True)
 popup.create.click()
 assert commands[-1] == {"action": "draw", "kind": "polygon", "exclude": True, "orientation": [0,False,False]}
 assert not popup.isVisible()
+popup.update_state({**state, "raise_window": True})
+popup.auto_hide.setChecked(False)
+popup.create.click()
+assert commands[-1]["action"] == "draw" and popup.isVisible()
+# Live state updates preserve the local visibility choice.
+popup.update_state(state)
+assert not popup.auto_hide.isChecked()
+assert popup.close_button.isEnabled() and not popup.apply.isEnabled()
+count = len(commands)
+popup.close_button.click()
+assert not popup.isVisible() and len(commands) == count
 popup.update_state({**state, "raise_window": True, "locked": True})
 assert popup.isVisible()
 count = len(commands)
 assert not popup.create.isEnabled() and not popup.draw_exclude.isEnabled()
 popup.create.click()
 assert len(commands) == count
-popup.close()
+assert popup.close_button.isEnabled()
+popup.close_button.click()
+assert not popup.isVisible()
 
 viewer = ViewerWindow(commands.append)
 viewer.canvas.image = QImage(400, 200, QImage.Format.Format_RGB888)

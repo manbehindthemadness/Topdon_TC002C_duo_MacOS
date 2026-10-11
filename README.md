@@ -474,8 +474,10 @@ popup grid, then select **Apply configuration**. Valid edits also apply when
 selecting another measurement. Drag a spot's crosshair or an area's body in the
 thermal image to move it while preserving its name, number and graph identity.
 
-To draw directly on live video, select a shape and **Create**. The popup
-hides to uncover the image. Drag a spot from its center to set its radius, or
+To draw directly on live video, select a shape and **Create**. **Auto-hide** is
+checked by default; uncheck it to keep Measurements visible during creation.
+**Close**, beside **Apply configuration**, dismisses the popup without applying
+pending edits. Drag a spot from its center to set its radius, or
 click for a single-pixel spot. Drag opposite corners for rectangles/ovals. Click
 polygon vertices; for Bézier areas, click-and-drag each anchor to set its tangent.
 Complete any shape with **Finish**, Enter or a right-click (Control-click on

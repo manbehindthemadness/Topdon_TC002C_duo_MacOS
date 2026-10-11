@@ -18,8 +18,11 @@ locks apply to all mutations.
 ## Drawing on live video
 
 Choose the shape and **Create** in the popup; **Exclusion** chooses
-subtraction behavior. The popup hides and the viewer gains contextual drawing
-controls. Completed shapes reopen the popup for names, labels and detailed edits.
+subtraction behavior. **Auto-hide** is checked by default and hides the popup
+during creation; uncheck it to leave the dialog visible. The viewer gains
+contextual drawing controls. Completed shapes reopen the popup for names, labels
+and detailed edits. **Close**, next to **Apply configuration**, dismisses the
+dialog without applying pending edits and remains available while edits are locked.
 Releasing a spot/rectangle/oval drag leaves a fixed draft; press Enter to save it,
 or drag again to replace its geometry before completing it.
 
