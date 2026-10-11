@@ -103,3 +103,27 @@ def apply_transform(
         if 0 <= x <= 1 and 0 <= y <= 1:
             transformed.append(DisplayLabel(label.text, float(x), float(y)))
     return output, transformed
+
+
+def render_transform(
+    image: np.ndarray, params: dict[str, Any], size: tuple[int, int],
+) -> np.ndarray:
+    """
+    Sample a canvas transform directly from its retained source at the receiving resolution.
+
+    Pixel positions retain the source canvas's units; percent positions retain its proportions.
+    """
+    if size[0] * size[1] > MAX_PIXELS:
+        raise ValueError("Pipeline exceeds the 4 megapixel image limit; reduce Transform size")
+    height, width = image.shape[:2]
+    source_coordinates = np.diag((max(1, width - 1), max(1, height - 1), 1))
+    target_coordinates = np.diag((max(1, size[0] - 1), max(1, size[1] - 1), 1))
+    matrix = (
+        target_coordinates @ transform_matrix(params, (width, height))
+        @ np.linalg.inv(source_coordinates)
+    )
+    methods = {"nearest": cv2.INTER_NEAREST, "linear": cv2.INTER_LINEAR,
+               "bicubic": cv2.INTER_CUBIC, "lanczos": cv2.INTER_LANCZOS4}
+    output = cv2.warpPerspective(image, matrix, size, flags=methods[params["method"]],
+                                 borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+    return output

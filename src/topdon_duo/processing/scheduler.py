@@ -92,6 +92,13 @@ class PipelineProcessor:
         retained_dependencies = execution_dependencies(document, roots=("A", *roots))
         dependencies = retained_dependencies if self.collect_previews else viewer_dependencies
         tabs = software_tabs(document)
+        width, height = frame.profile.native_size
+        unrotated_target = (width * scale, height * scale)
+        interpolation = (
+            cv2.INTER_CUBIC
+            if any(n["type"] == "antialiasing" for n in active_nodes(document, "software"))
+            else cv2.INTER_NEAREST
+        )
         track_coverage = any(
             item["type"] == "combine" and not item["bypass"] and item["params"]["mode"] == "replace"
             for tab in dependencies for item in tabs[tab]
@@ -126,11 +133,16 @@ class PipelineProcessor:
                         inputs = {t: outputs[t][0] for t in required}
                         self.branches[tab].collect_previews = self.collect_previews
                         self.branches[tab].track_coverage = track_coverage
+                        self.branches[tab].display_size = unrotated_target if tab == "A" else None
+                        self.branches[tab].display_interpolation = interpolation
                         self.branches[tab].input_labels = {
                             t: list(self.branches[t].custom.labels) for t in required
                         }
                         self.branches[tab].input_coverage = {
                             t: self.branches[t].output_coverage for t in required
+                        }
+                        self.branches[tab].input_transforms = {
+                            t: self.branches[t].output_transform for t in required
                         }
                         future = self.executors[tab].submit(
                             self.branches[tab].process,
@@ -182,17 +194,14 @@ class PipelineProcessor:
         self.coreml_models = self.branches["A"].coreml_models
         self.onnx_models = self.branches["A"].onnx_models
         image, source = outputs["A"]
+        deferred = self.branches["A"].output_transform
+        if deferred is not None and image.shape[:2] != (unrotated_target[1], unrotated_target[0]):
+            image, _ = deferred.render(unrotated_target)
         if rotation:
             image = np.rot90(image, -(rotation // 90)).copy()
-        width, height = frame.profile.native_size
         target: tuple[int, int] = (width * scale, height * scale)
         if rotation in (90, 270):
             target = target[1], target[0]
-        interpolation = (
-            cv2.INTER_CUBIC
-            if any(n["type"] == "antialiasing" for n in active_nodes(document, "software"))
-            else cv2.INTER_NEAREST
-        )
         display = bytes_image(resize(image, target, interpolation))
         display = draw_display_labels(display, self.branches["A"].custom.labels, rotation)
         return display, source

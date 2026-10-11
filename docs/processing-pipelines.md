@@ -132,6 +132,16 @@ Transforms apply mirror, upper-left scale, centered skew, perspective distortion
 pixels beyond the canvas are clipped and uncovered pixels are black.
 The 4-megapixel allocation limit also applies to resizing.
 
+A canvas Transform at the end of a branch retains its pre-transform pixels. When Combine
+or the viewer needs a different canvas resolution, it samples those pixels directly using
+the Transform's interpolation choice. This avoids reducing a native thermal inset and then
+enlarging that reduced image. Pixel offsets still use the original working canvas's units;
+occupied Replace boundaries and label anchors retain their existing positions.
+Preview and Output nodes can follow without discarding the retained source. Other pixel
+processing nodes consume the transformed working canvas and discard that retained source,
+so put inset Transform after its filters. A final Combine can use the viewer's larger canvas;
+put it after main-image filters to retain detail through the last display resize.
+
 Transforms never resample radiometric arrays or change temperature statistics.
 Mirror and working-resolution changes retain spatial measurements. Canvas scaling,
 skew, perspective distortion and nonzero position disable spatial overlays/picking until bypassed

@@ -20,7 +20,7 @@ from ..custom_nodes.runtime import CustomProcessor
 from ..enhancement_limits import MAX_PIXELS, acnet_pass_limit
 from ..feature_processing import apply_features
 from ..image_filters import apply_filter
-from ..image_transform import apply_transform
+from ..image_transform import apply_transform, has_warp
 from ..nvidia_acceleration import nvidia_acceleration
 from ..onnx_models import MODELS as ONNX_MODELS
 from ..onnx_upsampling import ONNXUpsampler
@@ -42,6 +42,7 @@ from .images import (
     map_luminance,
     resize,
 )
+from .transforms import CanvasTransform
 
 
 class BranchProcessor:
@@ -73,6 +74,10 @@ class BranchProcessor:
         self.input_coverage: dict[str, np.ndarray | None] = {}
         self.output_coverage: np.ndarray | None = None
         self.track_coverage = True
+        self.input_transforms: dict[str, CanvasTransform | None] = {}
+        self.output_transform: CanvasTransform | None = None
+        self.display_size: tuple[int, int] | None = None
+        self.display_interpolation = cv2.INTER_NEAREST
 
     def close(self) -> None:
         """
@@ -90,6 +95,8 @@ class BranchProcessor:
         self.last_preview_timings = {}
         self.input_coverage = {}
         self.output_coverage = None
+        self.input_transforms = {}
+        self.output_transform = None
 
     def process(
         self,
@@ -109,6 +116,7 @@ class BranchProcessor:
         started = perf_counter()
         self.custom.labels = []
         self.output_coverage = None
+        self.output_transform = None
         coverage: np.ndarray | None = None
         preview_overhead = 0.0
         decoded = decode_frame(frame)
@@ -148,8 +156,12 @@ class BranchProcessor:
             return available_inputs[source]
 
         first_range = True
-        for item in software:
+        for index, item in enumerate(software):
             kind, p = item["type"], item["params"]
+            # Only a terminal canvas transform can be sampled at the consumer's resolution.
+            # Later pixel operations must receive the declared working canvas immediately.
+            if kind not in ("preview", "output", "source") and not (kind == "range" and first_range):
+                self.output_transform = None
             if kind == "preview" and item["expanded"] and self.collect_previews:
                 sampled_at = perf_counter()
                 self.last_preview_timings[item["id"]] = max(
@@ -164,6 +176,19 @@ class BranchProcessor:
                 image = self.custom.apply(image, item)
             elif kind == "combine":
                 incoming = resolve_input(p["tab"], p)
+                incoming_coverage = self.input_coverage.get(p["tab"])
+                deferred = self.input_transforms.get(p["tab"])
+                if (
+                    deferred is not None and self.display_size is not None
+                    and self.display_size[0] >= image.shape[1]
+                    and self.display_size[1] >= image.shape[0]
+                    and all(following["type"] in ("preview", "output")
+                            for following in software[index + 1:])
+                ):
+                    image = resize(image, self.display_size, self.display_interpolation)
+                    coverage = resize_coverage(coverage, image.shape[:2])
+                if deferred is not None and incoming.shape[:2] != image.shape[:2]:
+                    incoming, incoming_coverage = deferred.render((image.shape[1], image.shape[0]))
                 mask_source = p["mask_source"]
                 mask = (
                     None
@@ -172,7 +197,11 @@ class BranchProcessor:
                     if mask_source == "input"
                     else resolve_input(mask_source, p)
                 )
-                incoming_coverage = self.input_coverage.get(p["tab"])
+                mask_transform = self.input_transforms.get(mask_source)
+                if mask_transform is not None and mask is not None and mask.shape[:2] != image.shape[:2]:
+                    mask = incoming if mask_source == p["tab"] else mask_transform.render(
+                        (image.shape[1], image.shape[0])
+                    )[0]
                 if p["mode"] == "replace":
                     self.custom.labels = replace_labels(
                         self.custom.labels, self.input_labels.get(p["tab"], []),
@@ -207,9 +236,12 @@ class BranchProcessor:
             elif kind == "antialiasing" and p["amount"]:
                 image = cv2.GaussianBlur(image, (0, 0), p["amount"])
             elif kind == "transform":
+                source_image = image
                 if self.track_coverage:
                     coverage = transform_coverage(coverage, image.shape[:2], p)
                 image, self.custom.labels = apply_transform(image, p, self.custom.labels)
+                if p["resize_mode"] == "canvas" and has_warp(p):
+                    self.output_transform = CanvasTransform(source_image, dict(p), coverage)
             elif kind == "range":
                 if first_range:
                     # Defines the source normalization before earlier operations run.
