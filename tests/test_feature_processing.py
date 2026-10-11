@@ -8,9 +8,10 @@ from copy import deepcopy
 import cv2
 import numpy as np
 import pytest
+from support.pipeline import multi_tab_pipeline as default_pipeline
 
 from topdon_duo.feature_processing import apply_features
-from topdon_duo.pipeline import default_pipeline, node, validate_pipeline
+from topdon_duo.pipeline import node, validate_pipeline
 
 
 def scene():

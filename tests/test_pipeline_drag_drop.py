@@ -113,6 +113,7 @@ assert event.accepted and not hardware.placement_bar.isHidden()
 hardware.dropEvent(event)
 app.processEvents()
 assert [n["type"] for n in editor.document["hardware"]] == ["contrast", "brightness"]
+editor.add_tab()
 editor.select_tab(1)
 editor.insert("software", "gamma", 1)
 editor.insert("software", "brightness", 2)

@@ -11,10 +11,11 @@ import cv2
 import numpy as np
 import pytest
 from support.desktop_recording import viewer_fixture
+from support.pipeline import multi_tab_pipeline as default_pipeline
 from test_capture_panel import popup_environment
 from test_render import frame_with_preview
 
-from topdon_duo.pipeline import default_pipeline, node
+from topdon_duo.pipeline import node
 from topdon_duo.pipeline_processing import PipelineProcessor, PipelineWorker
 from topdon_duo.processing.branch import BranchProcessor
 

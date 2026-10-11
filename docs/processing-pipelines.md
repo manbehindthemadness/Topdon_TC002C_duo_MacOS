@@ -15,12 +15,19 @@ each node owns its own cached Python module namespace. See
 [Custom node packages](custom-nodes.md) for the entry-point contract, included
 example, configuration controls and execution limits.
 
-Camera settings has a hardware stack, a row of tabs A–D, and a software stack
+Camera settings has a hardware stack, a row of pipeline tabs, and a software stack
 for the selected tab. Click a node header to expand its controls; drag the grip
 to reorder. Node titles summarize their settings, such as **App colors: Inferno**
 or **Image filter: Sharpen · 0.7**, and update as you edit. Temperature range
 titles follow the selected measurement units. Right-click empty space to add nodes or clear the current stack.
-Clear all nodes clears hardware and all four software tabs. Right-click a node
+New pipelines start with A, which always contains the viewer output. **+** adds an
+Image source branch using the next free name (B, C, …, Z, AA, …), and **−** removes
+the selected unconnected branch. Removal is disabled for A or for any tab with
+incoming/outgoing blend or mask links, including bypassed links. Remove those links
+first. Tab names remain stable after deletion; blend/mask menus list existing tabs.
+Both controls honor the pipeline edit locks. Loading existing pipelines retains their tabs.
+
+Clear all nodes clears hardware and every existing software tab. Right-click a node
 to insert above/below or remove it. Image source stays first in every tab and
 cannot be removed or bypassed. A also has a fixed Output → viewer node at the
 bottom. Hardware controls can appear once; processing and Combine nodes repeat.
@@ -39,7 +46,7 @@ pipelines can download missing models again; saved pipelines are unchanged.
 The dropdown
 offers bundled and user-saved presets. Choose **Save current pipeline as…** to
 name and save your own preset; select its name to apply it later. Presets include
-the hardware stack and all four software tabs, persist across restarts, and can
+the hardware stack and every software tab, persist across restarts, and can
 still be exported as JSON.
 The bundled collection includes Detail Enhanced GPU Upscale, Detail Enhanced CPU
 Upscale, Redneck Combat, Redneck Combat GPU, Yautja, Yautja GPU, Reaper Night GPU,

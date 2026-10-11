@@ -35,6 +35,15 @@ def raw_pipeline(*nodes: Any) -> Any:
     return document
 
 
+def multi_tab_pipeline() -> dict[str, Any]:
+    """
+    Build an explicit A–D fixture for existing multi-branch numerical regressions.
+    """
+    document = default_pipeline()
+    document["branches"] = {tab: [node("software", "source")] for tab in "BCD"}
+    return document
+
+
 def process(document: Any, scale: Any = 1) -> Any:
     """
     Process.
@@ -75,11 +84,20 @@ def fake_hardware() -> Any:
 
     hw.set.side_effect = set_value
     hw.set_processing_preset.side_effect = lambda value: setattr(hw, "processing_preset", value)
-    hw.set_tone.side_effect = lambda gamma, boost: (
-        setattr(hw, "gamma", gamma),
-        setattr(hw, "boost", boost),
-    )
-    hw.restore_tone.side_effect = lambda: (setattr(hw, "gamma", 50), setattr(hw, "boost", 0))
+    def set_tone(gamma: float, boost: int) -> None:
+        """
+        Apply fake tone values without treating setter calls as return values.
+        """
+        hw.gamma, hw.boost = gamma, boost
+
+    def restore_tone() -> None:
+        """
+        Restore the fake camera's neutral tone.
+        """
+        set_tone(50, 0)
+
+    hw.set_tone.side_effect = set_tone
+    hw.restore_tone.side_effect = restore_tone
     hw.set_fixed_range.side_effect = lambda value: setattr(hw, "fixed_range", value)
     hw.restore_fixed_range.side_effect = lambda: setattr(hw, "fixed_range", False)
     return hw

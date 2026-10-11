@@ -116,6 +116,9 @@ assert not editor.document["hardware"]
 editor.remove("software", 0)
 assert editor.document["software"][0]["type"] == "source"
 # Tabs edit independent stacks; A keeps its fixed output and clear honors tab scope.
+for _ in range(3):
+    editor.add_tab()
+editor.tab_bar.setCurrentIndex(0)
 assert editor.tab_bar.count() == 4
 snapshot_a = deepcopy(editor.document["software"])
 editor.tab_bar.setCurrentIndex(1)

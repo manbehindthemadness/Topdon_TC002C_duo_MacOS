@@ -19,6 +19,7 @@ from .catalog import (
     SOFTWARE_NODES,
     hardware_parameter,
 )
+from .tabs import is_tab_name
 
 
 def node(stack: Any, kind: Any, **params: Any) -> Any:
@@ -60,7 +61,7 @@ def default_pipeline() -> Any:
             node("software", "antialiasing"),
             node("software", "output"),
         ],
-        "branches": {t: [node("software", "source")] for t in "BCD"},
+        "branches": {},
     }
 
 
@@ -103,8 +104,10 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
         document["version"] = 3
     if document["version"] == 3:
         document["version"] = 4
-    if not isinstance(document["branches"], dict) or set(document["branches"]) != set("BCD"):
-        raise ValueError("Pipelines must have tabs A, B, C and D")
+    if not isinstance(document["branches"], dict) or any(
+        not is_tab_name(tab) or tab == "A" for tab in document["branches"]
+    ):
+        raise ValueError("Invalid auxiliary pipeline tab identity")
     ids = set()
     stacks = [("hardware", document["hardware"], HARDWARE_NODES)] + [
         ("software", nodes, SOFTWARE_NODES) for nodes in software_tabs(document).values()
@@ -208,7 +211,14 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
                 raise ValueError("From temperature must be below To temperature")
             if kind == "combine" and item["params"]["raw_low"] >= item["params"]["raw_high"]:
                 raise ValueError("Raw input / mask From must be below To")
-    for tab, software in software_tabs(document).items():
+    tabs = software_tabs(document)
+    for tab, software in tabs.items():
+        for item in software:
+            if item["type"] == "combine":
+                for key in ("tab", "mask_source"):
+                    target = item["params"][key]
+                    if is_tab_name(target) and target not in tabs:
+                        raise ValueError(f"Tab {tab}: Unknown input tab {target}")
         if not software or software[0]["type"] != "source" or software[0]["bypass"]:
             raise ValueError(f"Tab {tab}: Image source must be first and enabled")
         outputs = [n for n in software if n["type"] == "output"]

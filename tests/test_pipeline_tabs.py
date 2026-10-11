@@ -7,12 +7,12 @@ from typing import Any
 
 import numpy as np
 import pytest
+from support.pipeline import multi_tab_pipeline as default_pipeline
 from test_render import frame_with_preview
 
 from topdon_duo.camera import decode_duo_frame
 from topdon_duo.camera_backends import CameraFrame
 from topdon_duo.pipeline import (
-    default_pipeline,
     execution_dependencies,
     node,
     preview_required,
@@ -77,7 +77,7 @@ def test_migration_preserves_single_pipeline_and_all_tabs_persist(tmp_path, monk
         lambda d: d["branches"]["B"].append(node("software", "output")),
         lambda d: d["branches"]["B"].append(node("software", "source")),
         lambda d: d["branches"]["B"][0].update(bypass=True),
-        lambda d: d["branches"].pop("C"),
+        lambda d: d["branches"].update(A=[]),
         lambda d: connect(d, "A"),
         lambda d: (connect(d, "C", "B"), connect(d, "B", "C")),
         lambda d: (connect(d, "B"), connect(d, "C", "B"), connect(d, "A", "C")),

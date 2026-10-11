@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 
 import pytest
+from support.pipeline import multi_tab_pipeline as default_pipeline
 from support.qt_process import run_popup
 
-from topdon_duo.pipeline import default_pipeline, node
+from topdon_duo.pipeline import node
 from topdon_duo.pipeline_ui.transfer.documents import (
     BUNDLE_FORMAT,
     read_pipelines,

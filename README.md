@@ -541,7 +541,11 @@ dimensions with black borders, preserving its aspect ratio.
 
 The main thermal image window remembers its resized dimensions across viewer
 restarts. The **Camera** popup also remembers its window size across closes and viewer restarts,
-and contains an expandable Camera hardware stack followed by software tabs A–D.
+and contains an expandable Camera hardware stack followed by software pipeline tabs.
+New pipelines start with A. Use **+** to add a tab and **−** to remove the selected
+tab. A contains the viewer output and stays present. A tab with incoming or outgoing
+blend/mask links cannot be removed, including links in bypassed nodes; disconnect
+those links first. Existing saved tabs are retained, and remaining tabs keep their names.
 Tab A feeds the viewer; Combine nodes activate and blend other tabs on independent
 threads. Combine inputs and optional masks can also use camera preview or raw thermal.
 Image filter nodes include configurable CPU blurs, sharpening, edge detection,

@@ -190,6 +190,7 @@ assert enhance["params"]["passes"] == 1
 assert editor.widgets[enhance["id"]][1]["passes"].input.value() == 1
 editor.remove("software", 1)
 editor.document["software"].insert(1, node("software", "gamma", amount=1.7))
+editor.add_tab()
 editor.document["branches"]["B"].append(node("software", "brightness", amount=12))
 QInputDialog.getText = lambda *_: ("My test preset", True)
 editor.select_preset(editor.preset_combo.findText("Save current pipeline as…"))

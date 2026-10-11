@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from ..enhancement_limits import enhancement_pass_limits
 from ..feature_processing import feature_fields
 from ..image_filters import allowed_kernels, filter_fields
-from ..pipeline import preview_required
+from ..pipeline import preview_required, software_tabs
 from ..pipeline_hardware import desired_hardware
 from .compute import backend_status, configure_backend_row, state_backend, update_compute_devices
 from .hardware import node_capability
@@ -63,9 +63,13 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
             new_structure = [
                 (n["id"], n["expanded"])
                 for stack in ("hardware", "software")
-                for n in self.nodes(stack, incoming)
+                for n in (
+                    incoming["hardware"] if stack == "hardware"
+                    else software_tabs(incoming).get(self.tab, [])
+                )
             ]
-            if old_structure != new_structure:
+            tabs_changed = set(software_tabs(incoming)) != set(software_tabs(self.document))
+            if old_structure != new_structure or tabs_changed:
                 self.document = incoming
                 self.rebuild()
             else:
@@ -74,14 +78,14 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                         old.update(new)
                 if self.tab != "A":
                     self.document["software"] = incoming["software"]
-                for tab in "BCD":
+                for tab in incoming["branches"]:
                     if tab != self.tab:
                         self.document["branches"][tab] = incoming["branches"][tab]
             self.accepted_document = deepcopy(self.document)
     self.last_desired = desired_hardware(self.document)
+    self.locked = locked
     self.update_tab_status()
     self.update_titles()
-    self.locked = locked
     for custom in self.custom_widgets.values():
         custom.refresh()
     pass_limits = enhancement_pass_limits(self.document, clamp=True)

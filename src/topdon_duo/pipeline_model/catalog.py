@@ -11,6 +11,7 @@ from typing import Any
 from ..hardware_controls import HARDWARE_CONTROLS
 from ..image_filters import FILTER_MODES, KERNELS
 from ..view_settings import COLOR_PALETTES
+from .tabs import is_tab_name
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,19 @@ class Parameter:
             or not self.minimum <= value <= self.maximum
             or (self.step == 1 and int(value) != value)
         ):
+            raise ValueError(f"Invalid {self.title}")
+
+
+class TabParameter(Parameter):
+    """
+    Accept native image sources or a dynamic tab identity; documents check existence.
+    """
+
+    def validate(self, value: Any) -> None:
+        """
+        Validate source tokens and tab names independently of the current tab list.
+        """
+        if not isinstance(value, str) or value not in dict(self.options) and not is_tab_name(value):
             raise ValueError(f"Invalid {self.title}")
 
 
@@ -201,10 +215,10 @@ SOFTWARE_NODES = {
     "combine": (
         "Combine pipeline",
         {
-            "tab": choice(
+            "tab": TabParameter(
                 "Blend input",
-                "B",
-                (
+                "preview",
+                options=(
                     ("preview", "Camera preview"),
                     ("raw", "Raw thermal"),
                     *((t, f"Tab {t}") for t in "ABCD"),
@@ -234,10 +248,10 @@ SOFTWARE_NODES = {
                 ),
             ),
             "opacity": Parameter("Opacity", 0.5, 0, 1, 0.01),
-            "mask_source": choice(
+            "mask_source": TabParameter(
                 "Optional mix mask",
                 "none",
-                (
+                options=(
                     ("none", "None"),
                     ("input", "Blend input"),
                     ("preview", "Camera preview"),

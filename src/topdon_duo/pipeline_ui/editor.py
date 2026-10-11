@@ -32,7 +32,6 @@ from ..image_filters import allowed_kernels, filter_fields
 from ..pipeline import (
     CATALOG,
     default_pipeline,
-    execution_dependencies,
     node,
     software_tabs,
     validate_pipeline,
@@ -45,11 +44,12 @@ from .custom import CustomControls
 from .hardware import HardwareControlFields
 from .presets import pipeline_content, rename_current_preset
 from .state import update_editor_state
+from .tabs import PipelineTabs
 from .transfer.actions import export_pipelines, import_pipelines
 from .widgets import PipelinePreview, StackList
 
 
-class PipelineEditor(QWidget):
+class PipelineEditor(PipelineTabs, QWidget):
     last_state: dict[str, Any]
 
     def __init__(self, send: Any, row_class: Any) -> None:
@@ -94,10 +94,19 @@ class PipelineEditor(QWidget):
         ):
             if stack == "software":
                 self.tab_bar = QTabBar()
-                for tab in "ABCD":
-                    self.tab_bar.addTab(tab)
                 self.tab_bar.currentChanged.connect(self.select_tab)
-                layout.addWidget(self.tab_bar)
+                tab_controls = QHBoxLayout()
+                tab_controls.addWidget(self.tab_bar, 1)
+                self.add_tab_button = QPushButton("+")
+                self.add_tab_button.setAccessibleName("Add pipeline tab")
+                self.add_tab_button.setToolTip("Add pipeline tab")
+                self.add_tab_button.clicked.connect(self.add_tab)
+                self.remove_tab_button = QPushButton("−")
+                self.remove_tab_button.setAccessibleName("Remove pipeline tab")
+                self.remove_tab_button.clicked.connect(self.remove_tab)
+                tab_controls.addWidget(self.add_tab_button)
+                tab_controls.addWidget(self.remove_tab_button)
+                layout.addLayout(tab_controls)
                 self.tab_status = QLabel()
                 self.tab_status.setWordWrap(True)
                 layout.addWidget(self.tab_status)
@@ -320,18 +329,6 @@ class PipelineEditor(QWidget):
         else:
             self.document["branches"][self.tab] = nodes
 
-    def select_tab(self, index: Any) -> None:
-        # Commit debounced inputs before their widgets are destroyed by tab switching.
-        """
-        Select tab.
-        """
-        if not self.locked:
-            self.commit_pending_inputs()
-        self.tab = "ABCD"[index]
-        self.rebuild()
-        if hasattr(self, "last_state"):
-            self.update_state(self.last_state, self.locked)
-
     def validate_document(self, document: dict[str, Any]) -> dict[str, Any]:
         """
         Apply structural validation with the currently selected camera's rules.
@@ -396,7 +393,9 @@ class PipelineEditor(QWidget):
                 if value is not None:
                     item["params"][parameter] = bool(value) if parameter == "enabled" else value
         if kind == "combine":
-            item["params"]["tab"] = next(t for t in "BCD" if t != self.tab)
+            item["params"]["tab"] = next(
+                (tab for tab in self.document["branches"] if tab != self.tab), "preview"
+            )
         item["expanded"] = kind != "preview"
         if stack == "software":
             position = max(1, min(position, len(self.nodes(stack)) - (self.tab == "A")))
@@ -529,6 +528,7 @@ class PipelineEditor(QWidget):
             if identity in live_ids
         }
         self.rebuilding = True
+        self.sync_tabs()
         self.widgets = {}
         self.custom_widgets = {}
         self.hardware_widgets = {}
@@ -623,7 +623,9 @@ class PipelineEditor(QWidget):
                         minimum=spec.minimum,
                         maximum=spec.maximum,
                         step=spec.step,
-                        options=spec.options,
+                        options=self.combine_options(key)
+                        if item["type"] == "combine" and key in ("tab", "mask_source")
+                        else spec.options,
                         unit=spec.unit,
                     )
                     if key == "apple_compute":
@@ -718,32 +720,6 @@ class PipelineEditor(QWidget):
                 prefix = "" if item["type"] == "output" else "▾ " if item["expanded"] else "▸ "
                 title.setText(prefix + node_title(stack, item, unit))
                 title.setToolTip(node_title(stack, item, unit))
-
-    def update_tab_status(self) -> None:
-        """
-        Update tab status.
-        """
-        try:
-            active = execution_dependencies(self.document)
-        except ValueError:
-            active = {}  # A rejected edit is rolled back by publish().
-        self.tab_status.setText(
-            "Tab A → viewer"
-            if self.tab == "A"
-            else f"Tab {self.tab} · connected to viewer"
-            if self.tab in active
-            else f"Tab {self.tab} · preview only"
-            if any(
-                n["type"] == "preview" and n["expanded"] and not n["bypass"]
-                for n in self.nodes("software")
-            )
-            else f"Tab {self.tab} · idle — expand a Preview node or connect this tab to use its output"
-        )
-        for i, tab in enumerate("ABCD"):
-            self.tab_bar.setTabText(i, tab)
-            self.tab_bar.setTabToolTip(
-                i, "Viewer output" if tab == "A" else "Connected" if tab in active else "Idle"
-            )
 
     def bypass(self, item: Any, value: Any) -> None:
         """
