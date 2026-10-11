@@ -103,14 +103,14 @@ without a controlling terminal, first run `sudo -v` in a terminal, then launch
 the viewer from that same terminal. See [macOS USB authorization](docs/macos-usb.md)
 for the development trust boundary and existing root-owned cache repair.
 
-Set ambient temperature in **Camera → Ambient temperature**; this writes to the
+Set ambient temperature in **Imaging → Ambient temperature**; this writes to the
 camera and its corrected counts drive desktop measurements. Use `--rotate` with `0`, `90`, `180`, or `270` to choose the starting
 orientation.
 
 The viewer uses the camera's processed preview when it is populated, including
 its full 512×384 plane on supported Linux frames. Temperatures and sample spots
 still use the native 256×192 measurement plane. Empty previews fall back to the
-raw thermal visualization. Open **Camera** or press `V` to choose the camera preview
+raw thermal visualization. Open **Imaging** or press `V` to choose the camera preview
 or raw image, or start with `--image-source raw`. The popup also offers left/right and top/bottom
 mirroring, temperature units, image filters, antialiasing, and color palettes. Changes apply live;
 mirroring keeps existing spots on the same physical sensor pixels. Filters and
@@ -130,13 +130,13 @@ The controls are available from the toolbar as well as the keyboard:
 | Manage measurements | **Measurements** or right-click the thermal image |
 | Draw a measurement on video | **Measurements → choose shape → Create → draw → Enter** |
 | Clear all measurements | **Measurements → Clear all measurements** |
-| Adjust ambient temperature | Camera popup hardware ambient row |
+| Adjust ambient temperature | Imaging popup hardware ambient row |
 | Save image data | **Capture** → **Save image data**, or `S` |
 | Open image, video and timelapse controls | **Capture** or `C` |
 | Choose preview rotation and graph layout | **Rotate** → rotation / landscape / portrait → **Apply** |
 | Rotate clockwise by 90° | `O` |
 | Toggle metric/imperial units (°C + centimeters / °F + inches) | **Units** or `F` |
-| Open camera controls | **Camera** or `V` |
+| Open camera controls | **Imaging** or `V` |
 | Calibrate the camera once | Right-click the thermal image → **Calibrate now** |
 | Show/hide graph area | **Show graph** / **Hide graph** or `G` |
 | Start/stop temperature logging | **Log to CSV** / **Stop logging** at the top of the graph area, or `L` |
@@ -172,7 +172,7 @@ uv run scripts/export_visual_denoisers.py dncnn-25 ffdnet-gray
 uv run topdon-duo-desktop
 ```
 
-In **Camera → Pipeline**, insert **AI enhancement** in a
+In **Imaging → Pipeline**, insert **AI enhancement** in a
 software tab. Start with **Native sensor** input and choose **ESPCN 3×**,
 **MewZoom V0 2× (legacy)**, **MewZoom V0 4× (legacy)**, **MewZoom V1 2× (TrunkNet)**, or
 **MewZoom V1 4× (TrunkNet)**, or **Real-ESRGAN general 4× v3**.
@@ -240,7 +240,7 @@ edit. **Update pipeline** re-saves that preset, including pending input edits.
 With no preset loaded, the button reads **Save pipeline** and asks for a name;
 saving selects the new preset. **Save current pipeline as…** in the dropdown
 saves under another name. Updating a bundled preset creates a user override.
-Reopening Camera settings recognizes presets that match the active pipeline.
+Reopening Imaging settings recognizes presets that match the active pipeline.
 Choose **Create new** to start a blank, unsaved pipeline with only the required
 source/output nodes. **Rename current pipeline…**, directly below Create new,
 renames the loaded preset while preserving its saved settings and open edits.
@@ -295,7 +295,7 @@ pipeline, not your temperature measurements or other viewer preferences.
 
 ### AI image styling
 
-Select a style in **Camera → Pipeline → AI image styling** to download its
+Select a style in **Imaging → Pipeline → AI image styling** to download its
 weights automatically on first use. Downloads run in the background; the live
 feed and thermal measurements continue without the style effect until it is
 ready. Progress appears in the viewer status and Pipeline panel. Verified weights
@@ -314,7 +314,7 @@ uv run topdon-duo-models style-rain-princess style-udnie style-pointillism style
 uv run topdon-duo-desktop
 ```
 
-In **Camera → Pipeline**, add **AI image styling** and choose Mosaic, Candy,
+In **Imaging → Pipeline**, add **AI image styling** and choose Mosaic, Candy,
 Rain Princess, Udnie, Pointillism, Line Art, or AnimeGAN Portrait Sketch.
 Start at the default 50% style blend. The separate node can go before
 an upscaler, so styling does not interfere with your AI enhancement selections.
@@ -571,7 +571,7 @@ of the video. Rotating during recording fits the image into the original video
 dimensions with black borders, preserving its aspect ratio.
 
 The main thermal image window remembers its resized dimensions across viewer
-restarts. The **Camera** popup also remembers its window size across closes and viewer restarts,
+restarts. The **Imaging** popup also remembers its window size across closes and viewer restarts,
 and contains an expandable Camera hardware stack followed by software pipeline tabs.
 New pipelines start with A. Use **+** to add a tab and **−** to remove the selected
 tab. A contains the viewer output and stays present. A tab with incoming or outgoing
@@ -622,7 +622,7 @@ the hardware write silently rounds to the control's Celsius step. The requested
 input is remembered across launches; measurements use the actual camera setting.
 Restoring camera settings clears this requested input along with hardware overrides.
 
-**Auto calibrate** is at the top of Camera settings and defaults to off. Its
+**Auto calibrate** is at the top of Imaging settings and defaults to off. Its
 saved choice is applied on startup. After the first valid camera frame arrives,
 the viewer requests one calibration, including when Auto calibrate is off.
 Readings are held during the calibration as usual. Right-click the thermal image and choose
@@ -634,7 +634,7 @@ Before accessing controls, the viewer reads the camera's SDK 2.0 protocol versio
 to initialize command dispatch after a power cycle. If a legacy 512-byte layout
 reappears, it repeats this handshake once and reselects the command; unexpected
 versions or block sizes remain rejected before configuration writes.
-Hardware setting changes show an operation notice at the top of Camera before
+Hardware setting changes show an operation notice at the top of Imaging before
 USB commands run, explaining that image and graph updates may pause briefly.
 Controls are locked during the operation; completion or rejection stays visible
 for eight seconds. Gamma uploads show their existing percentage progress there.
@@ -780,7 +780,7 @@ indicate missing permissions.
 ## Temperature accuracy
 
 The desktop uses camera-corrected counts converted with `raw / 64 - 50` for
-statistics, cursor readings, sample spots and saved measurements. The **Camera**
+statistics, cursor readings, sample spots and saved measurements. The **Imaging**
 popup's ambient row is the sole desktop ambient control. Its effective hardware
 value also appears in the readout and capture metadata; if configuration cannot
 be read, ambient is shown as unavailable. The old desktop `--ambient` argument
@@ -810,7 +810,7 @@ remain local under the gitignored `diagnostics/telemetry-research/` directory.
 
 ## Calibrate with household objects
 
-Open **Camera** from the main window to find the calibration controls:
+Open **Imaging** from the main window to find the calibration controls:
 
 - **Post-it → distance:** use a standard 3 × 3 inch note (nominally 76 × 76 mm;
   measure yours). Hold it flat in front of a warm palm so its cooler square has
@@ -837,7 +837,7 @@ the camera, target material, or relevant measurement conditions change.
 
 ## Distance calibration with a square
 
-Camera → Distance calibration uses a **76 × 76 mm Post-it** by default. You can
+Imaging → Distance calibration uses a **76 × 76 mm Post-it** by default. You can
 edit the square's side length. Keep it flat, steady and facing the camera near
 the image center. Hold the cooler note in front of your warm palm, with skin
 visible around its edges. The sticky edge alone may not hold the whole note flat.
@@ -886,7 +886,7 @@ on it for temperature compensation.
 
 ## Emissivity calibration with a known temperature
 
-Camera → Emissivity calibration fits the camera's global emissivity setting to
+Imaging → Emissivity calibration fits the camera's global emissivity setting to
 an independently measured surface temperature:
 
 1. Click **Select reference point**. Measuring-spot, cursor and distance-detection
@@ -929,7 +929,7 @@ trial with a measured reference is still required for this camera.
 
 ## Reflected-temperature calibration
 
-Camera → Reflected-temperature calibration uses a small circle at the center
+Imaging → Reflected-temperature calibration uses a small circle at the center
 of the image. Show the target, cover the entire circle with a shiny bare-metal
 spoon or foil reflector near the subject, and click **Measure stable temperature**.
 Other measurement markers are hidden during calibration. The reading uses the
@@ -943,7 +943,7 @@ or failure. Other environmental corrections remain at their configured values.
 A stable result is saved independently and clears the circle. **Apply saved
 reflected temperature** writes it to the camera at its 0.1 °C precision. The saved
 reference survives restarting, Reset display, and Restore camera settings; the
-Camera panel displays it in the selected Celsius/Fahrenheit unit. Settings and
+Imaging panel displays it in the selected Celsius/Fahrenheit unit. Settings and
 logging are locked during measurement.
 
 A spoon is an experimental reflector: curvature makes its reading depend on

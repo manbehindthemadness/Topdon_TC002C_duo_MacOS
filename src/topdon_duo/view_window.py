@@ -424,13 +424,13 @@ class ViewWindow(QWidget):
         self._send_to_viewer = send
         self._settings_locked = False
         self._anchor_top_right = None
-        self.setWindowTitle("Camera")
+        self.setWindowTitle("Imaging")
         self.setMinimumWidth(650)
         self._settings = QSettings(
             QSettings.Format.IniFormat, QSettings.Scope.UserScope, "topdon-duo", "desktop"
         )
         layout = QVBoxLayout(self)
-        heading = QLabel("Camera")
+        heading = QLabel("Imaging")
         heading.setStyleSheet("font-size: 20px; font-weight: bold")
         layout.addWidget(heading)
         self.operation_status = QLabel()
@@ -599,7 +599,7 @@ class ViewWindow(QWidget):
 
 
 def main() -> int:
-    return run_window(ViewWindow, "Camera")
+    return run_window(ViewWindow, "Imaging")
 
 
 if __name__ == "__main__":

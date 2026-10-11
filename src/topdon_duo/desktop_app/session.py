@@ -133,7 +133,7 @@ class DesktopSession(
         self.renderer.native_temperatures = True
         if self.args.ambient is not None:
             self.api.LOG.warning(
-                "--ambient is ignored; set hardware ambient temperature in Camera."
+                "--ambient is ignored; set hardware ambient temperature in Imaging."
             )
         self.display_awake = self.api.DisplayAwake()
         self.picker = self.api.MousePicker()
@@ -209,7 +209,7 @@ class DesktopSession(
         """
         print(
             "Mouse: inspect a pixel | p: toggle spot placement | s: save image data | "
-            "c: Capture controls | o: rotate | f: metric/imperial | v: Camera controls | "
+            "c: Capture controls | o: rotate | f: metric/imperial | v: Imaging controls | "
             "g: show/hide graph | l: log temperatures | Space: controls | q/Esc: quit"
         )
         try:

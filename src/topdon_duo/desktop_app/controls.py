@@ -463,7 +463,7 @@ class ControlsController(SessionState):
                         setattr(self.renderer, name, value)
                     self.persist_settings()
                 elif command.get("action") == "error":
-                    self.notify(f"Camera window failed: {command.get('message', '')}")
+                    self.notify(f"Imaging window failed: {command.get('message', '')}")
             except (KeyError, ValueError, TypeError, self.api.CameraError) as exc:
                 self.hardware.error = f"Camera setting rejected: {exc}"
                 operation_error = self.hardware.error

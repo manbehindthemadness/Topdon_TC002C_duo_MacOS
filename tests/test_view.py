@@ -276,7 +276,7 @@ window.update_state({**VIEW_DEFAULTS, "camera_operation": "Camera setting reject
 assert "rejected" in window.operation_status.text()
 window.update_state(VIEW_DEFAULTS)
 assert window.operation_status.isHidden()
-assert window.windowTitle() == "Camera"
+assert window.windowTitle() == "Imaging"
 assert not hasattr(window, "advanced_auto")
 assert not hasattr(window, "analyze_widgets")
 row = window.hardware_rows["ambient"]

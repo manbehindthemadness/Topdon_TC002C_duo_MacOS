@@ -34,7 +34,7 @@ replaces the `onnxruntime` import. As with the JetPack environment, ordinary
 executables directly or `uv run --no-sync` after installing the GPU runtime;
 repeat the replacement commands after syncing dependencies.
 
-Select **Camera → Pipeline → AI enhancement → Execution → NVIDIA CUDA** for
+Select **Imaging → Pipeline → AI enhancement → Execution → NVIDIA CUDA** for
 ACNet or an ONNX enhancement model. The style node also supports CUDA. CPU
 nodes retain their selected backend. Saved Apple GPU preferences automatically
 use NVIDIA when CUDA is available. Radiometric measurements and ordinary image

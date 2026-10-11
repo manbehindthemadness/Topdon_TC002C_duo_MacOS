@@ -26,7 +26,7 @@ class ViewerToolbar(QToolBar):
         self.buttons: dict[str, QPushButton] = {}
         self.graph_widgets: list[QAction] = []
         for action, label in (
-            ("rotate", "Rotate"), ("unit", "Units: C/cm"), ("view", "Camera"),
+            ("rotate", "Rotate"), ("unit", "Units: C/cm"), ("view", "Imaging"),
             ("spots", "Measurements"), ("capture", "Capture"), ("graph", "Show graph"),
             ("help", "Help"), ("fullscreen", "Fullscreen"), ("quit", "Quit"),
         ):

@@ -118,7 +118,7 @@ def toolbar_layout(width: int) -> ToolbarLayout:
     controls = (
         ("rotate", "Rotate", 54),
         ("unit", "Units", 75),
-        ("view", "Camera", 65),
+        ("view", "Imaging", 65),
         ("spots", "Add spots", 84),
         ("capture", "Capture", 64),
         ("graph", "Show graph", 90),
@@ -165,7 +165,7 @@ def draw_toolbar(
     labels = {
         "rotate": "Rotate",
         "unit": f"Units: {temperature_unit}/{'in' if temperature_unit == 'F' else 'cm'}",
-        "view": "Camera",
+        "view": "Imaging",
         "spots": "Add spots",
         "capture": "Capture",
         "graph": "Hide graph" if show_graph else "Show graph",

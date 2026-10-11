@@ -15,7 +15,7 @@ each node owns its own cached Python module namespace. See
 [Custom node packages](custom-nodes.md) for the entry-point contract, included
 example, configuration controls and execution limits.
 
-Camera settings has a hardware stack, a row of pipeline tabs, and a software stack
+Imaging settings has a hardware stack, a row of pipeline tabs, and a software stack
 for the selected tab. Click a node header to expand its controls; drag the grip
 to reorder. Node titles summarize their settings, such as **App colors: Inferno**
 or **Image filter: Sharpen · 0.7**, and update as you edit. Temperature range
@@ -68,7 +68,7 @@ are unchanged. The name can be saved again later.
 The dropdown retains the loaded preset name while editing. **Update pipeline**
 re-saves it, including pending input edits; updating a bundled preset creates a
 user override. With no preset loaded, **Save pipeline** asks for a name and
-selects the newly saved preset. Reopening Camera settings recognizes matching
+selects the newly saved preset. Reopening Imaging settings recognizes matching
 presets independently of node expansion state. Restoring defaults clears the
 association, then recognizes any matching preset. Loading an imported pipeline
 selects its saved preset name.
@@ -131,7 +131,7 @@ to remain selected.
 A newly added Balanced preset temporarily releases active Fixed detail for verification,
 then re-enables it; later expansion and software-only edits do not repeat these writes.
 A rejected SDK/ISP baseline reports the original AGC mode and current bank.
-Gamma uploads retain progress and cancellation. Camera controls that affect
+Gamma uploads retain progress and cancellation. Imaging controls that affect
 only preview are inactive when no connected tab or combine input/mask uses
 camera preview; their selected values remain saved for returning to Thermal upsample. Measurement controls work in
 either source. Settings, drag operations and imports are locked during logging
@@ -201,9 +201,9 @@ retain your zoom and pan. The node header retains its normal context menu.
 Expanding a Preview node enables its live thumbnail; collapsing it disables
 thumbnail generation. Bypass stops updates and keeps the last displayed frame,
 including its current zoom and pan; re-enabling resumes live updates. Node locations and bypass states persist and export with the pipeline. Preview
-nodes always start collapsed when Camera opens, including after reopening it.
+nodes always start collapsed when Imaging opens, including after reopening it.
 New Preview nodes also start collapsed; expand one to begin inspecting that stage. Thumbnails preserve aspect ratio and
-refresh at up to twice per second while the Camera window is open. They are
+refresh at up to twice per second while the Imaging window is open. They are
 read-only taps: inserting, moving or clearing a preview does not change the
 image output, temperature measurements, or camera hardware.
 
@@ -418,7 +418,7 @@ On macOS, `uv sync` automatically installs the prebuilt Apple runtime; Linux doe
 not install it. Launch with `uv run topdon-duo-desktop`. At startup a short,
 isolated probe checks `MTLCreateSystemDefaultDevice` and the Core ML provider.
 Apple execution controls in **AI enhancement** are exposed when both are
-available; Camera controls show readiness or the reason it is unavailable. Detection does not
+available; Imaging controls show readiness or the reason it is unavailable. Detection does not
 rewrite saved pipelines or presets, and model loading stays lazy until the node
 is used. The older `--extra apple` commands remain supported. Add **AI enhancement**,
 select **ACNet**, then choose **Apple Core ML** execution. No custom OpenCV build
