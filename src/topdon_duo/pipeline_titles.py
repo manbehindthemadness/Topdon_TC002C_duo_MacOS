@@ -116,7 +116,9 @@ def node_title(stack: str, item: dict[str, Any], temperature_unit: str = "C") ->
             if p["model"] == "acnet" and p["denoise"]:
                 suffix += f" · {option('denoise')} denoise"
     elif kind == "combine":
-        suffix = f"{option('tab')} · {option('mode')} · {p['opacity'] * 100:g}%"
+        suffix = f"{option('tab')} · {option('mode')}"
+        if p["mode"] != "replace":
+            suffix += f" · {p['opacity'] * 100:g}%"
         if p["mask_source"] != "none":
             suffix += f" · Mask: {option('mask_source')}"
     elif kind in ("edges", "contours"):

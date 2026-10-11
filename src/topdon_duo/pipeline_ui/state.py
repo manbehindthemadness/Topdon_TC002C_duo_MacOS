@@ -205,6 +205,8 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                 if item["type"] == "combine":
                     mode = item["params"]["mode"]
                     has_mask = item["params"]["mask_source"] != "none"
+                    if key == "opacity":
+                        available &= mode != "replace"
                     if key in ("mask_kind", "mask_invert"):
                         available &= has_mask
                     if key == "mask_threshold":

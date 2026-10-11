@@ -188,12 +188,34 @@ the same captured frame and radiometric snapshot. A frame's final image is
 published only when its connected branches finish. Disconnected workers and
 model caches are released. Graph and measurement sampling remain independent.
 
-Combine supports Opacity, Weighted sum, Add, Subtract, Difference, Multiply,
+Combine supports Replace, Opacity, Weighted sum, Add, Subtract, Difference, Multiply,
 Screen, Overlay, Lighten, Darken, bitwise AND/OR/XOR, and Luminance mask. Opacity
-sets the overall strength for every mode. Weighted sum exposes separate current
+sets the overall strength except in Replace. Weighted sum exposes separate current
 and input weights plus a brightness offset. Luminance mask uses the blend input
 as a threshold mask over the current image, with an invert option. These use
 OpenCV arithmetic and blending primitives; see [OpenCV's image operations](https://docs.opencv.org/doc/doxygen/html/d0/d86/tutorial_py_image_arithmetics.html).
+
+**Replace** copies the incoming branch's occupied region at full strength and leaves
+the current image visible outside it. Transform records that footprint independently
+of pixel colors: real black pixels replace the current image, while empty padding
+does not. Position, mirrors, skew, perspective and subsequent working-resolution
+changes carry the footprint along. Ordinary pixel filters preserve it. Nested
+Combine nodes propagate occupied regions to downstream branches. Replace disables
+the node's Opacity control, preserving its saved value for other modes. The optional
+mix mask can further restrict or soften the replacement, including inverted masks.
+A direct camera/raw input without Transform occupies the full canvas. Incoming
+images and footprints still match the current branch's resolution; use Transform's
+**Scale within canvas** to create a smaller inset, rather than changing working resolution.
+Custom callbacks that move pixels have no footprint-reporting contract; their
+footprint follows output resizing, while built-in Transform records spatial changes.
+Overwritten Custom label anchors are removed; incoming anchors appear only where
+their image is copied. Native temperatures and measurement arrays remain independent.
+
+For a raw thermal inset, create tab B with Image source = **Raw thermal** and a
+Transform set to **Scale within canvas**, Width/Height = 50%, Position X/Y = 0.
+In the processed tab A, add Combine after its processing nodes, choose **Tab B**
+as Blend input and **Replace** as Blend mode. B fills the upper-left quarter of
+the canvas and A remains visible around it. Subsequent A nodes process both regions.
 
 **Optional mix mask** can select the blend input, camera preview, raw thermal,
 or any tab output. A soft luminance mask scales the blend strength from black

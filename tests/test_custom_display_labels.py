@@ -115,13 +115,14 @@ def test_classless_labels_are_deferred_without_changing_detection_boxes(package:
     assert not defer_labels([], (80, 100))
 
 
-def test_branch_labels_follow_combined_input_and_reset_each_frame(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mode", ["opacity", "replace"])
+def test_branch_labels_follow_combined_input_and_reset_each_frame(tmp_path: Path, mode: str) -> None:
     """
     Carry annotations through a connected branch without duplicating them across frames.
     """
     document = raw_pipeline()
     document["branches"]["B"] = [node("software", "source", source="raw"), label_node(tmp_path)]
-    document["software"].insert(-1, node("software", "combine", tab="B", mode="opacity"))
+    document["software"].insert(-1, node("software", "combine", tab="B", mode=mode))
     frame, _ = frame_with_preview()
     processor = PipelineProcessor(apple_available=False, nvidia_available=False)
     try:

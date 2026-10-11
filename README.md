@@ -662,6 +662,11 @@ Position X = 0, Y = 0 anchors a smaller image to the canvas's upper-left corner.
 Native temperatures remain unchanged; canvas scaling, skew, distortion and position offsets disable
 spatial measurement overlays/picking until reset or bypassed. See
 [Transform controls](docs/processing-pipelines.md#available-nodes) for details.
+Combine's **Replace** mode copies a transformed branch's occupied region, including
+true black pixels, and preserves the main image outside it. For a raw thermal inset,
+use Transform's **Scale within canvas** in a raw-source tab, then select that tab
+and **Replace** in the main pipeline's Combine node. See
+[Combine modes](docs/processing-pipelines.md#parallel-tabs-and-combine-nodes).
 
 Auto calibrate, units, ambient/reflected temperature, optical transmission, relative humidity,
 distance, emissivity and calibration tools remain separate. Optical transmission

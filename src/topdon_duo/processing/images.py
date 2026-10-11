@@ -106,11 +106,39 @@ def colorize(gray: np.ndarray, palette: str) -> np.ndarray:
     return cv2.applyColorMap(gray, getattr(cv2, f"COLORMAP_{palette.upper()}"))
 
 
+def combine_strength(
+    shape: tuple[int, int], params: dict[str, Any], mask: np.ndarray | None = None,
+    region: np.ndarray | None = None,
+) -> float | np.ndarray:
+    """
+    Resolve mix masks and geometric coverage; Replace always uses full node strength.
+    """
+    strength = 1.0 if params["mode"] == "replace" else float(params["opacity"])
+    coverage: float | np.ndarray = strength
+    if mask is not None:
+        if mask.shape[:2] != shape:
+            mask = resize(mask, (shape[1], shape[0]), INTERPOLATIONS[params["interpolation"]])
+        gray = luminance(mask) if mask.ndim == 3 else mask.astype(np.float32)
+        factor = ((gray >= params["mask_threshold"]).astype(np.float32)
+                  if params["mask_kind"] == "threshold" else np.clip(gray / 255, 0, 1))
+        if params["mask_invert"]:
+            factor = 1 - factor
+        coverage = factor * strength
+    if region is not None:
+        if region.ndim != 2:
+            raise ValueError("Combine coverage must be a two-dimensional image footprint")
+        if region.shape != shape:
+            region = resize(region, (shape[1], shape[0]), cv2.INTER_NEAREST)
+        coverage = coverage * (region > 0).astype(np.float32)
+    return coverage
+
+
 def combine_images(
-    base: np.ndarray, incoming: np.ndarray, params: dict[str, Any], mask: np.ndarray | None = None
+    base: np.ndarray, incoming: np.ndarray, params: dict[str, Any], mask: np.ndarray | None = None,
+    incoming_coverage: np.ndarray | None = None,
 ) -> np.ndarray:
     """
-    Blend display pixels; the current node fixes size and coordinate orientation.
+    Blend display pixels, or replace only the incoming branch's geometric footprint.
     """
     if incoming.shape[:2] != base.shape[:2]:
         incoming = resize(
@@ -118,7 +146,7 @@ def combine_images(
         )
     base, incoming = base.astype(np.float32), incoming.astype(np.float32)
     mode = params["mode"]
-    if mode == "opacity":
+    if mode in ("opacity", "replace"):
         result = incoming
     elif mode == "weighted":
         result = cv2.addWeighted(
@@ -154,20 +182,13 @@ def combine_images(
     else:
         raise ValueError("Unknown combine mode")
     result = np.clip(result, 0, 255).astype(np.float32)
-    if mask is None:
+    strength = combine_strength(base.shape[:2], params, mask,
+                                incoming_coverage if mode == "replace" else None)
+    if isinstance(strength, float):
         return np.clip(
-            cv2.addWeighted(base, 1 - params["opacity"], result, params["opacity"], 0), 0, 255
+            cv2.addWeighted(base, 1 - strength, result, strength, 0), 0, 255
         )
-    if mask.shape[:2] != base.shape[:2]:
-        mask = resize(mask, (base.shape[1], base.shape[0]), INTERPOLATIONS[params["interpolation"]])
-    gray = luminance(mask) if mask.ndim == 3 else mask.astype(np.float32)
-    if params["mask_kind"] == "threshold":
-        coverage = (gray >= params["mask_threshold"]).astype(np.float32)
-    else:
-        coverage = np.clip(gray / 255, 0, 1)
-    if params["mask_invert"]:
-        coverage = 1 - coverage
-    opacity = coverage[..., None] * params["opacity"]
+    opacity = strength[..., None]
     return np.clip(base * (1 - opacity) + result * opacity, 0, 255)
 
 

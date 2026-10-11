@@ -80,7 +80,7 @@ class PipelineProcessor:
         camera_palette: Any = 1,
     ) -> Any:
         """
-        Process.
+        Execute dependent branches against one frame, carrying annotations and footprints.
         """
         self.last_previews = {}
         self.last_preview_timings = {}
@@ -92,6 +92,10 @@ class PipelineProcessor:
         retained_dependencies = execution_dependencies(document, roots=("A", *roots))
         dependencies = retained_dependencies if self.collect_previews else viewer_dependencies
         tabs = software_tabs(document)
+        track_coverage = any(
+            item["type"] == "combine" and not item["bypass"] and item["params"]["mode"] == "replace"
+            for tab in dependencies for item in tabs[tab]
+        )
         # Stop idle branch threads and release their model caches after disconnection.
         for tab in set(self.executors) - set(retained_dependencies):
             self.executors.pop(tab).shutdown(wait=True)
@@ -121,8 +125,12 @@ class PipelineProcessor:
                         branch = {"hardware": document["hardware"], "software": tabs[tab]}
                         inputs = {t: outputs[t][0] for t in required}
                         self.branches[tab].collect_previews = self.collect_previews
+                        self.branches[tab].track_coverage = track_coverage
                         self.branches[tab].input_labels = {
                             t: list(self.branches[t].custom.labels) for t in required
+                        }
+                        self.branches[tab].input_coverage = {
+                            t: self.branches[t].output_coverage for t in required
                         }
                         future = self.executors[tab].submit(
                             self.branches[tab].process,

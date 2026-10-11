@@ -233,6 +233,7 @@ SOFTWARE_NODES = {
                     (k, v)
                     for k, v in (
                         ("opacity", "Opacity"),
+                        ("replace", "Replace"),
                         ("weighted", "Weighted sum"),
                         ("add", "Add"),
                         ("subtract", "Subtract"),

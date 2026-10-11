@@ -29,6 +29,7 @@ from ..pipeline import (
     thermal_source,
 )
 from ..upsampling import VisionUpsampler
+from .coverage import combine_coverage, replace_labels, resize_coverage, transform_coverage
 from .images import (
     INTERPOLATIONS,
     bytes_image,
@@ -69,10 +70,13 @@ class BranchProcessor:
         self.last_preview_errors = {}
         self.custom = CustomProcessor(self.apple_available, self.nvidia_available)
         self.input_labels: dict[str, list[DisplayLabel]] = {}
+        self.input_coverage: dict[str, np.ndarray | None] = {}
+        self.output_coverage: np.ndarray | None = None
+        self.track_coverage = True
 
     def close(self) -> None:
         """
-        Close.
+        Release model caches and shared frame metadata.
         """
         self.custom.close()
         for engine in self.coreml_models.values():
@@ -84,6 +88,8 @@ class BranchProcessor:
         self.onnx_models = {}
         self.last_previews = {}
         self.last_preview_timings = {}
+        self.input_coverage = {}
+        self.output_coverage = None
 
     def process(
         self,
@@ -102,6 +108,8 @@ class BranchProcessor:
         self.last_preview_timings = {}
         started = perf_counter()
         self.custom.labels = []
+        self.output_coverage = None
+        coverage: np.ndarray | None = None
         preview_overhead = 0.0
         decoded = decode_frame(frame)
         self.native_size = decoded.profile.native_size
@@ -164,8 +172,16 @@ class BranchProcessor:
                     if mask_source == "input"
                     else resolve_input(mask_source, p)
                 )
-                image = combine_images(image, incoming, p, mask)
-                if p["opacity"] > 0 and p["mode"] != "mask":
+                incoming_coverage = self.input_coverage.get(p["tab"])
+                if p["mode"] == "replace":
+                    self.custom.labels = replace_labels(
+                        self.custom.labels, self.input_labels.get(p["tab"], []),
+                        image.shape[:2], p, mask, incoming_coverage,
+                    )
+                if self.track_coverage:
+                    coverage = combine_coverage(coverage, incoming_coverage, image.shape[:2], p, mask)
+                image = combine_images(image, incoming, p, mask, incoming_coverage)
+                if p["mode"] != "replace" and p["opacity"] > 0 and p["mode"] != "mask":
                     if p["mode"] == "opacity" and p["opacity"] == 1 and mask is None:
                         self.custom.labels = []
                     self.custom.labels.extend(self.input_labels.get(p["tab"], []))
@@ -191,6 +207,8 @@ class BranchProcessor:
             elif kind == "antialiasing" and p["amount"]:
                 image = cv2.GaussianBlur(image, (0, 0), p["amount"])
             elif kind == "transform":
+                if self.track_coverage:
+                    coverage = transform_coverage(coverage, image.shape[:2], p)
                 image, self.custom.labels = apply_transform(image, p, self.custom.labels)
             elif kind == "range":
                 if first_range:
@@ -223,7 +241,9 @@ class BranchProcessor:
                 image = self.apply_coreml(image, item)
             elif kind == "enhance" and p["model"] != "off" and p["amount"]:
                 image = self.apply_legacy(image, item)
+            coverage = resize_coverage(coverage, image.shape[:2])
         self.prune_models(software)
+        self.output_coverage = coverage
         source = document["software"][0]["params"]["source"]
         return image, "visible" if source == "visible" else "raw" if thermal else "preview"
 

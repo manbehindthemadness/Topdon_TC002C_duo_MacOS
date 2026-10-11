@@ -161,6 +161,23 @@ assert editor.document["branches"]["B"][1]["params"]["amount"] == 12.3
 editor.insert("software", "combine", 999)
 assert editor.document["software"][-2]["type"] == "combine"
 assert editor.document["software"][-1]["type"] == "output"
+combine_a = editor.document["software"][-2]
+combine_rows = editor.widgets[combine_a["id"]][1]
+mode_input = combine_rows["mode"].input
+assert mode_input.findText("Replace") >= 0
+mode_input.setCurrentIndex(mode_input.findData("replace"))
+editor.commit_pending_inputs()
+editor.update_state({"pipeline": editor.document, "pipeline_serial": editor.edit_serial,
+                     "processing_preset_available": True}, False)
+assert combine_a["params"]["mode"] == "replace"
+assert not combine_rows["opacity"].input.isEnabled()
+assert "Replace" in editor.widgets[combine_a["id"]][3].text()
+assert "50%" not in editor.widgets[combine_a["id"]][3].text()
+mode_input.setCurrentIndex(mode_input.findData("opacity"))
+editor.commit_pending_inputs()
+editor.update_state({"pipeline": editor.document, "pipeline_serial": editor.edit_serial,
+                     "processing_preset_available": True}, False)
+assert combine_rows["opacity"].input.isEnabled()
 output = editor.document["software"][-1]
 editor.bypass(output, True)
 editor.remove("software", len(editor.document["software"]) - 1)
