@@ -1,8 +1,10 @@
-"""Nonblocking bridge to the measuring-spot context menu."""
+"""
+Nonblocking JSON bridge to the Qt measurement configuration popup.
+"""
 
 from .capture_panel import CapturePanel
 
 
 class SpotsPanel(CapturePanel):
-    window_module = "topdon_duo.spots_window"
-    window_label = "Measuring spots"
+    window_module = "topdon_duo.measurements_window"
+    window_label = "Measurements"

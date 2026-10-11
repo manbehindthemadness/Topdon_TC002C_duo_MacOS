@@ -95,7 +95,7 @@ def test_qt_session_has_no_bitmap_controls_and_samples_top_row(
     """
     panel = Mock(size=None, windowed_size=(768, 576), over_image=True, closed=False)
     panel.poll.side_effect = [
-        [{"action": "spots"}],
+        [{"action": "key", "key": ord("p")}],
         [{"action": "pointer", "kind": "release", "button": "left", "x": 0, "y": 0}],
         [{"action": "unit"}],
         [{"action": "quit"}],
@@ -222,7 +222,7 @@ assert {"action": "rotate"} in messages
 window.toolbar.interval.setValue(2)
 assert {"action": "graph_interval", "value": 2.0} in messages
 window.update_state({**state, "settings_locked": True, "spots_locked": True, "graph_locked": True})
-for action in ("rotate", "unit", "spots", "graph", "graph_reset"):
+for action in ("rotate", "unit", "graph", "graph_reset"):
     assert not window.toolbar.buttons[action].isEnabled()
 assert not window.toolbar.interval.isEnabled()
 assert window.toolbar.buttons["graph_log"].isEnabled()

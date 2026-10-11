@@ -109,6 +109,21 @@ class ControlsController(SessionState):
                     self.spots.clear(command["spot"])
                 elif action == "clear_all":
                     self.spots.clear()
+                elif action in ("create", "configure"):
+                    state = self.spots_state()
+                    if command.get("orientation") != state["orientation"]:
+                        raise ValueError("The view changed; reload the measurement geometry before applying")
+                    size = state["sensor_size"][0], state["sensor_size"][1]
+                    if action == "create":
+                        self.spots.create_region(command.get("pixel"), command.get("region"), size)
+                    else:
+                        self.spots.configure_region(command.get("spot"), command.get("region"), size,
+                                                    pixel=command.get("pixel"))
+                elif action == "clear_history":
+                    number = command.get("spot")
+                    if not isinstance(number, int) or isinstance(number, bool) or number not in self.spots.numbers:
+                        raise ValueError("Choose an existing measurement")
+                    self.graphs.clear_spot_history((self.spots.generation, number - 1))
                 else:
                     raise ValueError("Unknown spot menu operation")
             except (self.api.CameraError, KeyError, ValueError, TypeError) as exc:

@@ -10,6 +10,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from ..measurements.overlays import draw_boundaries, label_layout
 from ..render import (
     RenderedThermalFrame,
 )
@@ -118,20 +119,8 @@ def spot_label_layout(
     """
     Spot label layout.
     """
-    active = spots.active
-    anchors = [(x * scale + scale // 2, y * scale + scale // 2) for _number, (x, y) in active]
-    occupied = [(x - 6, y - 6, x + 7, y + 7) for x, y in anchors]
-    labels = []
-    for (number, (sensor_x, sensor_y)), anchor in zip(active, anchors, strict=True):
-        temperature = float(rendered.temperatures_celsius[sensor_y, sensor_x])
-        if temperature_unit == "F":
-            temperature = temperature * 9.0 / 5.0 + 32.0
-        reading = f"{temperature:.2f}" if np.isfinite(temperature) else "--"
-        text = f"{number}: {reading} {temperature_unit}"
-        origin, rect = place_temperature_label(text, anchor, rendered.image.shape, occupied)
-        occupied.append(rect)
-        labels.append((text, origin, rect))
-    return labels, occupied
+    labels, occupied = label_layout(rendered, spots, scale, temperature_unit, place_temperature_label)
+    return [(label.text, label.origin, label.rectangle) for label in labels], occupied
 
 
 def draw_label_leader(
@@ -159,15 +148,13 @@ def draw_sample_spots(
     """
     mask = np.zeros(image.shape[:2], dtype=np.uint8)
     text_mask = np.zeros_like(mask)
-    labels, _occupied = spot_label_layout(rendered, spots, scale, temperature_unit)
-    active = spots.active
-    for (_number, (sensor_x, sensor_y)), (text, origin, rect) in zip(active, labels, strict=True):
-        anchor = (sensor_x * scale + scale // 2, sensor_y * scale + scale // 2)
-        draw_label_leader(mask, anchor, rect)
+    labels, _occupied = label_layout(rendered, spots, scale, temperature_unit, place_temperature_label)
+    for label in labels:
+        draw_label_leader(mask, label.anchor, label.rectangle)
         cv2.putText(
             text_mask,
-            text,
-            origin,
+            label.text,
+            label.origin,
             cv2.FONT_HERSHEY_SIMPLEX,
             LABEL_FONT_SCALE,
             255,
@@ -175,16 +162,7 @@ def draw_sample_spots(
             cv2.LINE_AA,
         )
     # Union the markers so overlapping spots are inverted only once.
-    for _number, (sensor_x, sensor_y) in active:
-        cv2.drawMarker(
-            mask,
-            (sensor_x * scale + scale // 2, sensor_y * scale + scale // 2),
-            255,
-            markerType=cv2.MARKER_CROSS,
-            markerSize=9,
-            thickness=1,
-            line_type=cv2.LINE_8,
-        )
+    draw_boundaries(mask, spots, scale)
     return draw_contrasting_overlay(image, mask, text_mask)
 
 
@@ -350,7 +328,7 @@ def draw_control_instructions(image: np.ndarray) -> np.ndarray:
     lines: tuple[tuple[str, tuple[int, int, int]], ...] = (
         ("Controls", (255, 255, 255)),
         ("Mouse move   Inspect pixel temperature", (210, 215, 225)),
-        ("P / Add spots  Toggle spot placement", (210, 215, 225)),
+        ("P             Toggle spot placement", (210, 215, 225)),
         ("Camera Hardware ambient and image controls", (210, 215, 225)),
         ("S            Save image data", (210, 215, 225)),
         ("C            Open Capture controls", (210, 215, 225)),

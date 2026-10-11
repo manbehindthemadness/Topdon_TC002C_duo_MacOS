@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from typing import Any
 from unittest.mock import Mock
 
 import cv2
@@ -36,7 +37,10 @@ def test_spots_disable_and_clear_keep_other_numbers_and_toggle_preserves_positio
 
 
 @pytest.mark.parametrize("number", [True, 0, 2, "1"])
-def test_missing_spot_cannot_modify_existing_spots(number):
+def test_missing_spot_cannot_modify_existing_spots(number: Any) -> None:
+    """
+    Reject missing identities and intentionally malformed identifier types.
+    """
     spots = desktop.SampleSpots(pixels=[(10, 20)])
     with pytest.raises(ValueError):
         spots.set_enabled(number, False)
@@ -92,7 +96,12 @@ menu.close()
     assert result.returncode == 0, result.stderr
 
 
-def test_main_context_menu_preserves_spots_and_graph_ids(viewer, monkeypatch):
+def test_main_context_menu_preserves_spots_and_graph_ids(
+    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Preserve point identities and include editable geometry in popup state.
+    """
     from topdon_duo.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
@@ -100,30 +109,46 @@ def test_main_context_menu_preserves_spots_and_graph_ids(viewer, monkeypatch):
     panel = Mock()
     panel.events = []
 
-    def poll():
+    def poll() -> list[dict]:
+        """
+        Consume queued popup commands.
+        """
         events, panel.events = panel.events, []
         return events
 
     panel.poll.side_effect = poll
+    # The facade dynamically exports these injectable dependencies.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "SpotsPanel", lambda: panel)
     snapshots = []
     real_draw = desktop.draw_sample_spots
 
-    def draw(image, rendered, spots, scale, unit):
+    def draw(image: Any, rendered: Any, spots: Any, scale: int, unit: str) -> Any:
+        """
+        Record active identities while using the real measurement overlay.
+        """
         snapshots.append(
             (spots.placing, spots.numbers.copy(), [number for number, _point in spots.active])
         )
         return real_draw(image, rendered, spots, scale, unit)
 
+    # The facade dynamically exports these injectable dependencies.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "draw_sample_spots", draw)
     step = 0
 
-    def click(x, y, event=cv2.EVENT_LBUTTONUP):
+    def click(x: int, y: int, event: int = cv2.EVENT_LBUTTONUP) -> None:
+        """
+        Place a native-grid click inside the legacy viewport.
+        """
         viewer.set_mouse.call_args.args[1](
             event, x * 3, y * 3 + desktop.toolbar_layout(768).height, 0, None
         )
 
-    def key(_delay):
+    def key(_delay: int) -> int:
+        """
+        Drive placement, names and enabled/deleted states through the session.
+        """
         nonlocal step
         step += 1
         if step == 1:
@@ -157,8 +182,10 @@ def test_main_context_menu_preserves_spots_and_graph_ids(viewer, monkeypatch):
     assert desktop.main([]) == 0
     panel.open.assert_called_once()
     assert panel.open.call_args.args[0]["spots"] == [
-        {"number": 1, "enabled": True, "name": "Spot 1"},
-        {"number": 2, "enabled": True, "name": "Spot 2"},
+        {"number": number, "enabled": True, "name": f"Spot {number}", "pixel": pixel,
+         "region": {"kind": "spot", "radius": 0.0, "points": [], "exclude": False,
+                    "labels": ["number", "average"]}}
+        for number, pixel in ((1, [10, 20]), (2, [30, 40]))
     ]
     assert snapshots[3] == (False, [1, 2], [1, 2])
     assert snapshots[4][2] == [2]
@@ -181,6 +208,8 @@ def test_context_menu_cannot_change_spots_while_logging(viewer, monkeypatch, act
     viewer.graphs.logging = True
     panel = Mock()
     panel.poll.return_value = [{"action": action, "spot": 1, "enabled": True, "name": "Hand"}]
+    # The facade dynamically exports these injectable dependencies.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "SpotsPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
@@ -305,7 +334,11 @@ def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monk
 
     panel = Mock()
     settings = Mock()
+    # The facade dynamically exports these injectable dependencies.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "SpotsPanel", lambda: panel)
+    # The facade dynamically exports these injectable dependencies.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "ViewPanel", lambda: settings)
     panel.poll.side_effect = [
         [{"action": "calibrate_now"}],

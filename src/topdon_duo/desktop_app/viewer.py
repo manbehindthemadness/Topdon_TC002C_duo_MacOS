@@ -51,7 +51,7 @@ class ViewerController(SessionState):
         if self.viewer is None:
             return True
         keys = {
-            "rotate": "o", "unit": "f", "view": "v", "spots": "p",
+            "rotate": "o", "unit": "f", "view": "v",
             "capture": "c", "graph": "g", "help": " ", "graph_log": "l",
         }
         for command in self.viewer.poll():
@@ -64,6 +64,8 @@ class ViewerController(SessionState):
                     return False
                 if action == "pointer":
                     self.viewer_pointer(command)
+                elif action == "spots":
+                    self.spots_panel.open(self.spots_state())
                 elif isinstance(action, str) and action in keys:
                     self.viewer_keys.append(ord(keys[action]))
                 elif action == "key":

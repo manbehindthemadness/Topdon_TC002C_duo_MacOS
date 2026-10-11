@@ -15,6 +15,7 @@ import numpy as np
 
 from .graph_plotting import History, pixel_curve_samples, visible_history
 from .graph_settings import GRAPH_DEFAULTS, validate_graph_settings
+from .measurements.series import MeasurementValue, series_labels, series_values
 
 GRAPH_INTERVAL = 0.5
 MIN_GRAPH_INTERVAL = 0.1
@@ -24,7 +25,10 @@ MAX_HISTORY_SAMPLES = 4096
 COLORS = ((230, 160, 80), (90, 210, 110), (90, 110, 245), (220, 190, 240))
 
 
-def validate_graph_interval(value):
+def validate_graph_interval(value: object) -> float:
+    """
+    Require a finite numeric interval within the supported graph refresh range.
+    """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError("Graph update interval must be a number")
     value = float(value)
@@ -43,19 +47,25 @@ class GraphIntervalEditor:
         self.text = f"{self.value:g}"
         self.replace_text = True
 
-    def key(self, key):
+    def key(self, key: int) -> float | None:
+        """
+        Edit the legacy interval field only while an edit is active.
+        """
+        current_text = self.text
+        if current_text is None:
+            return None
         if key == 27:
             self.text = None
         elif key in (10, 13):
-            value = validate_graph_interval(float(self.text))
+            value = validate_graph_interval(float(current_text))
             self.text = None
             return value
         elif key in (8, 127):
-            self.text = "" if self.replace_text else self.text[:-1]
+            self.text = "" if self.replace_text else current_text[:-1]
             self.replace_text = False
         elif key in (*range(ord("0"), ord("9") + 1), ord(".")):
-            self.text = ("" if self.replace_text else self.text) + chr(key)
-            self.text = self.text[:8]
+            edited_text = ("" if self.replace_text else current_text) + chr(key)
+            self.text = edited_text[:8]
             self.replace_text = False
         return None
 
@@ -63,7 +73,7 @@ class GraphIntervalEditor:
 @dataclass(frozen=True)
 class GraphSnapshot:
     stats: tuple[float, float, float, float]
-    spots: tuple[tuple[tuple[int, int], float], ...]
+    spots: tuple[tuple[tuple[int, int], MeasurementValue], ...]
     size: tuple[int, int]  # width, height of the reserved graph area
     unit: str = "C"
     spot_names: tuple[tuple[tuple[int, int], str], ...] = ()
@@ -71,14 +81,21 @@ class GraphSnapshot:
     history_range: float | None = None
 
 
-def spot_title(snapshot, key):
-    default = f"Spot {key[1] + 1}"
+def spot_title(snapshot: GraphSnapshot, key: tuple[int, int]) -> str:
+    """
+    Label stable identities as measurements for areas and spots for scalar points.
+    """
+    value = dict(snapshot.spots).get(key)
+    prefix = "Measurement" if isinstance(value, tuple) else "Spot"
+    default = f"{prefix} {key[1] + 1}"
     name = dict(snapshot.spot_names).get(key, default)
     return default if name == default else f"{name} ({default})"
 
 
-def compress_history(history, limit=MAX_HISTORY_SAMPLES):
-    """Keep recent samples verbatim; retain extrema and gap markers in older buckets."""
+def compress_history(history: deque, limit: int = MAX_HISTORY_SAMPLES) -> None:
+    """
+    Keep recent samples verbatim; retain extrema and gap markers in older buckets.
+    """
     if len(history) <= limit:
         return
     samples = list(history)
@@ -92,7 +109,7 @@ def compress_history(history, limit=MAX_HISTORY_SAMPLES):
             finite = np.flatnonzero(np.isfinite(column))
             if finite.size:
                 selected.update(
-                    (int(finite[np.argmin(column[finite])]), int(finite[np.argmax(column[finite])]))
+                    (int(finite[np.argmin(column.take(finite))]), int(finite[np.argmax(column.take(finite))]))
                 )
         gaps = np.flatnonzero(~np.isfinite(values).all(axis=1))
         if gaps.size:
@@ -102,7 +119,7 @@ def compress_history(history, limit=MAX_HISTORY_SAMPLES):
             if previous is not None:
                 between = gaps[(gaps > previous) & (gaps < index)]
                 if between.size:
-                    older.append((bucket[int(between[0])][0], (float("nan"),) * values.shape[1]))
+                    older.append((bucket[int(between[0])][0], (float("nan"),) * len(bucket[0][1])))
             older.append(bucket[index])
             previous = index
     history.clear()
@@ -110,7 +127,10 @@ def compress_history(history, limit=MAX_HISTORY_SAMPLES):
     history.extend(samples[split:])
 
 
-def history_duration(seconds):
+def history_duration(seconds: float) -> str:
+    """
+    Format the graph history span for the viewer and captured headings.
+    """
     if seconds < 120:
         return f"{seconds:.0f} s"
     if seconds < 7200:
@@ -181,6 +201,19 @@ class GraphWorker:
     def _history_range(self):
         return self._settings["range_seconds"] if self._settings["range_mode"] == "fixed" else None
 
+    def clear_spot_history(self, key: tuple[int, int]) -> None:
+        """
+        Clear one measurement's graph without deleting its shape or other histories.
+        """
+        with self._condition:
+            if self._log_file is not None:
+                raise ValueError("Stop logging before clearing measurement history")
+            self._spots.pop(key, None)
+            self._history_generation += 1
+            self._image = None
+            self._redraw = True
+            self._condition.notify()
+
     def _compact(self, history):
         limit = self._settings["history_points"]
         if self._settings["compression"]:
@@ -240,7 +273,10 @@ class GraphWorker:
             error, self._log_error = self._log_error, None
             return error
 
-    def _write_log(self, snapshot, now):
+    def _write_log(self, snapshot: GraphSnapshot, now: float) -> None:
+        """
+        Write each point or area statistic as its own Celsius/display CSV series.
+        """
         if self._log_file is None or not snapshot.measurements_valid:
             return
         stamp = datetime.now(UTC).isoformat(timespec="milliseconds")
@@ -249,10 +285,13 @@ class GraphWorker:
             (f"scene.{name.lower()}", name, value)
             for name, value in zip(("Minimum", "Average", "Maximum", "Center"), snapshot.stats)
         ]
-        series.extend(
-            (f"spot.{key[0]}.{key[1] + 1}", spot_title(snapshot, key), value)
-            for key, value in snapshot.spots
-        )
+        for key, value in snapshot.spots:
+            identifier, title = f"spot.{key[0]}.{key[1] + 1}", spot_title(snapshot, key)
+            for label, reading in zip(series_labels(value), series_values(value), strict=True):
+                series.append(
+                    (identifier, title, reading) if label == "Temp"
+                    else (f"{identifier}.{label.lower()}", f"{title} {label}", reading)
+                )
         try:
             for identifier, label, value in series:
                 displayed = value * 1.8 + 32 if snapshot.unit == "F" else value
@@ -276,10 +315,19 @@ class GraphWorker:
                 pass
 
     def submit(self, snapshot: GraphSnapshot) -> None:
+        """
+        Queue the latest frame and discard histories whose curve count changed.
+        """
         with self._condition:
             first = self._latest is None
+            for key, value in snapshot.spots:
+                history: History | None = self._spots.get(key)
+                if history and len(history[-1][1]) != len(series_values(value)):
+                    self._spots.pop(key)
+                    self._history_generation += 1
+                    self._redraw = True
             self._latest = replace(snapshot, history_range=self._history_range())
-            if first:
+            if first or self._redraw:
                 self._condition.notify()
 
     def pause(self) -> None:
@@ -311,7 +359,10 @@ class GraphWorker:
         self._thread.join()
         self.stop_logging()
 
-    def _sample(self, snapshot, now):
+    def _sample(self, snapshot: GraphSnapshot, now: float) -> None:
+        """
+        Add point/area statistics or correctly sized gaps to active histories.
+        """
         values = snapshot.stats if snapshot.measurements_valid else (float("nan"),) * 4
         self._master.append((now, values))
         self._compact(self._master)
@@ -319,7 +370,10 @@ class GraphWorker:
         self._spots = {key: history for key, history in self._spots.items() if key in current}
         for key, value in snapshot.spots:
             history = self._spots.setdefault(key, deque())
-            history.append((now, (value if snapshot.measurements_valid else float("nan"),)))
+            values = series_values(value)
+            if history and len(history[-1][1]) != len(values):
+                history.clear()
+            history.append((now, values if snapshot.measurements_valid else (float("nan"),) * len(values)))
             self._compact(history)
 
     def _run(self) -> None:
@@ -346,7 +400,8 @@ class GraphWorker:
                 if self._history_paused:
                     self._master.append((now, (float("nan"),) * 4))
                     for history in self._spots.values():
-                        history.append((now, (float("nan"),)))
+                        columns = len(history[-1][1]) if history else 1
+                        history.append((now, (float("nan"),) * columns))
                     self._history_paused = False
                 if sample_due:
                     self._sample(snapshot, now)
@@ -371,7 +426,12 @@ class GraphWorker:
                 deadline = max(now + self._interval, time.monotonic())
 
 
-def render_graphs(snapshot, master, spots, now):
+def render_graphs(
+    snapshot: GraphSnapshot, master: History, spots: dict[tuple[int, int], History], now: float,
+) -> np.ndarray:
+    """
+    Render scalar point curves or minimum/average/maximum area curves alongside scene stats.
+    """
     width, height = snapshot.size
     canvas = np.full((height, width, 3), (23, 25, 31), np.uint8)
     duration = snapshot.history_range or (
@@ -387,9 +447,9 @@ def render_graphs(snapshot, master, spots, now):
         1,
         cv2.LINE_AA,
     )
-    charts = [("Master stats", master, ("Min", "Avg", "Max", "Center"))]
+    charts: list[tuple[str, History, tuple[str, ...]]] = [("Master stats", master, ("Min", "Avg", "Max", "Center"))]
     charts.extend(
-        (spot_title(snapshot, key), spots.get(key, ()), ("Temp",)) for key, _value in snapshot.spots
+        (spot_title(snapshot, key), spots.get(key, ()), series_labels(value)) for key, value in snapshot.spots
     )
     top = min(34, height)
     for index, (title, history, labels) in enumerate(charts):

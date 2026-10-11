@@ -1,6 +1,7 @@
 """Validate saved measuring spots in unrotated, unmirrored sensor coordinates."""
 
 from .camera import SENSOR_HEIGHT, SENSOR_WIDTH
+from .measurements.schema import validate_region
 
 
 def validate_spots(saved: object, *, native_size: tuple[int, int] | None = None) -> dict:
@@ -11,7 +12,7 @@ def validate_spots(saved: object, *, native_size: tuple[int, int] | None = None)
     if (
         not isinstance(saved, dict)
         or type(saved.get("version")) is not int
-        or saved["version"] != 1
+        or saved["version"] not in (1, 2)
     ):
         raise ValueError("Unsupported saved spots")
     items = saved.get("items")
@@ -39,7 +40,10 @@ def validate_spots(saved: object, *, native_size: tuple[int, int] | None = None)
         ):
             raise TypeError("Invalid saved spot")
         numbers.add(number)
-        result.append({"number": number, "x": x, "y": y, "name": name.strip(), "enabled": enabled})
+        validated = {"number": number, "x": x, "y": y, "name": name.strip(), "enabled": enabled}
+        if saved["version"] == 2:
+            validated["region"] = validate_region(item.get("region"), (width, height))
+        result.append(validated)
     next_number, placing = saved.get("next_number"), saved.get("placing")
     if (
         not isinstance(next_number, int) or isinstance(next_number, bool)
@@ -47,4 +51,4 @@ def validate_spots(saved: object, *, native_size: tuple[int, int] | None = None)
         or type(placing) is not bool
     ):
         raise ValueError("Invalid saved spot numbering or placement state")
-    return {"version": 1, "items": result, "next_number": next_number, "placing": placing}
+    return {"version": saved["version"], "items": result, "next_number": next_number, "placing": placing}

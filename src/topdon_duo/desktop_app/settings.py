@@ -279,12 +279,16 @@ class SettingsController(SessionState):
                 self.remembered_hardware[name] = setting["value"]
         self.persist_settings()
 
-    def spots_state(self: DesktopSession) -> Any:
+    def spots_state(self: DesktopSession) -> dict:
         """
-        Spots state.
+        Return editable native geometry and existing measurement/calibration locks.
         """
         return {
-            "spots": self.spots.state(),
+            "spots": self.spots.region_states(),
+            "sensor_size": list(self.spots.native_size if self.renderer.rotation in (0, 180)
+                                else self.spots.native_size[::-1]),
+            "orientation": [self.renderer.rotation, self.renderer.mirror_horizontal,
+                            self.renderer.mirror_vertical],
             "placing": self.spots.placing,
             "calibration_available": self.calibration_available
             and not self.renderer.measurement_status,

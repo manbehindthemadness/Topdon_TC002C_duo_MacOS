@@ -27,11 +27,11 @@ class ViewerToolbar(QToolBar):
         self.graph_widgets: list[QAction] = []
         for action, label in (
             ("rotate", "Rotate"), ("unit", "Units: C/cm"), ("view", "Camera"),
-            ("spots", "Add spots"), ("capture", "Capture"), ("graph", "Show graph"),
+            ("spots", "Measurements"), ("capture", "Capture"), ("graph", "Show graph"),
             ("help", "Help"), ("fullscreen", "Fullscreen"), ("quit", "Quit"),
         ):
             button = self._button(action, label, send)
-            button.setCheckable(action in ("spots", "capture", "graph", "help", "fullscreen"))
+            button.setCheckable(action in ("capture", "graph", "help", "fullscreen"))
         self.graph_widgets.append(self.addSeparator())
         self.history = QLabel("History")
         self.graph_widgets.append(self.addWidget(self.history))
@@ -75,15 +75,13 @@ class ViewerToolbar(QToolBar):
         graph = bool(state.get("show_graph"))
         self.buttons["graph"].setText("Hide graph" if graph else "Show graph")
         for action, value in (
-            ("graph", graph), ("spots", state.get("placing_spots", False)),
+            ("graph", graph),
             ("capture", state.get("recording", False)),
             ("help", state.get("show_instructions", False)),
         ):
             self.buttons[action].setChecked(bool(value))
-        for action in ("rotate", "unit", "spots"):
+        for action in ("rotate", "unit"):
             self.buttons[action].setEnabled(not state.get("settings_locked", False))
-        if state.get("spots_locked"):
-            self.buttons["spots"].setEnabled(False)
         locked = bool(state.get("graph_locked"))
         self.buttons["graph"].setEnabled(not locked)
         self.buttons["graph_reset"].setEnabled(not state.get("graph_config_locked", locked))

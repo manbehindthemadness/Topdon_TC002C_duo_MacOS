@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import Mock
 
 import cv2
@@ -16,7 +17,12 @@ def mouse(picker, event, x, y, flags=0):
 
 @pytest.mark.parametrize("placing", [False, True])
 @pytest.mark.parametrize("viewport", [None, (384, 303)])
-def test_drag_keeps_identity_name_and_grab_offset_without_placing_another_spot(placing, viewport):
+def test_drag_keeps_identity_name_and_grab_offset_without_placing_another_spot(
+    placing: bool, viewport: tuple[int, int] | None,
+) -> None:
+    """
+    Retain the grab offset across viewport scaling and placement modes.
+    """
     picker = desktop.MousePicker()
     drag = desktop.SpotDrag()
     spots = desktop.SampleSpots(placing=placing, pixels=[(10, 20), (50, 60)])
@@ -71,12 +77,23 @@ def test_drag_release_outside_image_or_cancelled_never_activates_toolbar_or_adds
     assert spots.pixels == [(30, 40)]
 
 
-def test_lock_mid_drag_stops_movement_but_swallows_release():
+def begin_spot_drag() -> tuple[Any, Any, Any]:
+    """
+    Begin a standard point gesture for the mid-drag lock regressions.
+    """
     picker = desktop.MousePicker()
     drag = desktop.SpotDrag()
     spots = desktop.SampleSpots(pixels=[(10, 20)])
     mouse(picker, cv2.EVENT_LBUTTONDOWN, 31, 61)
     drag.update(picker, spots, (576, 768, 3), 3)
+    return picker, drag, spots
+
+
+def test_lock_mid_drag_stops_movement_but_swallows_release() -> None:
+    """
+    Consume the release after a measurement lock arrives during a gesture.
+    """
+    picker, drag, spots = begin_spot_drag()
     mouse(picker, cv2.EVENT_MOUSEMOVE, 91, 121, cv2.EVENT_FLAG_LBUTTON)
     mouse(picker, cv2.EVENT_LBUTTONUP, 91, 121)
     drag.update(picker, spots, (576, 768, 3), 3, locked=True)
@@ -84,12 +101,11 @@ def test_lock_mid_drag_stops_movement_but_swallows_release():
     assert not picker.consume_clicks()
 
 
-def test_unlock_does_not_resume_drag_started_before_logging():
-    picker = desktop.MousePicker()
-    drag = desktop.SpotDrag()
-    spots = desktop.SampleSpots(pixels=[(10, 20)])
-    mouse(picker, cv2.EVENT_LBUTTONDOWN, 31, 61)
-    drag.update(picker, spots, (576, 768, 3), 3)
+def test_unlock_does_not_resume_drag_started_before_logging() -> None:
+    """
+    Require a fresh gesture after logging ends.
+    """
+    picker, drag, spots = begin_spot_drag()
     drag.update(picker, spots, (576, 768, 3), 3, locked=True)
     assert drag.number is None
     mouse(picker, cv2.EVENT_MOUSEMOVE, 91, 121, cv2.EVENT_FLAG_LBUTTON)
@@ -127,6 +143,8 @@ def test_main_drag_updates_temperature_and_keeps_named_graph_identity(viewer, mo
     panel.poll.side_effect = [[], [], [], [{"action": "rename", "spot": 1, "name": "Motor"}]] + [
         []
     ] * 15
+    # The facade dynamically exports these injectable dependencies.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "SpotsPanel", lambda: panel)
     step = 0
 
@@ -163,7 +181,12 @@ def test_main_drag_updates_temperature_and_keeps_named_graph_identity(viewer, mo
     assert not panel.update.call_args.args[0]["placing"]
 
 
-def test_logging_locks_spot_controls_from_file_dialog_until_stopped(viewer, monkeypatch):
+def test_logging_locks_spot_controls_from_file_dialog_until_stopped(
+    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Keep geometry and placement intact while the logging lock rejects UI edits.
+    """
     from topdon_duo.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
@@ -178,6 +201,8 @@ def test_logging_locks_spot_controls_from_file_dialog_until_stopped(viewer, monk
 
     panel.poll.side_effect = poll
     panel.update.side_effect = lambda state: states.append(state)
+    # The facade dynamically exports these injectable dependencies.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "SpotsPanel", lambda: panel)
     pixels = []
     real_draw = desktop.draw_sample_spots
@@ -186,6 +211,8 @@ def test_logging_locks_spot_controls_from_file_dialog_until_stopped(viewer, monk
         pixels.append(spots.pixels.copy())
         return real_draw(image, rendered, spots, scale, unit)
 
+    # The facade dynamically exports these injectable dependencies.
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "draw_sample_spots", draw)
     step = 0
 
@@ -232,7 +259,10 @@ def test_logging_locks_spot_controls_from_file_dialog_until_stopped(viewer, monk
     monkeypatch.setattr(desktop.cv2, "waitKey", key)
     assert desktop.main([]) == 0
     expected = [{"number": 1, "enabled": True, "name": "Spot 1"}]
-    assert all(state["spots"] == expected and state["placing"] for state in states[3:])
+    assert all(
+        [{key: item[key] for key in ("number", "enabled", "name")} for item in state["spots"]] == expected
+        and state["placing"] for state in states[3:]
+    )
     assert [state["locked"] for state in states] == [False] * 3 + [True] * 4 + [False] * 2
     assert [call.kwargs["spots_locked"] for call in viewer.draw_toolbar.call_args_list] == [
         state["locked"] for state in states

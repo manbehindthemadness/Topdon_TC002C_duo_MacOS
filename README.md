@@ -124,11 +124,11 @@ The controls are available from the toolbar as well as the keyboard:
 | Action | Control |
 | --- | --- |
 | Inspect a pixel | Move the mouse over the image |
-| Place fixed sample spots | **Add spots** or `P`, then click image locations |
-| Stop/start spot placement | **Add spots** or `P` again; existing spots remain |
-| Reposition an existing spot | Left-click its crosshair and drag; Add spots may be on or off |
-| Manage sample spots | Right-click the thermal image for per-spot checkboxes and Clear buttons |
-| Clear all sample spots | Right-click → **Clear all spots** (top of the menu) |
+| Place fixed sample spots | `P` or **Measurements → Place spots on image**, then click image locations |
+| Stop/start spot placement | `P` again; existing measurements remain |
+| Reposition a measurement | Left-click its crosshair or area and drag |
+| Manage measurements | **Measurements** or right-click the thermal image |
+| Clear all measurements | **Measurements → Clear all measurements** |
 | Adjust ambient temperature | Camera popup hardware ambient row |
 | Save image data | **Capture** → **Save image data**, or `S` |
 | Open image, video and timelapse controls | **Capture** or `C` |
@@ -416,7 +416,7 @@ Spot history survives rotation and mirroring, and clears when the spots are
 cleared. Histories are session-only; disabling a spot removes its graph history,
 and enabling it starts fresh sampling. Captures and recordings can include the
 graph pane with the Capture dialog’s **Include graphs** checkbox beside **Capture cursor**.
-Camera, Capture, Graph configuration and measuring-spot menus stay above the
+Camera, Capture, Graph configuration and Measurements windows stay above the
 main viewer so they remain accessible in fullscreen.
 
 Both checkboxes and the timelapse frames-per-minute setting save immediately
@@ -463,39 +463,40 @@ replaced. Both canonical Celsius and selected-unit values are recorded.
 Rows are flushed after each sample; write failures stop logging and report an
 error without stopping the live graphs.
 
-Sample spots use crosshairs with a one-pixel stroke and live temperature
-readings in the selected unit. They remain on the same thermal pixels when the
-window is resized or the view is rotated. **Add spots** (or `P`) toggles placement;
-turning it off preserves every existing spot. Numbered labels match the graph
-numbers and the right-click menu. Left-click a visible spot's crosshair and drag
-to fine-tune its location, with Add spots either on or off. Its number, region
-name, and graph identity remain unchanged, and its temperature updates from the
-new pixel. Dragging stays within the thermal image and is locked during logging
-or calibration. A drag release never places a second spot.
+The **Measurements** button or a right-click on the thermal image opens a popup
+for creating, naming, enabling, disabling, deleting and configuring spots,
+rectangles, ovals, polygons and closed cubic Bézier areas. Spots have linked
+radius and diameter controls in **native sensor pixels**; radius zero keeps the
+original single-pixel reading. `P` toggles quick spot placement on the image.
+Create an area, edit its coordinates or drag vertices/control handles in the
+popup grid, then select **Apply configuration**. Valid edits also apply when
+selecting another measurement. Drag a spot's crosshair or an area's body in the
+thermal image to move it while preserving its name, number and graph identity.
 
-Right-click the thermal image to open the spot menu. The **Clear all spots**
-button at the top removes all spots; **Add spots** toggles placement. Each spot
-has an enable checkbox, an editable region name, and a **Clear** button. Enter a
-name such as “Left hand” or “Motor” and press Enter or leave the field to save.
-Names label graph titles and the CSV `series` column; on-image labels keep their
-spot numbers and temperatures. CSV `series_id` retains the stable spot identity.
-Names stay with spots when rotated, mirrored, disabled, or re-enabled. Clearing
-a name restores the default “Spot N”. Spot positions, names, enabled states, placement mode and numbering save
-automatically and restore on launch. Locations are stored in sensor coordinates,
-so they also restore correctly with rotation and mirroring. Chart histories are
-session-only; saved spots start a fresh history when the app reopens.
-Unchecking a spot hides its marker and stops its graph sampling without losing
-its position; checking restores it.
-Clearing one spot preserves the numbers and histories of the others. New spots
-receive new numbers until Clear all resets numbering. Spot changes are locked
-while temperature logging, a pending logging dialog, or calibration is active.
-Disabled spots are omitted from graph captures and CSV logging.
-The center temperature appears in the statistics without a fixed center crosshair.
-Crosshairs invert the thermal pixels beneath them, with a one-pixel black or white
-outline. Temperature labels use white text with a two-pixel black outline to stay
-readable across hot/cold boundaries and busy backgrounds. Nearby labels move
-automatically to avoid each other and the crosshairs, with a connecting line
-for every reading. The mouse readout also avoids fixed spot labels.
+Area kernels sample native temperature pixel centers for minimum, maximum and
+average, with three curves in that measurement's graph. Enabled **exclusion
+zones** subtract their pixels from every user measurement and have no readings,
+graphs or CSV rows. They leave scene/master statistics and cursor readings
+unchanged. Empty, fully excluded or nonfinite kernels show unavailable readings
+and graph gaps. Display processing never changes these measurement kernels.
+
+Choose each label's number, name, minimum, maximum and average fields, or uncheck
+all fields to hide its label. Area leaders attach to the outer boundary. Labels
+use the existing collision placer to avoid points, shape bounds and other labels;
+the mouse readout uses the same reservations. Outlines remain visible with labels
+hidden, and exclusion outlines are dashed. Labels may overlap if there is no free
+space in a crowded image.
+
+Measurement geometry, labels, names, enabled states, placement mode and numbering
+save automatically in sensor coordinates and restore with rotation/mirroring.
+Existing saved spots remain compatible. Chart histories remain session-only.
+**Clear selected graph history** retains geometry and the other graphs; **Delete
+selected** removes a measurement, and **Clear all measurements** resets numbering.
+Disabling preserves configuration and removes the measurement from graphs and
+logging. Edits and dragging lock during logging, its pending save dialog, or
+calibration. Area CSV IDs add `.min`, `.avg`, and `.max` to the stable spot ID;
+single-pixel spot IDs are unchanged. See [measurement areas](docs/measurements.md)
+for kernel and curve details.
 
 The mouse sampler uses the same thin crosshair and hides its marker and
 temperature reading when the pointer leaves the image. Its temperature label

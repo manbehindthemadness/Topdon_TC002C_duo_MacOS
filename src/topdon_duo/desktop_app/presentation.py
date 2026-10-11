@@ -361,13 +361,7 @@ class PresentationController(SessionState):
         # Capture spot values in this frame's orientation, before click actions can rotate
         # coordinates or add/clear spots. The next frame supplies any changed selection.
         self.graph_spots = (
-            tuple(
-                (
-                    (self.spots.generation, number - 1),
-                    float(self.rendered.temperatures_celsius[y, x]),
-                )
-                for number, (x, y) in self.spots.active
-            )
+            self.spots.graph_readings(self.rendered.temperatures_celsius)
             if self.show_graph
             else ()
         )
@@ -553,6 +547,7 @@ class PresentationController(SessionState):
                     spot_names=tuple(
                         ((self.spots.generation, number - 1), self.spots.name(number))
                         for number, _point in self.spots.active
+                        if not self.spots.region(number)["exclude"]
                     ),
                     size=graph_size,
                     unit=self.renderer.temperature_unit,
