@@ -12,6 +12,12 @@ from .enhancement_limits import MAX_PIXELS
 
 CORNERS = ("top_left", "top_right", "bottom_right", "bottom_left")
 UNIT_CORNERS = np.array(((0, 0), (1, 0), (1, 1), (0, 1)), np.float32)
+INTERPOLATIONS = {
+    "nearest": cv2.INTER_NEAREST,
+    "linear": cv2.INTER_LINEAR,
+    "bicubic": cv2.INTER_CUBIC,
+    "lanczos": cv2.INTER_LANCZOS4,
+}
 
 
 def has_warp(params: dict[str, Any]) -> bool:
@@ -81,9 +87,7 @@ def apply_transform(
     if size[0] * size[1] > MAX_PIXELS:
         raise ValueError("Pipeline exceeds the 4 megapixel image limit; reduce Transform size")
     matrix = transform_matrix(params, size)
-    methods = {"nearest": cv2.INTER_NEAREST, "linear": cv2.INTER_LINEAR,
-               "bicubic": cv2.INTER_CUBIC, "lanczos": cv2.INTER_LANCZOS4}
-    method = methods[params["method"]]
+    method = INTERPOLATIONS[params["method"]]
     output = cv2.resize(image, size, interpolation=method) if size != (width, height) else image
     if params["horizontal"]:
         output = cv2.flip(output, 1)
@@ -122,8 +126,6 @@ def render_transform(
         target_coordinates @ transform_matrix(params, (width, height))
         @ np.linalg.inv(source_coordinates)
     )
-    methods = {"nearest": cv2.INTER_NEAREST, "linear": cv2.INTER_LINEAR,
-               "bicubic": cv2.INTER_CUBIC, "lanczos": cv2.INTER_LANCZOS4}
-    output = cv2.warpPerspective(image, matrix, size, flags=methods[params["method"]],
+    output = cv2.warpPerspective(image, matrix, size, flags=INTERPOLATIONS[params["method"]],
                                  borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
     return output

@@ -71,6 +71,48 @@ assert not tool.apply.isEnabled()
     assert result.returncode == 0, result.stderr
 
 
+def test_imperial_distance_rounding_preserves_native_values(tmp_path: Path) -> None:
+    """
+    Show concise inches without changing hardware precision or emitting unit-switch edits.
+    """
+    result = run_popup(
+        '''
+from PySide6.QtWidgets import QApplication
+from topdon_duo.view_controls import ControlRow
+
+app = QApplication([])
+sent = []
+row = ControlRow("Distance to spot", sent.append, minimum=0.3, maximum=99,
+                 step=0.01, unit="m")
+row.update_state(1)
+row.set_display_unit("F")
+assert row.input.text() == "39.37 in"
+assert row.input.decimals() == 2
+for meters in (0.3, 0.31, 1, 1.23, 98.99, 99):
+    row.update_state(meters)
+    for _ in range(10):
+        row.set_display_unit("C")
+        assert row.value() == meters
+        row.set_display_unit("F")
+        assert row.value() == meters
+assert not sent and not row.timer.isActive()
+row.input.setValue(39.76)
+row._emit()
+assert sent == [1.01]
+for step, meters, decimals in ((0.001, 0.123, 2), (0.0001, 0.1234, 3)):
+    fine = ControlRow("Fine distance", sent.append, minimum=0, maximum=1, step=step, unit="m")
+    fine.update_state(meters)
+    fine.set_display_unit("F")
+    assert fine.input.decimals() == decimals
+    assert fine.value() == meters
+    fine.set_display_unit("C")
+    assert fine.value() == meters
+''',
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_generic_hardware_rows_retain_incompatible_saved_values(tmp_path: Path) -> None:
     """
     Keep foreign primitives visible and editable without coercing the saved document.

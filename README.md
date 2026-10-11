@@ -679,6 +679,9 @@ needs to be the last processing node. Position controls retain their canvas unit
 Auto calibrate, units, ambient/reflected temperature, optical transmission, relative humidity,
 distance, emissivity and calibration tools remain separate. Optical transmission
 appears directly below Reflected temperature, followed by Relative humidity.
+Distance to spot displays centimeters with Celsius units and rounded inches with
+Fahrenheit units (two decimal places for the Duo). Camera distance settings retain
+their native meter precision when switching display units.
 **Invert colors** is a repeatable software node that replaces each BGR channel
 with `255 − value`, preserving image orientation and native measurements.
 Fixed detail mode is a checkbox

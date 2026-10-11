@@ -23,7 +23,15 @@ def fingerprint(document: dict[str, Any]) -> str:
     """
     Identify processing settings without storing embedded package/model data a second time.
     """
-    text = json.dumps(pipeline_content(document), sort_keys=True, separators=(",", ":"))
+    digest = _content_fingerprint(pipeline_content(document))
+    return digest
+
+
+def _content_fingerprint(content: dict[str, Any]) -> str:
+    """
+    Hash normalized content identically when saving and restoring the association.
+    """
+    text = json.dumps(content, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(text.encode()).hexdigest()
     return digest
 
@@ -73,11 +81,10 @@ class PresetSelection:
         """
         if self.pending:
             return
-        text = json.dumps(content, sort_keys=True, separators=(",", ":"))
         value = {
             "name": editor.current_preset_name,
             "recognize": editor.recognize_preset,
-            "fingerprint": hashlib.sha256(text.encode()).hexdigest(),
+            "fingerprint": _content_fingerprint(content),
         }
         if value == self.saved:
             return

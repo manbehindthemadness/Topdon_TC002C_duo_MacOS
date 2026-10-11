@@ -257,17 +257,22 @@ def test_acnet_default_runs_on_full_camera_preview(denoise: Any) -> None:
 
 
 def test_acnet_excess_passes_are_clamped_before_inference(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Clamp excessive ACNet passes before the fake inference boundary receives an oversized image.
+    """
     frame, _ = frame_with_preview(preview_scale=2)
     document = default_pipeline()
     document["software"].insert(-1, node("software", "enhance", model="acnet", passes=3))
-    calls = []
+    calls: list[tuple[int, int]] = []
 
-    def upscale(self, image: Any, model: Any, amount: Any, passes: Any) -> Any:
+    def upscale(
+        _upsampler: Any, input_image: np.ndarray, _model: Any, _amount: Any, _passes: Any,
+    ) -> np.ndarray:
         """
-        Upscale.
+        Record inference dimensions and return a deterministic twofold upscale.
         """
-        calls.append(image.shape[:2])
-        return cv2.resize(image, None, fx=2, fy=2)
+        calls.append(input_image.shape[:2])
+        return cv2.resize(input_image, None, fx=2, fy=2)
 
     monkeypatch.setattr("topdon_duo.processing.branch.VisionUpsampler.apply", upscale)
     processor = PipelineProcessor()

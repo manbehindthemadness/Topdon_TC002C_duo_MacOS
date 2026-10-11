@@ -203,16 +203,16 @@ class ControlRow(QWidget):
             step = self.step * 1.8 if unit == "F" else self.step
             suffix = f" °{unit}"
         else:
-            decimals = 2 if unit == "F" else 0
+            decimals = max(2, self.native_decimals - 1) if unit == "F" else 0
             step = self.step / DISTANCE_METERS_PER_UNIT[unit]
             suffix = " in" if unit == "F" else " cm"
         exact_step = Decimal(str(self.step))
         if self.is_temperature and unit == "F":
             exact_step *= Decimal("1.8")
-        elif self.is_distance:
+        elif self.is_distance and unit == "C":
             exact_step /= Decimal(str(DISTANCE_METERS_PER_UNIT[unit]))
         exponent = exact_step.normalize().as_tuple().exponent
-        if isinstance(exponent, int):
+        if isinstance(exponent, int) and not (self.is_distance and unit == "F"):
             decimals = min(8, max(decimals, -exponent))
         if unit == "C":
             native_decimals = self.native_decimals - 2 if self.is_distance else self.native_decimals
