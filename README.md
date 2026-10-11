@@ -92,9 +92,16 @@ git clone https://github.com/manbehindthemadness/Topdon_TC002C_duo_MacOS.git
 cd Topdon_TC002C_duo_MacOS
 uv sync
 
-# Direct USB capture needs elevated access on macOS.
-sudo .venv/bin/topdon-duo-desktop --rotate 90
+# Launch as your normal user. Only the USB helper requests sudo authorization.
+.venv/bin/topdon-duo-desktop --rotate 90
 ```
+
+Launch from a terminal and enter your password if the USB helper requests it.
+The viewer, Custom nodes, GPU processing, downloads and saved files run as your
+normal user. Only the separate USB helper is elevated. If launching from an IDE
+without a controlling terminal, first run `sudo -v` in a terminal, then launch
+the viewer from that same terminal. See [macOS USB authorization](docs/macos-usb.md)
+for the development trust boundary and existing root-owned cache repair.
 
 Set ambient temperature in **Camera → Ambient temperature**; this writes to the
 camera and its corrected counts drive desktop measurements. Use `--rotate` with `0`, `90`, `180`, or `270` to choose the starting
@@ -693,7 +700,7 @@ unchanged. White hot (1) and Black hot (2) retain their existing labels.
 Start the local server:
 
 ```bash
-# macOS: prefix with sudo. Ubuntu with the udev rule: run as your regular user.
+# Run as your regular user; macOS authorizes only the separate USB helper.
 .venv/bin/topdon-duo --ambient 21.9 --rotate 90
 ```
 
@@ -722,8 +729,9 @@ same treatment. Captures record measurement validity in JSON and NPZ; before
 the first valid frame, temperature labels show `--` and JSON readings are null.
 
 If capture cannot open the camera, disconnect other apps using it, reconnect the
-device, and wait a moment for it to enumerate. On macOS, run the viewer with
-`sudo`. On Ubuntu, install the udev rule above and reconnect the camera. Discovery
+device, and wait a moment for it to enumerate. On macOS, launch from a terminal
+and authorize the USB helper when prompted. On Ubuntu, install the udev rule above
+and reconnect the camera. Discovery
 can still list interfaces without write access; unavailable USB strings can
 indicate missing permissions.
 
@@ -986,6 +994,19 @@ and audited hardware setup order intact when changing these boundaries. Qt
 popup processes continue to communicate through JSON separately from OpenCV.
 Shared test fixtures live in `tests/support/`; recording, pipeline, and ONNX
 tests are grouped by responsibility so each test module follows the same limit.
+
+Optional external ONNX weight checks are separate from normal pytest collection:
+
+```bash
+.venv/bin/python experiments/experiment_onnx_visual.py --models realesr-general-x4v3
+# Check all installed catalog weights, plus V1 shape overrides and optional Core ML:
+.venv/bin/python experiments/experiment_onnx_visual.py --coreml
+```
+
+These checks require locally installed, checksum-valid weights and do not download
+models. Missing weights are reported as skipped. Core ML checks require macOS and
+an available ONNX Runtime Core ML provider; its compiler may create runtime caches.
+See [experiment requirements](experiments/README.md).
 
 To investigate a Linux viewer stall without reopening its camera, monitor the
 running viewer's PID:

@@ -100,6 +100,10 @@ class ControlRow(QWidget):
         self.step = step
         self.minimum = minimum
         self.maximum = maximum
+        exponents = (Decimal(str(number)).normalize().as_tuple().exponent
+                     for number in (step, minimum))
+        self.native_decimals = max(0, *(-exponent for exponent in exponents
+                                       if isinstance(exponent, int)))
         self.is_temperature = unit == "°C"
         self.is_distance = unit == "m"
         self.temperature_unit = "C"
@@ -129,7 +133,9 @@ class ControlRow(QWidget):
             numeric.setRange(self._display_value(minimum), self._display_value(maximum))
             increment = step * 100 if self.is_distance else step
             exponent = Decimal(str(increment)).normalize().as_tuple().exponent
-            numeric.setDecimals(max(0, -exponent) if isinstance(exponent, int) else 0)
+            step_decimals = max(0, -exponent) if isinstance(exponent, int) else 0
+            native_decimals = self.native_decimals - 2 if self.is_distance else self.native_decimals
+            numeric.setDecimals(max(0, step_decimals, native_decimals))
             numeric.setSingleStep(step * 100 if self.is_distance else step)
             numeric.setKeyboardTracking(False)
             numeric.setSuffix(" cm" if self.is_distance else f" {unit}" if unit else "")
@@ -168,7 +174,7 @@ class ControlRow(QWidget):
                 return round(value, 10)
             # Preserve hardware precision in Celsius and meters, regardless of display units.
             value = self.minimum + round((value - self.minimum) / self.step) * self.step
-        return round(value, 2)
+        return round(value, self.native_decimals)
 
     def _display_value(self, value: float) -> float:
         """
@@ -208,6 +214,9 @@ class ControlRow(QWidget):
         exponent = exact_step.normalize().as_tuple().exponent
         if isinstance(exponent, int):
             decimals = min(8, max(decimals, -exponent))
+        if unit == "C":
+            native_decimals = self.native_decimals - 2 if self.is_distance else self.native_decimals
+            decimals = max(decimals, native_decimals)
         with QSignalBlocker(self.input):
             self.input.setDecimals(decimals)
             self.input.setRange(

@@ -30,6 +30,9 @@ def create_camera(name: str = "duo", *, duo_factory: Callable[[], Any] | None = 
             from ..camera import TC002CDuoCamera
 
             duo_factory = TC002CDuoCamera
+        from ..macos_usb.client import use_helper
+
+        duo_factory = use_helper(duo_factory)
         return duo_factory()
     if name not in _FACTORIES:
         raise ValueError(f"Unknown camera backend: {name}")

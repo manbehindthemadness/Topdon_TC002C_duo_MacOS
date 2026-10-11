@@ -332,7 +332,8 @@ class ThermalRenderer:
         raw, preview = decoded.raw_counts, decoded.preview
         radiometry = raw is not None
         self.measurement_status = decoded.measurement_status or (
-            "Radiometry unavailable for this camera" if not radiometry else ""
+            ("Radiometry unavailable; readings held" if decoded.profile.radiometry
+             else "Radiometry unavailable for this camera") if not radiometry else ""
         )
         measurements_valid = radiometry and not self.measurement_status
         if measurements_valid and update_measurements:
@@ -343,12 +344,13 @@ class ThermalRenderer:
                 cv2.accumulateWeighted(raw, self._average_raw, self.smoothing)
             self._last_valid_frame = frame
             self._recover_measurements = False
-        elif radiometry and not measurements_valid:
+        elif not measurements_valid:
             self._recover_measurements = True
             if self._last_valid_frame is not None:
                 frame = self._last_valid_frame
                 decoded = decode_frame(frame)
                 raw, preview = decoded.raw_counts, decoded.preview
+                radiometry = raw is not None
                 self.current_frame = decoded
 
         averaged = self._average_raw

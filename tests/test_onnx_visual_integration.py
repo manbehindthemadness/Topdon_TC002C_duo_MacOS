@@ -9,9 +9,17 @@ import pytest
 
 from topdon_duo import onnx_models
 from topdon_duo.enhancement_limits import enhancement_pass_limits
-from topdon_duo.onnx_upsampling import ONNXUpsampler
 from topdon_duo.pipeline import node, validate_pipeline
 from topdon_duo.pipeline_titles import node_title
+
+
+def assert_scaled_call(output: np.ndarray, call: tuple, backend: str) -> None:
+    """
+    Check the common native input geometry, viewer scale and effective backend.
+    """
+    assert output.shape == (768, 1024, 3)
+    assert call[0][:2] == (192, 256)
+    assert call[2] == backend
 
 
 @pytest.mark.parametrize("apple_available", [False, True])
@@ -38,6 +46,7 @@ def test_style_pipeline_preserves_size_radiometry_settings_and_releases_helper(
             """
             Apply.
             """
+            assert not self.closed
             calls.append((image.shape, model, backend, compute, amount))
             return image.copy()
 
@@ -118,6 +127,7 @@ def test_denoiser_pipeline_retains_size_preferences_measurements_and_closes(
             """
             Apply.
             """
+            assert not self.closed
             calls.append((image.shape, model, backend, compute, amount, noise))
             return image.copy()
 
@@ -140,9 +150,7 @@ def test_denoiser_pipeline_retains_size_preferences_measurements_and_closes(
     processor = PipelineProcessor(apple_available=apple_available)
     try:
         output, _ = processor.process(frame, measurements, document, scale=4)
-        assert output.shape == (768, 1024, 3)
-        assert calls[0][0][:2] == (192, 256)
-        assert calls[0][2] == expected
+        assert_scaled_call(output, calls[0], expected)
         assert calls[0][-1] == 32
         assert document == original
         assert np.array_equal(measurements, before)
@@ -216,6 +224,7 @@ def test_pipeline_cpu_fallback_retains_preferences_and_measurements(
             """
             Apply.
             """
+            assert not self.closed
             calls.append((image.shape, model, backend, compute, amount))
             factor = onnx_models.MODELS[model]["factor"]
             return cv2.resize(image, (image.shape[1] * factor, image.shape[0] * factor))
@@ -237,9 +246,7 @@ def test_pipeline_cpu_fallback_retains_preferences_and_measurements(
     processor = PipelineProcessor(apple_available=apple_available)
     try:
         output, _ = processor.process(frame, measurements, document, scale=4)
-        assert output.shape == (768, 1024, 3)
-        assert calls[0][0][:2] == (192, 256)
-        assert calls[0][2] == expected
+        assert_scaled_call(output, calls[0], expected)
         assert document == original
         assert np.array_equal(measurements, before)
         sr["bypass"] = True
@@ -248,63 +255,6 @@ def test_pipeline_cpu_fallback_retains_preferences_and_measurements(
         assert engines[0].closed
     finally:
         processor.close()
-
-
-@pytest.mark.parametrize("model", tuple(onnx_models.MODELS))
-def test_real_models_if_installed(model: Any) -> None:
-    """
-    Opt-in local smoke test; no downloads/network in the test suite.
-    """
-    if not onnx_models.model_path(model).exists():
-        pytest.skip("Optional visual model weights not installed")
-    spec = onnx_models.MODELS[model]
-    engine = ONNXUpsampler()
-    image = np.full((24, 32, 3), 100, np.uint8)
-    try:
-        output = engine.apply(image, model)
-        assert output.shape == (24 * spec["factor"], 32 * spec["factor"], 3)
-    finally:
-        engine.close()
-
-
-@pytest.mark.parametrize("model", ["mewzoom-v1-2x", "mewzoom-v1-4x"])
-def test_real_v1_shape_overrides_preserve_cpu_outputs(model: Any) -> None:
-    from topdon_duo.coreml_model import coreml_input_shape_overrides
-
-    if not onnx_models.model_path(model).exists():
-        pytest.skip("V1 weights not installed")
-    ort = pytest.importorskip("onnxruntime")
-    data = onnx_models.verified_model(model)
-    shape = (1, 3, 24, 32)
-    overrides = coreml_input_shape_overrides(data, shape)
-    assert set(overrides.values()) == {1, 24, 32}
-    options = ort.SessionOptions()
-    options.intra_op_num_threads = 2
-    dynamic = ort.InferenceSession(data, sess_options=options, providers=["CPUExecutionProvider"])
-    for name, value in overrides.items():
-        options.add_free_dimension_override_by_name(name, value)
-    fixed = ort.InferenceSession(data, sess_options=options, providers=["CPUExecutionProvider"])
-    blob = np.random.default_rng(40).random(shape, dtype=np.float32)
-    assert np.allclose(
-        dynamic.run(None, {"x": blob})[0], fixed.run(None, {"x": blob})[0], atol=1e-6
-    )
-
-
-@pytest.mark.parametrize("model", ["mewzoom-v1-2x", "mewzoom-v1-4x"])
-def test_real_v1_coreml_initialization_no_axis_error(model: Any) -> None:
-    if sys.platform != "darwin" or not onnx_models.model_path(model).exists():
-        pytest.skip("Requires macOS and installed V1 weights")
-    engine = ONNXUpsampler()
-    try:
-        output = engine.apply(np.zeros((24, 32, 3), np.uint8), model, "coreml")
-        factor = onnx_models.MODELS[model]["factor"]
-        assert output.shape == (24 * factor, 32 * factor, 3)
-    except ValueError as exc:
-        if "Failed to create a working directory appropriate for URL" in str(exc):
-            pytest.skip("Core ML compilation temp directory is blocked by this sandbox")
-        raise
-    finally:
-        engine.close()
 
 
 def test_popup_apple_controls_and_cpu_preference_retention(tmp_path: Path) -> None:

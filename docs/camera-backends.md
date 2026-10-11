@@ -4,6 +4,12 @@ The viewer defaults to the existing TOPDON TC002C Duo implementation. Other came
 can be integrated through `src/topdon_duo/camera_backends/`; this foundation does
 not provide protocols or verified support for another physical camera.
 
+On macOS, normal-user Duo factories select the private USB helper facade described
+in [macOS USB authorization](macos-usb.md). The original Duo USB protocol and queued
+capture run in the authorized helper; decoding, controls ownership, processing and
+persistence stay in the viewer. Linux, injected factories and other registered
+backends retain their direct backend behavior.
+
 Register an application-owned factory with `register_backend(name, factory)` before
 invoking the desktop or web entry point, then select it with `--camera name`.
 Registration does not execute the factory or discover devices. Unregistered names
@@ -38,6 +44,10 @@ A preview-only camera supplies preview pixels without counts or a converter.
 Its display works even for a completely black frame; native temperatures remain
 unavailable, raw-source selection is disabled, and measurement logging is refused.
 Camera-reported spot temperatures can still be displayed as separate telemetry.
+If a radiometric profile temporarily omits its native plane, hold its last valid
+image and readings, mark the frame invalid for logging/calibration and restart the
+measurement average on recovery. Before the first valid plane, readings remain
+unavailable. A profile change always clears that held state.
 Radiometric cameras may omit the preview and use software colors. The existing
 Duo byte-frame API, native `raw / 64 - 50` interpretation and web ambient anchoring
 are preserved by the Duo bridge; those rules do not apply to another backend.
@@ -49,6 +59,10 @@ boolean or choice options, default, support/reason, effect and scope. The Qt pro
 uses this metadata without querying hardware. Unsupported saved nodes retain
 their parameters and show an unavailable explanation. Backend dependency checks
 run before hardware writes, independently of document validation.
+Saved values incompatible with the selected control remain in the document and
+show a warning. The editor displays a compatible default for explicit replacement;
+state updates never silently coerce the saved value. Input precision follows the
+declared native step and minimum through display-unit changes.
 
 `effect="preview"`, `scope="device"` fields are available in the generic **Camera
 control** pipeline node. Arbitrary backend names and target-specific ranges need
@@ -81,8 +95,10 @@ assumed.
 the first override. Its callbacks implement target-compatible reads and writes,
 raising `CameraError` for transport/device failures. Writes require readback and
 attempt rollback on failure. Restore changes only owned fields and retains
-ownership for failed restorations. Restore in the viewer clears persisted global
-and spot overrides. After restoration, `invalidate_device()` discards baselines
+ownership for failed restorations. A failed restoration does not prevent independent
+device and spot settings from being restored; failed fields retain ownership for retry.
+Restore in the viewer clears persisted global and spot overrides. After restoration,
+`invalidate_device()` discards baselines
 so reconnect/replacement requires fresh reads. A backend must independently
 invalidate protocol readiness and reject incompatible replacements. A session
 that reconnects must also call `PipelineHardware.invalidate_applied_state()` and

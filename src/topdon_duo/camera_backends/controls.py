@@ -244,9 +244,19 @@ class DeviceControls:
 
     def restore(self) -> None:
         """
-        Restore only owned fields, retaining ownership when a restore fails.
+        Attempt every owned restoration and retain failed fields for a later retry.
         """
-        for name in tuple(self.enabled):
-            self.set(name, self.original[name], False)
-        for name, spot_id in tuple(self._spot_enabled):
-            self.set_spot(name, self._spot_original[name, spot_id], spot_id, False)
+        failures = []
+        for name in sorted(self.enabled):
+            try:
+                self.set(name, self.original[name], False)
+            except CameraError as exc:
+                failures.append((name, exc))
+        for name, spot_id in sorted(self._spot_enabled):
+            try:
+                self.set_spot(name, self._spot_original[name, spot_id], spot_id, False)
+            except CameraError as exc:
+                failures.append((f"{name} ({spot_id})", exc))
+        if failures:
+            details = "; ".join(f"{name}: {error}" for name, error in failures)
+            raise CameraError(f"Camera settings restoration failed: {details}") from failures[0][1]

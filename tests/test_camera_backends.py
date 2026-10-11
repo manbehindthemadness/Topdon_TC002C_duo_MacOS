@@ -159,6 +159,69 @@ def test_controls_restore_only_owned_global_and_spot_settings() -> None:
     writes.assert_not_called()
 
 
+def test_missing_radiometry_holds_readings_and_restarts_average() -> None:
+    """
+    Hold a compatible camera's valid frame through a temporary missing native plane.
+    """
+    renderer = ThermalRenderer(scale=1, smoothing=0.1)
+    valid = CameraFrame(PROFILE, np.full((4, 6), 100), converter=convert)
+    missing = CameraFrame(PROFILE, preview=np.full((4, 6), 255, np.uint8))
+    try:
+        initial = renderer.render_detailed(valid)
+        held = renderer.render_detailed(missing)
+        assert not held.measurements_valid
+        assert held.radiometry_available
+        assert "readings held" in held.measurement_status
+        assert renderer.last_valid_frame is valid
+        np.testing.assert_array_equal(held.image, initial.image)
+        np.testing.assert_array_equal(held.temperatures_celsius, initial.temperatures_celsius)
+        recovered = renderer.render_detailed(CameraFrame(
+            PROFILE, np.full((4, 6), 200), converter=convert,
+        ))
+        assert recovered.measurements_valid
+        np.testing.assert_array_equal(recovered.temperatures_celsius, convert(np.full((4, 6), 200)))
+    finally:
+        renderer.pipeline_processor.close()
+
+
+def test_restore_continues_after_independent_failures_and_can_retry() -> None:
+    """
+    Restore successful globals and spots while retaining all failures for retry.
+    """
+    owner, values, writes = hardware()
+    owner.set("gain", 3, True)
+    owner.set("humidity", 60, True)
+    owner.set_spot("distance", 4, "A", True)
+    owner.set_spot("distance", 5, "B", True)
+
+    def rejecting_write(name: str, value: Any, spot: str | None) -> None:
+        """
+        Reject two original settings but permit their independent rollback writes.
+        """
+        if (name == "gain" and value == 1) or (spot == "A" and value == 2):
+            raise CameraError("Restore rejected")
+        values[name, spot] = value
+
+    writes.side_effect = rejecting_write
+    with pytest.raises(CameraError, match=r"gain:.*distance \(A\):"):
+        owner.restore()
+    assert values["humidity", None] == 40 and values["distance", "B"] == 3
+    assert owner.enabled == {"gain"}
+    assert owner.spot_state()["A"]["distance"]["enabled"]
+    assert not owner.spot_state()["B"]["distance"]["enabled"]
+
+    def write(name: str, value: Any, spot: str | None) -> None:
+        """
+        Permit a later retry without changing original baseline ownership.
+        """
+        values[name, spot] = value
+
+    writes.side_effect = write
+    owner.restore()
+    assert values["gain", None] == 1 and values["distance", "A"] == 2
+    assert not owner.enabled and not owner.spot_state()["A"]["distance"]["enabled"]
+
+
 def test_pipeline_retains_unsupported_nodes_and_restores_new_features() -> None:
     """
     Keep unsupported settings serialized without executing them on another camera.

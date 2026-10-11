@@ -2,9 +2,25 @@
 Capability-driven hardware choices without probing devices in the Qt process.
 """
 
+from dataclasses import fields
 from typing import Any
 
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+from ..camera_backends.contracts import ControlSpec
+
+
+def compatible_value(spec: dict[str, Any], value: Any) -> bool:
+    """
+    Check saved primitives against device metadata without coercion or hardware access.
+    """
+    attributes = {field.name: spec[field.name] for field in fields(ControlSpec) if field.name in spec}
+    try:
+        control = ControlSpec(**attributes)
+        control.validate(value)
+    except (ValueError, TypeError, OverflowError):
+        return False
+    return True
 
 
 def node_capability(item: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
@@ -55,6 +71,7 @@ class HardwareControlFields(QWidget):
         self.layout_rows = QVBoxLayout(self)
         self.signature = None
         self.rows: dict[str, Any] = {}
+        self.warning: QLabel | None = None
         self.update_state(getattr(editor, "last_state", {}), editor.locked)
 
     def select(self, name: str) -> None:
@@ -84,6 +101,7 @@ class HardwareControlFields(QWidget):
         spec = specs.get(name, {})
         signature = choices, spec
         if signature != self.signature:
+            self.warning = None
             while self.layout_rows.count():
                 entry = self.layout_rows.takeAt(0)
                 if entry is None:
@@ -103,11 +121,25 @@ class HardwareControlFields(QWidget):
                 )
                 self.layout_rows.addWidget(value)
                 self.rows["value"] = value
+                warning = QLabel("Saved value is incompatible with this camera; choose a value.")
+                warning.setWordWrap(True)
+                warning.setStyleSheet("color: #d65b45")
+                self.layout_rows.addWidget(warning)
+                self.warning = warning
             self.signature = signature
         self.rows["control"].update_state(name, not locked and not self.item["bypass"])
         if "value" in self.rows:
+            saved = self.item["params"]["value"]
+            valid = compatible_value(spec, saved)
+            displayed = saved if valid else spec.get("default", spec.get("minimum", 0))
+            if not compatible_value(spec, displayed):
+                displayed = (False if spec.get("kind") == "boolean" else
+                             spec["options"][0][0] if spec.get("kind") == "choice" else
+                             spec.get("minimum", 0))
+            if self.warning is not None:
+                self.warning.setVisible(not valid)
             self.rows["value"].set_display_unit(state.get("temperature_unit", "C"))
             self.rows["value"].update_state(
-                self.item["params"]["value"], not locked and not self.item["bypass"]
+                displayed, not locked and not self.item["bypass"]
                 and bool(spec.get("available")),
             )
