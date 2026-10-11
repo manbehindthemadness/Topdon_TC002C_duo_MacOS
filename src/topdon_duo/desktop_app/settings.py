@@ -148,27 +148,10 @@ class SettingsController(SessionState):
             self.reflected_calibration.cancel()
         self.spot_drag.cancel()
         # Rotate the stored sensor coordinates with the image, preserving samples.
-        sensor_width, sensor_height = self.spots.native_size
-        if self.renderer.rotation in (90, 270):
-            sensor_width, sensor_height = sensor_height, sensor_width
-        self.spots.mirror(
-            sensor_width,
-            sensor_height,
-            self.renderer.mirror_horizontal,
-            self.renderer.mirror_vertical,
-        )
+        sensor_height = self.spots.native_size[0 if self.renderer.rotation in (90, 270) else 1]
         self.spots.rotate_clockwise(sensor_height)
         self.renderer.rotate_clockwise()
         self.pipeline_revision += 1
-        self.renderer.mirror_horizontal, self.renderer.mirror_vertical = self.api.geometry(
-            self.pipeline, self.renderer.rotation
-        )
-        self.spots.mirror(
-            sensor_height,
-            sensor_width,
-            self.renderer.mirror_horizontal,
-            self.renderer.mirror_vertical,
-        )
         if self.distance_calibration.corners or self.distance_calibration.selecting:
             self.distance_calibration.cancel()
         self.persist_settings()
@@ -204,7 +187,8 @@ class SettingsController(SessionState):
                 selected_node = cast(dict[str, Any], item)
                 selected_node["params"][key] = value
             self.set_pipeline(candidate)
-            setattr(self.renderer, name, value)
+            if not name.startswith("mirror_"):
+                setattr(self.renderer, name, value)
             self.persist_settings()
             return
         if name == "palette_source" and value == "camera":
@@ -218,38 +202,15 @@ class SettingsController(SessionState):
             self.renderer.set_view_setting("palette_source", "app")
         self.persist_settings()
 
-    def set_pipeline(self: DesktopSession, document: Any) -> Any:
+    def set_pipeline(self: DesktopSession, document: Any) -> None:
         """
-        Set pipeline.
+        Apply hardware and display changes without moving native measurement geometry.
         """
         candidate = self.api.validate_pipeline(document, hardware_profile=self.camera_profile.id)
         previous_pipeline = self.pipeline
         apply_camera_hardware(self, candidate, previous_document=previous_pipeline)
         if self.hardware.tone_busy and self.tone_previous_pipeline is None:
             self.tone_previous_pipeline = previous_pipeline
-        previous_mirrors = self.renderer.mirror_horizontal, self.renderer.mirror_vertical
-        next_mirrors = self.api.geometry(candidate, self.renderer.rotation)
-        if previous_mirrors != next_mirrors:
-            width, height = (
-                self.spots.native_size
-                if self.renderer.rotation in (0, 180)
-                else self.spots.native_size[::-1]
-            )
-            self.spots.mirror(
-                width,
-                height,
-                previous_mirrors[0] != next_mirrors[0],
-                previous_mirrors[1] != next_mirrors[1],
-            )
-            self.spot_drag.cancel()
-            self.distance_calibration.cancel()
-            if self.emissivity_calibration.active:
-                self.emissivity_calibration.cancel()
-            if self.reflected_calibration.active:
-                self.reflected_calibration.cancel()
-            self.picker.x = self.picker.y = None
-            self.last_selected = None
-
         def signature(pipeline_document: Any) -> Any:
             """
             Signature.

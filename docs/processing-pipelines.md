@@ -154,12 +154,14 @@ space for declared downstream upscales and stays within the 4-megapixel limit; n
 it may preserve less detail. Explicit working-resolution reductions and model Native/Preview
 input choices still resize intentionally. Native measurements remain independent.
 
-Transforms never resample radiometric arrays or change temperature statistics.
-Mirror and working-resolution changes retain spatial measurements. Canvas scaling,
-skew, perspective distortion and nonzero position disable spatial overlays/picking until bypassed
-or reset, because thermal registration for those warps is not implemented.
-This guard includes connected branches. Native measurement histories remain
-available. Deferred Custom labels follow the transform, retain upright text and
+Transforms never resample or reorient radiometric arrays or change temperature statistics.
+Regions, exclusion zones, labels and picking remain enabled over the underlying native
+thermal canvas. They ignore pipeline transforms (including mirrors) in the main tab and
+connected branches, so a shape may overlay transformed imagery while sampling thermal
+pixels at its original location. Only the viewer rotation control rotates the thermal
+canvas and measurement coordinates together. Graphs and recordings continue to use native
+thermal readings. Visible-camera registration safeguards remain independent.
+Deferred Custom labels follow the transform, retain upright text and
 are omitted when their anchor falls outside the canvas.
 
 Auto calibrate, measurement units, ambient

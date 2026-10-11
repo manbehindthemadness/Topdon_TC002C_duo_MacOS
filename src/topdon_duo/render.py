@@ -11,8 +11,8 @@ import numpy as np
 from .camera import raw_temperatures
 from .camera_backends import DUO_PROFILE, CameraFrame, CameraProfile, ReportedReading, decode_frame
 from .camera_backends.visible import hold_thermal_frame, stream_metadata, visible_mapping_valid
-from .pipeline import default_pipeline, geometry, validate_pipeline
-from .pipeline_model.sources import display_source, source_required, spatial_mapping_supported
+from .pipeline import default_pipeline, validate_pipeline
+from .pipeline_model.sources import display_source, source_required
 from .pipeline_processing import PipelineProcessor
 from .upsampling import VisionUpsampler
 from .view_settings import IMAGE_SOURCES, VIEW_DEFAULTS, validate_view_setting
@@ -219,11 +219,11 @@ class ThermalRenderer:
 
     def set_pipeline(self, document: dict[str, Any]) -> None:
         """
-        Restore geometry from a structurally valid pipeline for the current profile.
+        Validate display processing while keeping measurements in the native thermal canvas.
         """
         self.pipeline = validate_pipeline(document, hardware_profile=self.camera_profile.id)
         self.image_source = self.pipeline["software"][0]["params"]["source"]
-        self.mirror_horizontal, self.mirror_vertical = geometry(self.pipeline, self.rotation)
+        self.mirror_horizontal = self.mirror_vertical = False
         self.analyze_mode = False
 
     def set_view_setting(self, name: str, value: object) -> None:
@@ -399,8 +399,6 @@ class ThermalRenderer:
                 source_required(self.pipeline, "visible") if self.pipeline is not None
                 else self.image_source == "visible"
             ) or visible_mapping_valid(decoded)
-            if self.pipeline is not None:
-                mapping_valid &= spatial_mapping_supported(self.pipeline)
             return RenderedThermalFrame(heatmap, stats, celsius, oriented_raw, source,
                                        self.view_settings(), measurements_valid,
                                        self.measurement_status, decoded.profile, decoded.readings,

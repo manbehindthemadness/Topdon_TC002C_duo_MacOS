@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import Mock
 
 import cv2
@@ -12,24 +12,40 @@ from test_camera import make_frame
 from topdon_duo import desktop
 
 
+def opencv_mock(name: str) -> Mock:
+    """
+    Access an OpenCV boundary replaced by the viewer fixture with a typed mock.
+    """
+    mocked = cast(Mock, getattr(desktop.cv2, name))
+    return mocked
+
+
+@pytest.mark.usefixtures("viewer")
 def test_main_window_size_is_saved_and_restored_on_next_run(
-    viewer: Any, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """
+    Restore the last window size through the desktop facade's injectable boundary.
+    """
     from topdon_duo.window_preferences import load_main_window_size
 
-    monkeypatch.setattr(desktop, "window_resize_size", lambda _name: (930, 710))
+    monkeypatch.setattr("topdon_duo.desktop.window_resize_size", lambda _name: (930, 710))
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
     assert load_main_window_size() == (930, 710)
-    desktop.cv2.resizeWindow.reset_mock()
+    opencv_mock("resizeWindow").reset_mock()
     assert desktop.main([]) == 0
-    desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, 930, 710)
+    opencv_mock("resizeWindow").assert_called_once_with(desktop.WINDOW_NAME, 930, 710)
 
 
+@pytest.mark.usefixtures("viewer")
 def test_native_close_keeps_last_size_when_window_has_already_disappeared(
-    viewer: Any, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """
+    Preserve the last valid size when native window inspection becomes unavailable.
+    """
     from topdon_duo.window_preferences import load_main_window_size
 
     calls = []
@@ -40,10 +56,10 @@ def test_native_close_keeps_last_size_when_window_has_already_disappeared(
         """
         calls.append(1)
         if len(calls) == 1:
-            return (870, 660)
+            return 870, 660
         return None
 
-    monkeypatch.setattr(desktop, "window_resize_size", size)
+    monkeypatch.setattr("topdon_duo.desktop.window_resize_size", size)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: int(len(calls) == 1))
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: -1)
     assert desktop.main([]) == 0
@@ -54,26 +70,33 @@ def test_native_close_keeps_last_size_when_window_has_already_disappeared(
 def test_native_1024_canvas_and_size_reset_preserve_aspect(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """
+    Reset persisted sizing to the explicitly requested native preview canvas.
+    """
     from topdon_duo.window_preferences import save_main_window_size
 
     save_main_window_size((930, 710))
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main(["--scale", "4", "--rotate", "0", "--reset-window-size"]) == 0
     height = 768 + desktop.toolbar_layout(1024).height
-    desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, 1024, height)
+    opencv_mock("resizeWindow").assert_called_once_with(desktop.WINDOW_NAME, 1024, height)
     assert viewer.displayed[-1].shape == (height, 1024, 3)
 
 
+@pytest.mark.usefixtures("viewer")
 def test_corrupt_main_window_preferences_fall_back_to_image_size(
-    viewer: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
+    """
+    Ignore malformed window preferences and use the current image dimensions.
+    """
     path = tmp_path / "config/topdon-duo/main-window.json"
     path.parent.mkdir(parents=True)
     path.write_text("invalid json")
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
     layout = desktop.toolbar_layout(768)
-    desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, 768, 576 + layout.height)
+    opencv_mock("resizeWindow").assert_called_once_with(desktop.WINDOW_NAME, 768, 576 + layout.height)
 
 
 @pytest.mark.parametrize("mode", ["video", "timelapse"])
@@ -81,6 +104,9 @@ def test_corrupt_main_window_preferences_fall_back_to_image_size(
 def test_recording_controls_save_spots_and_optional_cursor(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, mode: Any, capture_cursor: Any
 ) -> None:
+    """
+    Capture measurement overlays and an optional cursor while excluding transient viewer controls.
+    """
     step = 0
 
     def wait_key(_delay: Any) -> Any:
@@ -135,7 +161,7 @@ def test_recording_controls_save_spots_and_optional_cursor(
     viewer.panel.open.assert_called_once()
     viewer.panel.close.assert_called_once()
     assert set(viewer.callbacks) == set()
-    desktop.cv2.namedWindow.assert_called_once_with(
+    opencv_mock("namedWindow").assert_called_once_with(
         desktop.WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL
     )
 
@@ -192,6 +218,9 @@ def test_toolbar_has_single_capture_control_and_no_recording_settings() -> None:
 def test_popup_save_image_data_opens_dialog_and_saves_radiometric_files(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """
+    Save native image arrays without starting a video encoder.
+    """
     viewer.dialog.selected = viewer.dialog.selected.with_suffix(".png")
     monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events(["image", -1, -1, "q"]))
     assert desktop.main([]) == 0
@@ -202,27 +231,33 @@ def test_popup_save_image_data_opens_dialog_and_saves_radiometric_files(
     with np.load(path.with_suffix(".npz")) as data:
         assert data["raw_counts"].shape == (192, 256)
         assert data["temperatures_celsius"].shape == (192, 256)
-    desktop.cv2.VideoWriter.assert_not_called()
+    opencv_mock("VideoWriter").assert_not_called()
 
 
 def test_cancelled_save_dialog_does_not_start_encoder(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """
+    Cancel a pending recording without opening its encoder.
+    """
     viewer.dialog.selected = None
     monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events(["video", -1, -1, "q"]))
     assert desktop.main([]) == 0
     assert viewer.writer.frames == []
-    desktop.cv2.VideoWriter.assert_not_called()
+    opencv_mock("VideoWriter").assert_not_called()
 
 
 def test_repeat_record_control_cancels_pending_dialog(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """
+    A second record action closes the pending dialog without creating an encoder.
+    """
     monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events(["video", "video", "q"]))
     assert desktop.main([]) == 0
     assert not viewer.dialog.is_open
     assert viewer.dialog.close_calls == 2  # Cancel, then cleanup on quit.
-    desktop.cv2.VideoWriter.assert_not_called()
+    opencv_mock("VideoWriter").assert_not_called()
 
 
 def test_timelapse_number_field_sets_rate_before_recording_and_keeps_it_fixed(
@@ -322,6 +357,9 @@ def test_timelapse_cli_default_and_validation() -> None:
 def test_camera_preferences_survive_restart_and_restore_clears_overrides(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """
+    Restore hardware and display pipelines without mirroring the background measurement plane.
+    """
     from test_hardware_controls import CalibrationDevice as Device
 
     from topdon_duo.hardware_controls import HardwareControls
@@ -330,9 +368,9 @@ def test_camera_preferences_survive_restart_and_restore_clears_overrides(
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     device = Device()
     viewer.camera.device = device
-    monkeypatch.setattr(desktop, "HardwareControls", HardwareControls)
+    monkeypatch.setattr("topdon_duo.desktop.HardwareControls", HardwareControls)
     panel = Mock()
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     panel.poll.return_value = [
@@ -352,7 +390,8 @@ def test_camera_preferences_survive_restart_and_restore_clears_overrides(
     assert desktop.main([]) == 0
     state = panel.update.call_args.args[0]
     assert state["temperature_unit"] == "F"
-    assert state["mirror_horizontal"] is True
+    assert state["mirror_horizontal"] is False
+    assert desktop.geometry(state["pipeline"], 90) == (True, False)
     assert state["image_filter"] == "median"
     assert state["advanced_auto"] is False
     assert state["hardware"]["ambient"]["value"] == 35
@@ -368,9 +407,13 @@ def test_camera_preferences_survive_restart_and_restore_clears_overrides(
     assert panel.update.call_args.args[0]["hardware"]["ambient"]["value"] == 30
 
 
+@pytest.mark.usefixtures("viewer")
 def test_spots_save_immediately_and_restore_on_restart(
-    viewer: Any, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """
+    Restore measurement identities, names, coordinates and enable states after restart.
+    """
     from topdon_duo.settings_preferences import load_settings
 
     spots = desktop.SampleSpots(pixels=[(80, 60), (120, 90)])
@@ -378,7 +421,7 @@ def test_spots_save_immediately_and_restore_on_restart(
     spots.set_enabled(2, False)
     spots.clear(1)
     spots.placing = True
-    monkeypatch.setattr(desktop, "SampleSpots", lambda: spots)
+    monkeypatch.setattr("topdon_duo.desktop.SampleSpots", lambda: spots)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     step = 0
 
@@ -399,7 +442,7 @@ def test_spots_save_immediately_and_restore_on_restart(
     saved = load_settings()["spots"]
     assert saved["items"] == [{"number": 2, "x": 125, "y": 95, "name": "Motor", "enabled": False}]
     restored = type(spots)()
-    monkeypatch.setattr(desktop, "SampleSpots", lambda: restored)
+    monkeypatch.setattr("topdon_duo.desktop.SampleSpots", lambda: restored)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
     assert restored.saved_state() == saved

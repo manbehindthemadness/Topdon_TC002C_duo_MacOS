@@ -662,8 +662,10 @@ skew, per-corner perspective offsets and X/Y position in pixels or percent.
 It can scale inside the canvas or change
 the working resolution for subsequent nodes. Old Mirror nodes migrate automatically.
 Position X = 0, Y = 0 anchors a smaller image to the canvas's upper-left corner.
-Native temperatures remain unchanged; canvas scaling, skew, distortion and position offsets disable
-spatial measurement overlays/picking until reset or bypassed. See
+Measurements always sample the underlying native thermal canvas, independently of
+pipeline resizing, skew, distortion, positioning and mirrors. Shapes, exclusions,
+labels and picking stay enabled and do not follow transformed display imagery.
+The viewer rotation control rotates the thermal canvas and its measurement geometry. See
 [Transform controls](docs/processing-pipelines.md#available-nodes) for details.
 Combine's **Replace** mode copies a transformed branch's occupied region, including
 true black pixels, and preserves the main image outside it. For a raw thermal inset,

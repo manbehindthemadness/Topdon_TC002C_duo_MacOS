@@ -204,15 +204,18 @@ def test_filters_interpolation_aa_are_real_cumulative_operations() -> None:
 
 
 @pytest.mark.parametrize("rotation", (0, 90, 180, 270))
-def test_pipeline_mirrors_match_sensor_coordinates_after_final_rotation(rotation: Any) -> None:
+def test_pipeline_mirrors_leave_sensor_coordinates_unchanged(rotation: Any) -> None:
+    """
+    Display mirrors never move the thermal plane used by background measurements.
+    """
     frame, _ = frame_with_preview()
     document = raw_pipeline(node("software", "mirror", horizontal=True))
     renderer = ThermalRenderer(scale=1, rotation=rotation)
     renderer.set_pipeline(document)
     rendered = renderer.render_detailed(frame)
     _, raw, _ = decode_duo_frame(frame)
-    assert np.array_equal(rendered.raw_counts, np.rot90(np.fliplr(raw), -(rotation // 90)))
-    assert (renderer.mirror_horizontal, renderer.mirror_vertical) == geometry(document, rotation)
+    assert np.array_equal(rendered.raw_counts, np.rot90(raw, -(rotation // 90)))
+    assert not renderer.mirror_horizontal and not renderer.mirror_vertical
     document["software"].insert(-1, node("software", "mirror", horizontal=True))
     renderer.set_pipeline(document)
     assert np.array_equal(

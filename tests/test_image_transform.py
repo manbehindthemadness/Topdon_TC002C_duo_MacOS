@@ -14,7 +14,6 @@ from support.pipeline import raw_pipeline
 from topdon_duo.custom_nodes.labels import DisplayLabel
 from topdon_duo.image_transform import apply_transform
 from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.pipeline_model.sources import spatial_mapping_supported
 from topdon_duo.processing.branch import BranchProcessor
 from topdon_duo.render import ThermalRenderer
 
@@ -298,9 +297,9 @@ def test_invalid_geometry_and_size_limit_precede_allocation(monkeypatch: pytest.
 
 @pytest.mark.parametrize("settings", [{"skew_x": 30}, {"position_x": 2},
                                       {"position_unit": "percent", "position_y": -10}])
-def test_warps_preserve_radiometry_and_guard_spatial_picking(settings: dict[str, Any]) -> None:
+def test_warps_preserve_radiometry_and_allow_background_picking(settings: dict[str, Any]) -> None:
     """
-    Keep sensor statistics unchanged and restore picking when a warp is bypassed.
+    Keep native sampling available regardless of active display warps or connected branches.
     """
     frame, _ = frame_with_preview()
     renderer = ThermalRenderer(scale=1)
@@ -309,7 +308,7 @@ def test_warps_preserve_radiometry_and_guard_spatial_picking(settings: dict[str,
     document = raw_pipeline(node("software", "transform", **settings))
     renderer.set_pipeline(document)
     warped = renderer.render_detailed(frame, image_processing=False)
-    assert not warped.measurement_mapping_valid
+    assert warped.measurement_mapping_valid
     assert warped.stats == baseline.stats
     np.testing.assert_array_equal(warped.raw_counts, baseline.raw_counts)
     np.testing.assert_array_equal(warped.temperatures_celsius, baseline.temperatures_celsius)
@@ -317,8 +316,9 @@ def test_warps_preserve_radiometry_and_guard_spatial_picking(settings: dict[str,
     renderer.set_pipeline(document)
     assert renderer.render_detailed(frame, image_processing=False).measurement_mapping_valid
     document["software"][2] = node("software", "transform", resize_mode="resolution", width=50)
-    assert spatial_mapping_supported(document)
+    renderer.set_pipeline(document)
+    assert renderer.render_detailed(frame, image_processing=False).measurement_mapping_valid
     document["branches"]["B"] = [node("software", "source"), node("software", "transform", width=50)]
-    assert spatial_mapping_supported(document)
     document["software"].insert(-1, node("software", "combine", tab="B"))
-    assert not spatial_mapping_supported(document)
+    renderer.set_pipeline(document)
+    assert renderer.render_detailed(frame, image_processing=False).measurement_mapping_valid
