@@ -652,7 +652,8 @@ controls have sliders. Image source is pinned first in each software tab, and
 tab A has a fixed Output node at the bottom;
 optional hardware nodes are singletons. Software processing nodes run top to bottom
 and can be repeated. Headers expand/collapse, grips drag, and right-click menus
-add, insert, remove, or clear nodes. All inputs ignore wheel edits.
+add, insert, remove, or clear nodes. Add/insert menus list nodes alphabetically;
+the stack keeps its user-defined execution order. All inputs ignore wheel edits.
 
 Auto calibrate, units, ambient/reflected temperature, optical transmission, relative humidity,
 distance, emissivity and calibration tools remain separate. Optical transmission

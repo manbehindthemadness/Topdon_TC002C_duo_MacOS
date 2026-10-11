@@ -384,13 +384,14 @@ class StackList(QListWidget):
                 self.add_menu(menu, "Insert node above", index)
         menu.exec(self.viewport().mapToGlobal(position))
 
-    def add_menu(self, menu: Any, title: Any, position: Any) -> None:
+    def add_menu(self, menu: QMenu, title: str, position: int) -> None:
         """
-        Add menu.
+        List available nodes alphabetically without changing pipeline execution order.
         """
         add = menu.addMenu(title)
         existing = {n["type"] for n in self.editor.nodes(self.stack)}
-        for kind, (label, _) in CATALOG[self.stack].items():
+        choices = sorted(CATALOG[self.stack].items(), key=lambda entry: entry[1][0].casefold())
+        for kind, (label, _) in choices:
             if self.stack != "software":
                 capabilities = stack_state(self.editor.last_state, self.stack).get("camera_capabilities", {})
                 if capabilities and kind == "device_control":
@@ -416,5 +417,6 @@ class StackList(QListWidget):
                     self.stack, bound_kind, position
                 ),
             )
+            assert action is not None
             action.setEnabled(self.stack == "software" or kind == "device_control"
                               or kind not in existing)

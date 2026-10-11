@@ -16,6 +16,9 @@ from topdon_duo.pipeline import (
 
 
 def test_pipeline_editor_context_operations_import_export_and_lock(tmp_path: Path) -> None:
+    """
+    Verify menu ordering, stack edits, persistence and locks in the Qt editor.
+    """
     script = """
 import json, sys
 from copy import deepcopy
@@ -62,17 +65,22 @@ assert software.model().moveRows(QModelIndex(), 1, 1, QModelIndex(), 3)
 app.processEvents()
 assert editor.document["software"][2]["id"] == first_id
 assert messages[-1]["hardware_operation"] is False
+before_menus = deepcopy(editor.document)
 menu = QMenu()
 editor.stacks["hardware"].add_menu(menu, "Add", 2)
+hardware_labels = [a.text() for a in menu.actions()[0].menu().actions()]
+assert hardware_labels == sorted(hardware_labels, key=str.casefold)
 brightness = next(a for a in menu.actions()[0].menu().actions() if a.text() == "Camera brightness")
 assert not brightness.isEnabled()
 for menu_title in ("Add node", "Insert node above", "Insert node below"):
     software_menu = QMenu()
     software.add_menu(software_menu, menu_title, 1)
-    labels = {a.text() for a in software_menu.actions()[0].menu().actions()}
+    labels = [a.text() for a in software_menu.actions()[0].menu().actions()]
+    assert labels == sorted(labels, key=str.casefold)
     assert "AI enhancement" in labels and "AI image styling" in labels
     assert not any("experimental" in label or "legacy" in label for label in labels)
     assert not any(label.startswith("ONNX ") or label.startswith("Apple Core ML ACNet") for label in labels)
+assert editor.document == before_menus
 # Bypassed singleton still cannot be duplicated.
 item["bypass"] = True
 editor.publish()
