@@ -68,4 +68,5 @@ def rename_current_preset(editor: PipelineEditor) -> None:
     editor.presets = candidate
     editor.current_preset_name = name
     editor.recognize_preset = True
+    editor.preset_selection.pending = False
     editor.refresh_presets()

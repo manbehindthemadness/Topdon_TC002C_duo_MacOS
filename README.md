@@ -240,7 +240,10 @@ edit. **Update pipeline** re-saves that preset, including pending input edits.
 With no preset loaded, the button reads **Save pipeline** and asks for a name;
 saving selects the new preset. **Save current pipeline as…** in the dropdown
 saves under another name. Updating a bundled preset creates a user override.
-Reopening Imaging settings recognizes presets that match the active pipeline.
+Reopening Imaging settings or restarting the app preserves the loaded preset name,
+including when the working pipeline has unsaved edits. Those edits remain separate
+from the saved preset until you choose **Update pipeline**. With no remembered
+association, matching presets are recognized automatically.
 Choose **Create new** to start a blank, unsaved pipeline with only the required
 source/output nodes. **Rename current pipeline…**, directly below Create new,
 renames the loaded preset while preserving its saved settings and open edits.

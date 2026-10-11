@@ -87,6 +87,7 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                     if tab != self.tab:
                         self.document["branches"][tab] = incoming["branches"][tab]
             self.accepted_document = deepcopy(self.document)
+        self.preset_selection.restore(self)
     self.last_desired = desired_hardware(self.document)
     self.locked = locked
     self.update_tab_status()

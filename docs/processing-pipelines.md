@@ -68,8 +68,13 @@ are unchanged. The name can be saved again later.
 The dropdown retains the loaded preset name while editing. **Update pipeline**
 re-saves it, including pending input edits; updating a bundled preset creates a
 user override. With no preset loaded, **Save pipeline** asks for a name and
-selects the newly saved preset. Reopening Imaging settings recognizes matching
-presets independently of node expansion state. Restoring defaults clears the
+selects the newly saved preset. Reopening Imaging settings or restarting the app
+preserves the loaded name alongside the restored working pipeline, including
+unsaved edits. This association is stored in `pipeline-selection.json` beside
+the user preferences; it does not update the saved preset itself. Node identities
+and expansion state do not affect recognition. Unrelated restored pipelines or
+missing preset names fall back to matching presets. Intentional Create new work
+stays unsaved even when it matches a saved blank preset. Restoring defaults clears the
 association, then recognizes any matching preset. Loading an imported pipeline
 selects its saved preset name.
 Cancelling a save keeps the previous selection. Save as asks before replacing

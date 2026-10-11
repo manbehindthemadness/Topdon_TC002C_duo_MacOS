@@ -43,6 +43,7 @@ from .custom import CustomControls
 from .dual import desired_camera_hardware as desired_hardware
 from .hardware import HardwareControlFields
 from .presets import pipeline_content, rename_current_preset
+from .selection import PresetSelection
 from .state import update_editor_state
 from .tabs import PipelineTabs
 from .transfer.actions import export_pipelines, import_pipelines
@@ -133,6 +134,7 @@ class PipelineEditor(PipelineTabs, QWidget):
         self.presets = load_presets()
         self.current_preset_name: str | None = None
         self.recognize_preset = True
+        self.preset_selection = PresetSelection()
         self.preset_combo = QComboBox()
         self.preset_combo.setAccessibleName("Pipeline presets")
         self.preset_combo.setToolTip("Create, rename, save, load or delete a pipeline preset.")
@@ -190,6 +192,7 @@ class PipelineEditor(PipelineTabs, QWidget):
         for row in range(self.preset_combo.count()):
             if self.preset_combo.itemData(row) in (("rename", ""), ("delete", "")):
                 model.item(row).setEnabled(not self.locked and self.current_preset_name is not None)
+        self.preset_selection.remember(self, current)
 
     def select_preset(self, index: int) -> None:
         """
@@ -259,6 +262,7 @@ class PipelineEditor(PipelineTabs, QWidget):
         self.presets = candidate
         self.current_preset_name = name
         self.recognize_preset = True
+        self.preset_selection.pending = False
         self.refresh_presets()
 
     def commit_pending_inputs(self) -> None:
@@ -357,6 +361,7 @@ class PipelineEditor(PipelineTabs, QWidget):
             self.send({"action": "pipeline_refresh"})
             return
         enhancement_pass_limits(self.document, clamp=True)
+        self.preset_selection.pending = False
         self.update_preset_selection()
         self.accepted_document = deepcopy(self.document)
         self.update_tab_status()
