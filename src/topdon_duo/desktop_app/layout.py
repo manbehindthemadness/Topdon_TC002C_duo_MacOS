@@ -36,24 +36,37 @@ class ToolbarLayout:
 class GraphWindowLayout:
     canvas_size: tuple[int, int]
     camera_size: tuple[int, int]
+    orientation: str = "landscape"
 
     @classmethod
-    def fit(cls, camera_size: Any, window_size: Any = None) -> Any:
+    def fit(
+        cls, camera_size: tuple[int, int], window_size: tuple[int, int] | None = None,
+        orientation: str = "landscape",
+    ) -> GraphWindowLayout:
         """
-        Fit.
+        Fit an aspect-preserving camera beside or above the graph pane.
         """
         source_width, source_height = camera_size
-        width, height = window_size or (source_width * 2, source_height)
-        width, height = max(2, width), max(1, height)
-        scale = min((width // 2) / source_width, height / source_height)
+        portrait = orientation == "portrait"
+        if orientation not in ("portrait", "landscape"):
+            raise ValueError("Layout must be portrait or landscape")
+        width, height = window_size or (
+            (source_width, source_height * 2) if portrait else (source_width * 2, source_height)
+        )
+        width, height = max(1 if portrait else 2, width), max(2 if portrait else 1, height)
+        scale = min(width / source_width, (height // 2) / source_height) if portrait else min(
+            (width // 2) / source_width, height / source_height
+        )
         camera = (max(1, round(source_width * scale)), max(1, round(source_height * scale)))
-        return cls((width, height), camera)
+        return cls((width, height), camera, orientation)
 
     @property
-    def graph_size(self) -> Any:
+    def graph_size(self) -> tuple[int, int]:
         """
-        Graph size.
+        Return the space remaining beside or below the camera.
         """
+        if self.orientation == "portrait":
+            return self.canvas_size[0], self.canvas_size[1] - self.camera_size[1]
         return self.canvas_size[0] - self.camera_size[0], self.canvas_size[1]
 
     def camera_viewport(self, event_viewport: tuple[int, int] | None = None) -> Any:
@@ -78,6 +91,8 @@ class GraphWindowLayout:
             x = x * self.canvas_size[0] / event_viewport[0]
             y = y * self.canvas_size[1] / event_viewport[1]
         x0, y0, x1, y1 = rectangle(self.graph_size[0])
+        if self.orientation == "portrait":
+            return x0 <= x <= x1 and y0 <= y - self.camera_size[1] <= y1
         return x0 <= x - self.camera_size[0] <= x1 and y0 <= y <= y1
 
     def compose(self, camera: Any, graph: Any) -> Any:
@@ -89,7 +104,10 @@ class GraphWindowLayout:
         camera_width, camera_height = self.camera_size
         resized = cv2.resize(camera, self.camera_size, interpolation=cv2.INTER_LINEAR)
         canvas[:camera_height, :camera_width] = resized
-        canvas[:, camera_width:] = graph
+        if self.orientation == "portrait":
+            canvas[camera_height:, :] = graph
+        else:
+            canvas[:, camera_width:] = graph
         return canvas
 
 

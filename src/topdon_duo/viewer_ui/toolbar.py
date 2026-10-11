@@ -81,7 +81,10 @@ class ViewerToolbar(QToolBar):
         ):
             self.buttons[action].setChecked(bool(value))
         for action in ("rotate", "unit"):
-            self.buttons[action].setEnabled(not state.get("settings_locked", False))
+            self.buttons[action].setEnabled(
+                not state.get("settings_locked", False)
+                and not (action == "rotate" and state.get("log_pending", False))
+            )
         locked = bool(state.get("graph_locked"))
         self.buttons["graph"].setEnabled(not locked)
         self.buttons["graph_reset"].setEnabled(not state.get("graph_config_locked", locked))

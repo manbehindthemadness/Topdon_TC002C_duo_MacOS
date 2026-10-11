@@ -37,6 +37,7 @@ class SettingsController(SessionState):
                     "ambient_input_celsius": self.ambient_input_celsius,
                     "spots": self.last_saved_spots,
                     "rotation": self.renderer.rotation,
+                    "viewer_layout": self.viewer_layout,
                     "advanced_auto": self.advanced_auto,
                     "auto_calibrate": self.auto_calibrate,
                     "fixed_range": self.remembered_fixed_range,
@@ -103,10 +104,12 @@ class SettingsController(SessionState):
         if not self.show_graph:
             self.graph_interval_editor.text = None
             self.graphs.pause()
-        requested_size = (
-            width * 2 if self.show_graph else max(1, round(width / 2)),
-            height,
-        )
+        if self.viewer_layout == "portrait":
+            requested_size = (width, height * 2 if self.show_graph else max(1, round(height / 2)))
+        else:
+            requested_size = (
+                width * 2 if self.show_graph else max(1, round(width / 2)), height,
+            )
         self.requested_window_size = requested_size
         if self.viewer is not None:
             self.viewer.resize(requested_size)

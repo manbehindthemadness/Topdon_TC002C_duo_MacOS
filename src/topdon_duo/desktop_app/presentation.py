@@ -207,8 +207,12 @@ class PresentationController(SessionState):
         )
         if not self.initial_window_size_set:
             width, height = self.saved_window_size or (
-                self.rendered.image.shape[1] * (2 if self.show_graph else 1),
-                self.rendered.image.shape[0] + self.layout.height,
+                self.rendered.image.shape[1] * (
+                    2 if self.show_graph and self.viewer_layout == "landscape" else 1
+                ),
+                (self.rendered.image.shape[0] + self.layout.height) * (
+                    2 if self.show_graph and self.viewer_layout == "portrait" else 1
+                ),
             )
             self.requested_window_size = (width, height)
             if self.viewer is not None:
@@ -229,6 +233,7 @@ class PresentationController(SessionState):
             self.api.GraphWindowLayout.fit(
                 (self.rendered.image.shape[1], self.rendered.image.shape[0] + self.layout.height),
                 self.last_window_size,
+                self.viewer_layout,
             )
             if self.show_graph
             else None
@@ -532,6 +537,7 @@ class PresentationController(SessionState):
                 self.graph_layout = self.api.GraphWindowLayout.fit(
                     (self.display.shape[1], self.display.shape[0]),
                     self.current_window_size() or self.last_window_size,
+                    self.viewer_layout,
                 )
             graph_layout = self.graph_layout
             assert graph_layout is not None

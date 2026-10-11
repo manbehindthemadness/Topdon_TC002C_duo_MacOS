@@ -52,6 +52,7 @@ class SessionState:
     graph_interval: float = 0.0
     graph_interval_editor: api_types.GraphIntervalEditor = field(init=False)
     graph_layout: api_types.GraphWindowLayout | None = None
+    viewer_layout: str = "landscape"
     graph_panel: api_types.GraphPanel = field(init=False)
     graph_settings: dict[str, Any] = field(default_factory=dict)
     graph_spots: tuple = ()

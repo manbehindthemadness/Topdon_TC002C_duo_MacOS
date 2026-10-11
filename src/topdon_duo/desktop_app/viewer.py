@@ -24,6 +24,8 @@ class ViewerController(SessionState):
         """
         self.reconcile_measurement_drawing()
         return {
+            "rotation": self.renderer.rotation,
+            "viewer_layout": self.viewer_layout,
             "measurement_drawing": self.measurement_drawing.state(),
             "unit": self.renderer.temperature_unit,
             "show_graph": self.show_graph,
@@ -68,6 +70,8 @@ class ViewerController(SessionState):
                     self.viewer_pointer(command)
                 elif action == "spots":
                     self.spots_panel.open(self.spots_state())
+                elif action == "orientation":
+                    self.set_viewer_orientation(command)
                 elif action in ("draw_finish", "draw_cancel", "draw_undo"):
                     self.measurement_drawing_action(action)
                 elif isinstance(action, str) and action in keys:
@@ -97,6 +101,40 @@ class ViewerController(SessionState):
             except (OSError, ValueError, TypeError) as exc:
                 self.notify(f"Viewer setting rejected: {exc}")
         return not self.viewer.closed
+
+    def set_viewer_orientation(self: DesktopSession, command: dict) -> None:
+        """
+        Validate popup changes and reuse audited rotation and native-coordinate updates.
+        """
+        rotation, layout = command.get("rotation"), command.get("layout")
+        if type(rotation) is not int or rotation not in (0, 90, 180, 270):
+            raise ValueError("Rotation must be 0, 90, 180 or 270 degrees")
+        if not isinstance(layout, str) or layout not in ("portrait", "landscape"):
+            raise ValueError("Layout must be portrait or landscape")
+        layout = cast(str, layout)
+        if self.viewer_state()["settings_locked"] or self.pending_save_kind == "graph_log":
+            raise ValueError("Stop logging or calibration measurement before changing orientation")
+        for _step in range(((rotation - self.renderer.rotation) % 360) // 90):
+            self.rotate_view()
+        if layout == self.viewer_layout:
+            return
+        self.measurement_drawing.cancel()
+        self.spot_drag.cancel()
+        self.picker.consume_drag_events()
+        self.picker.consume_clicks()
+        self.picker.x = self.picker.y = None
+        size = self.current_window_size() or self.last_window_size or self.requested_window_size
+        self.viewer_layout = layout
+        self.graph_layout = None
+        if self.show_graph and size is not None:
+            requested = (size[1], size[0])
+            self.requested_window_size = self.last_window_size = requested
+            if self.viewer is not None:
+                self.viewer.resize(requested)
+            else:
+                self.api.cv2.resizeWindow(self.api.WINDOW_NAME, *requested)
+        self.persist_settings()
+        self.notify(f"Preview layout: {layout}")
 
     def viewer_pointer(self: DesktopSession, command: dict) -> None:
         """

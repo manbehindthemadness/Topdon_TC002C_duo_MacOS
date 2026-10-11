@@ -133,7 +133,8 @@ The controls are available from the toolbar as well as the keyboard:
 | Adjust ambient temperature | Camera popup hardware ambient row |
 | Save image data | **Capture** → **Save image data**, or `S` |
 | Open image, video and timelapse controls | **Capture** or `C` |
-| Rotate clockwise | **Rotate** or `O` |
+| Choose preview rotation and graph layout | **Rotate** → rotation / landscape / portrait → **Apply** |
+| Rotate clockwise by 90° | `O` |
 | Toggle metric/imperial units (°C + centimeters / °F + inches) | **Units** or `F` |
 | Open camera controls | **Camera** or `V` |
 | Calibrate the camera once | Right-click the thermal image → **Calibrate now** |
@@ -419,6 +420,14 @@ and enabling it starts fresh sampling. Captures and recordings can include the
 graph pane with the Capture dialog’s **Include graphs** checkbox beside **Capture cursor**.
 Camera, Capture, Graph configuration and Measurements windows stay above the
 main viewer so they remain accessible in fullscreen.
+
+**Rotate** opens a popup with independent preview rotation (0°, 90°, 180°, 270°
+clockwise) and UI layout choices. **Landscape** places graphs to the right of
+the video; **Portrait** places them below. Apply saves both choices for the next
+launch. Rotation preserves native sensor measurements and existing shape
+identities. Layout affects the live viewer; captures retain their existing graph
+arrangement. Logging and calibration measurement locks still apply. `O` remains
+the quick 90° rotation shortcut.
 
 Both checkboxes and the timelapse frames-per-minute setting save immediately
 and restore on the next launch. An explicit `--timelapse-fpm` value overrides

@@ -57,6 +57,7 @@ class DesktopSession(
         self.calibration_available = False
         self.startup_calibration_pending = True
         self.show_graph = self.saved_settings.get("show_graph", False)
+        self.viewer_layout = self.saved_settings.get("viewer_layout", "landscape")
         self.graph_interval = cast(
             float, self.saved_settings.get("graph_interval", self.api.GRAPH_INTERVAL)
         )

@@ -122,6 +122,9 @@ def load_settings(
     rotation = saved.get("rotation")
     if type(rotation) is int and rotation in (0, 90, 180, 270):
         result["rotation"] = rotation
+    viewer_layout = saved.get("viewer_layout")
+    if isinstance(viewer_layout, str) and viewer_layout in ("portrait", "landscape"):
+        result["viewer_layout"] = viewer_layout
     for name in (
         "advanced_auto",
         "show_graph",

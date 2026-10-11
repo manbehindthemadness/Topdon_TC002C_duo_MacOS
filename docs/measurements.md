@@ -17,6 +17,13 @@ locks apply to all mutations.
 
 ## Drawing on live video
 
+The viewer's **Rotate** popup selects preview rotation independently from its
+portrait/landscape layout. Portrait puts graphs below the video. Both layouts
+map drawing and dragging back to native sensor coordinates and exclude graph
+pixels and camera padding from measurement input. Rotation preserves saved
+measurement identity and sensor coverage; changing layout cancels an unfinished
+drawing without creating a measurement.
+
 Choose the shape and **Create** in the popup; **Exclusion** chooses
 subtraction behavior. **Auto-hide** is checked by default and hides the popup
 during creation; uncheck it to leave the dialog visible. The viewer gains

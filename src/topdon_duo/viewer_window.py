@@ -15,6 +15,7 @@ from .capture_window import run_window
 from .viewer_panel import FRAME_CAPACITY
 from .viewer_ui.canvas import ImageCanvas
 from .viewer_ui.drawing_toolbar import DrawingToolbar
+from .viewer_ui.orientation import OrientationDialog
 from .viewer_ui.toolbar import ViewerToolbar
 
 
@@ -40,6 +41,8 @@ class ViewerWindow(QMainWindow):
         self.drawing_toolbar = DrawingToolbar(self._command, self)
         self.addToolBarBreak()
         self.addToolBar(self.drawing_toolbar)
+        self._viewer_state: dict = {}
+        self.orientation_dialog = OrientationDialog(self.send, self)
         self.setWindowTitle("TOPDON TC002C Duo")
         self.resize(1024, 800)
         self.statusBar().showMessage("Waiting for camera…")
@@ -48,6 +51,9 @@ class ViewerWindow(QMainWindow):
         """
         Handle window-local fullscreen, forwarding other actions unchanged.
         """
+        if message.get("action") == "rotate":
+            self.orientation_dialog.open_state(self._viewer_state)
+            return
         if message.get("action") == "fullscreen":
             if self.isFullScreen():
                 self.showNormal()
@@ -94,7 +100,9 @@ class ViewerWindow(QMainWindow):
                 self.send({"action": "error", "message": str(exc)})
                 self.send({"action": "frame_read", "serial": frame.get("serial")})
         if "unit" in state:
+            self._viewer_state = state
             self.toolbar.update_state(state)
+            self.orientation_dialog.update_locks(state)
             drawing = state.get("measurement_drawing", {})
             drawing_was_active = self.drawing_toolbar.active
             self.drawing_toolbar.update_state(drawing if isinstance(drawing, dict) else {})

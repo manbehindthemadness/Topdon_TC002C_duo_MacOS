@@ -218,7 +218,9 @@ QTest.mouseMove(window.canvas, rectangle.center().toPoint())
 QTest.mouseClick(window.canvas, Qt.MouseButton.LeftButton, pos=rectangle.topLeft().toPoint())
 assert any(m.get("action") == "pointer" and m.get("x") == 0 and m.get("y") == 0 for m in messages)
 window.toolbar.buttons["rotate"].click()
-assert {"action": "rotate"} in messages
+assert window.orientation_dialog.isVisible()
+assert {"action": "rotate"} not in messages
+window.orientation_dialog.close_button.click()
 window.toolbar.interval.setValue(2)
 assert {"action": "graph_interval", "value": 2.0} in messages
 window.update_state({**state, "settings_locked": True, "spots_locked": True, "graph_locked": True})
