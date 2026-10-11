@@ -506,9 +506,33 @@ SOFTWARE_NODES = {
             "amount": Parameter("Amount", 0.7, 0, 3, 0.01),
         },
     ),
-    "mirror": (
-        "Mirror",
-        {"horizontal": switch("Left / right"), "vertical": switch("Top / bottom")},
+    "transform": (
+        "Transform",
+        {
+            "resize_mode": choice("Resize mode", "canvas", (
+                ("canvas", "Scale within canvas"), ("resolution", "Change working resolution"),
+            )),
+            "width": Parameter("Width", 100, 10, 400, 1, unit="%"),
+            "height": Parameter("Height", 100, 10, 400, 1, unit="%"),
+            "position_unit": choice("Position units", "pixels", (
+                ("pixels", "Pixels"), ("percent", "Percent"),
+            )),
+            "position_x": Parameter("Position X", 0, -8192, 8192, 0.1),
+            "position_y": Parameter("Position Y", 0, -8192, 8192, 0.1),
+            "method": choice("Interpolation", "linear", (
+                ("nearest", "Nearest"), ("linear", "Linear"),
+                ("bicubic", "Bicubic"), ("lanczos", "Lanczos"),
+            )),
+            "horizontal": switch("Mirror left / right"),
+            "vertical": switch("Mirror top / bottom"),
+            "skew_x": Parameter("Horizontal skew", 0, -50, 50, 1, unit="%"),
+            "skew_y": Parameter("Vertical skew", 0, -50, 50, 1, unit="%"),
+            **{f"{corner}_{axis}": Parameter(f"{title} {axis.upper()} offset", 0, -45, 45,
+                                           1, unit="%")
+               for corner, title in (("top_left", "Top left"), ("top_right", "Top right"),
+                                     ("bottom_right", "Bottom right"), ("bottom_left", "Bottom left"))
+               for axis in ("x", "y")},
+        },
     ),
     "antialiasing": ("Antialiasing", {"amount": Parameter("Edge smoothing", 0.35, 0, 2, 0.01)}),
     "range": (

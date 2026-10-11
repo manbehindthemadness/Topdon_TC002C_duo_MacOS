@@ -654,6 +654,14 @@ optional hardware nodes are singletons. Software processing nodes run top to bot
 and can be repeated. Headers expand/collapse, grips drag, and right-click menus
 add, insert, remove, or clear nodes. Add/insert menus list nodes alphabetically;
 the stack keeps its user-defined execution order. All inputs ignore wheel edits.
+**Transform** replaces Mirror and adds resizing from the upper-left corner, horizontal/vertical
+skew, per-corner perspective offsets and X/Y position in pixels or percent.
+It can scale inside the canvas or change
+the working resolution for subsequent nodes. Old Mirror nodes migrate automatically.
+Position X = 0, Y = 0 anchors a smaller image to the canvas's upper-left corner.
+Native temperatures remain unchanged; canvas scaling, skew, distortion and position offsets disable
+spatial measurement overlays/picking until reset or bypassed. See
+[Transform controls](docs/processing-pipelines.md#available-nodes) for details.
 
 Auto calibrate, units, ambient/reflected temperature, optical transmission, relative humidity,
 distance, emissivity and calibration tools remain separate. Optical transmission

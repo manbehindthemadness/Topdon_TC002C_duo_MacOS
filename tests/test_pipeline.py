@@ -299,6 +299,9 @@ def test_fixed_dependency_and_raw_preview_exclusion() -> None:
 
 
 def test_migration_retains_analyze_settings_and_old_mirror_geometry() -> None:
+    """
+    Preserve legacy display choices while migrating mirroring to Transform.
+    """
     document = migrate_pipeline(
         {
             "rotation": 90,
@@ -322,7 +325,7 @@ def test_migration_retains_analyze_settings_and_old_mirror_geometry() -> None:
         "filter",
         "enhance",
         "colors",
-        "mirror",
+        "transform",
         "antialiasing",
         "output",
     ]

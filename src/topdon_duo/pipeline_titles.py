@@ -66,15 +66,27 @@ def node_title(stack: str, item: dict[str, Any], temperature_unit: str = "C") ->
             suffix = f"{p['amount']:+g}%"
         elif kind == "contrast":
             suffix += "×"
-    elif kind == "mirror":
+    elif kind == "transform":
         suffix = (
             " + ".join(
                 name
                 for key, name in (("horizontal", "Horizontal"), ("vertical", "Vertical"))
                 if p[key]
             )
-            or "Off"
+            or "No mirror"
         )
+        suffix = f"{number('width')}×{number('height')}% · {suffix}"
+        if p["resize_mode"] == "resolution":
+            suffix += " · Resolution"
+        if p["position_x"] or p["position_y"]:
+            unit = "px" if p["position_unit"] == "pixels" else "%"
+            suffix += f" · Position {number('position_x')}/{number('position_y')} {unit}"
+        if p["skew_x"] or p["skew_y"]:
+            suffix += f" · Skew {number('skew_x')}/{number('skew_y')}%"
+        if any(p[f"{corner}_{axis}"] for corner in (
+            "top_left", "top_right", "bottom_right", "bottom_left"
+        ) for axis in ("x", "y")):
+            suffix += " · Perspective"
     elif kind == "range":
         low, high = float(p["low"]), float(p["high"])
         if temperature_unit == "F":

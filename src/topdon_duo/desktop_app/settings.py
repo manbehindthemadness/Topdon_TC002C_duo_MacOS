@@ -193,13 +193,13 @@ class SettingsController(SessionState):
                     "raw" if value == "analyze" else value
                 )
             else:
-                kind = "mirror" if name.startswith("mirror_") else "filter"
+                kind = "transform" if name.startswith("mirror_") else "filter"
                 item = next((n for n in candidate["software"] if n["type"] == kind), None)
                 if item is None:
                     item = self.api.node("software", kind)
                     candidate["software"].insert(len(candidate["software"]) - 1, item)
-                key = name.removeprefix("mirror_") if kind == "mirror" else "filter"
-                if kind == "mirror" and self.renderer.rotation in (90, 270):
+                key = name.removeprefix("mirror_") if kind == "transform" else "filter"
+                if kind == "transform" and self.renderer.rotation in (90, 270):
                     key = "vertical" if key == "horizontal" else "horizontal"
                 selected_node = cast(dict[str, Any], item)
                 selected_node["params"][key] = value
@@ -333,7 +333,7 @@ class SettingsController(SessionState):
         if self.camera_profile.experimental:
             message += " · Experimental dual-camera support; physical hardware untested"
         if hasattr(self, "rendered") and not self.rendered.measurement_mapping_valid:
-            message += " · Optical registration unavailable; spatial measurements disabled"
+            message += " · Image registration unavailable; spatial measurements disabled"
         if (
             self.pipeline["software"][0]["params"]["source"] == "preview"
             and self.actual_image_source == "raw"

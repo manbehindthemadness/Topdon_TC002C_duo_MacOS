@@ -4,6 +4,21 @@ Resolve connected thermal/optical source usage without decoding frames or openin
 
 from typing import Any
 
+from ..image_transform import has_warp
+
+
+def spatial_mapping_supported(document: dict[str, Any]) -> bool:
+    """
+    Keep native sampling aligned only for resolution changes and axis-aligned mirrors.
+    """
+    from .document import execution_dependencies, software_tabs
+
+    tabs = software_tabs(document)
+    return not any(
+        item["type"] == "transform" and not item["bypass"] and has_warp(item["params"])
+        for tab in execution_dependencies(document) for item in tabs[tab]
+    )
+
 
 def source_required(document: dict[str, Any], source: str) -> bool:
     """

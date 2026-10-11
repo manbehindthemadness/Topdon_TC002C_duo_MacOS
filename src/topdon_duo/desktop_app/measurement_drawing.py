@@ -28,7 +28,7 @@ class MeasurementDrawingController(SessionState):
         """
         state = self.spots_state()
         if not state.get("mapping_available", True):
-            raise ValueError("Optical registration is required before drawing thermal measurements")
+            raise ValueError("Image registration is required before drawing thermal measurements")
         if state["locked"]:
             raise ValueError("Stop logging or close calibration before drawing measurements")
         if command.get("orientation") != state["orientation"]:

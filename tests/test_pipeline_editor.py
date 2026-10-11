@@ -78,9 +78,26 @@ for menu_title in ("Add node", "Insert node above", "Insert node below"):
     labels = [a.text() for a in software_menu.actions()[0].menu().actions()]
     assert labels == sorted(labels, key=str.casefold)
     assert "AI enhancement" in labels and "AI image styling" in labels
+    assert "Transform" in labels and "Mirror" not in labels
     assert not any("experimental" in label or "legacy" in label for label in labels)
     assert not any(label.startswith("ONNX ") or label.startswith("Apple Core ML ACNet") for label in labels)
 assert editor.document == before_menus
+transform_action = next(a for a in software_menu.actions()[0].menu().actions()
+                        if a.text() == "Transform")
+transform_action.trigger()
+assert editor.document["software"][1]["type"] == "transform"
+assert editor.document["software"][1]["params"]["width"] == 100
+assert editor.document["software"][2:] == before_menus["software"][1:]
+transform = editor.document["software"][1]
+transform_rows = editor.widgets[transform["id"]][1]
+units = transform_rows["position_unit"].input
+units.setCurrentIndex(units.findData("percent"))
+transform_rows["position_x"].input.setValue(12.5)
+transform_rows["position_y"].input.setValue(-5)
+editor.commit_pending_inputs()
+assert transform["params"]["position_unit"] == "percent"
+assert transform["params"]["position_x"] == 12.5
+assert transform["params"]["position_y"] == -5
 # Bypassed singleton still cannot be duplicated.
 item["bypass"] = True
 editor.publish()

@@ -303,7 +303,7 @@ class PresentationController(SessionState):
         if self.rendered.measurement_status:
             self.status = self.rendered.measurement_status
         elif not self.rendered.measurement_mapping_valid:
-            self.status = "Optical registration unavailable; spatial measurements disabled"
+            self.status = "Image registration unavailable; spatial measurements disabled"
         elif self.reflected_calibration.active:
             self.display = self.api.draw_reflector_target(
                 self.display,
@@ -348,7 +348,7 @@ class PresentationController(SessionState):
                 else f"Choose a filename for {self.pending_save_kind}..."
             )
         elif not self.rendered.measurement_mapping_valid:
-            self.status = "Optical registration unavailable; spatial measurements disabled"
+            self.status = "Image registration unavailable; spatial measurements disabled"
         elif self.reflected_calibration.active:
             self.status = self.reflected_calibration.message
         elif self.emissivity_calibration.active:

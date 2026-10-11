@@ -15,11 +15,12 @@ from ..apple_acceleration import apple_acceleration
 from ..camera_backends import CameraFrame, decode_frame
 from ..camera_backends.visible import visible_image
 from ..coreml_upsampling import CoreMLUpsampler
-from ..custom_nodes.labels import DisplayLabel, transform_labels
+from ..custom_nodes.labels import DisplayLabel
 from ..custom_nodes.runtime import CustomProcessor
 from ..enhancement_limits import MAX_PIXELS, acnet_pass_limit
 from ..feature_processing import apply_features
 from ..image_filters import apply_filter
+from ..image_transform import apply_transform
 from ..nvidia_acceleration import nvidia_acceleration
 from ..onnx_models import MODELS as ONNX_MODELS
 from ..onnx_upsampling import ONNXUpsampler
@@ -93,7 +94,7 @@ class BranchProcessor:
         inputs: dict[str, np.ndarray] | None = None,
     ) -> tuple[np.ndarray, str]:
         """
-        Process.
+        Execute display operations and labels without changing native measurement arrays.
         """
         # Measurement averages remain a compatibility input, never a display source.
         del averaged
@@ -189,14 +190,8 @@ class BranchProcessor:
                 image = apply_filter(image, p)
             elif kind == "antialiasing" and p["amount"]:
                 image = cv2.GaussianBlur(image, (0, 0), p["amount"])
-            elif kind == "mirror":
-                self.custom.labels = transform_labels(
-                    self.custom.labels, horizontal=p["horizontal"], vertical=p["vertical"]
-                )
-                if p["horizontal"]:
-                    image = cv2.flip(image, 1)
-                if p["vertical"]:
-                    image = cv2.flip(image, 0)
+            elif kind == "transform":
+                image, self.custom.labels = apply_transform(image, p, self.custom.labels)
             elif kind == "range":
                 if first_range:
                     # Defines the source normalization before earlier operations run.

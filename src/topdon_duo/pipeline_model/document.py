@@ -12,6 +12,7 @@ from ..custom_nodes.bundle import validate_custom
 from ..feature_processing import validate_feature
 from ..hardware_controls import HARDWARE_CONTROLS
 from ..image_filters import validate_filter
+from ..image_transform import transform_matrix
 from ..view_settings import VIEW_DEFAULTS
 from .catalog import (
     CATALOG,
@@ -22,10 +23,12 @@ from .catalog import (
 from .tabs import is_tab_name
 
 
-def node(stack: Any, kind: Any, **params: Any) -> Any:
+def node(stack: str, kind: str, **params: Any) -> dict[str, Any]:
     """
-    Node.
+    Construct a node with defaults, accepting the legacy Mirror spelling.
     """
+    if stack == "software" and kind == "mirror":
+        kind = "transform"
     definitions = CATALOG[stack][kind][1]
     if stack == "software" and kind == "enhance" and params.get("model") == "acnet":
         # Each ACNet pass doubles both dimensions; Anime4K passes instead
@@ -144,6 +147,12 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
                 raise ValueError("Duplicate/invalid node identity")
             ids.add(item["id"])
             kind = item["type"]
+            if stack == "software" and kind == "mirror":
+                old = item["params"]
+                if not isinstance(old, dict) or set(old) != {"horizontal", "vertical"}:
+                    raise ValueError("Unknown/missing Mirror parameter")
+                item["type"] = kind = "transform"
+                item["params"] = node("software", "transform", **old)["params"]
             if not isinstance(kind, str) or kind not in catalog:
                 raise ValueError("Unknown pipeline node")
             identity = kind
@@ -158,6 +167,11 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
             if type(item["bypass"]) is not bool or type(item["expanded"]) is not bool:
                 raise ValueError("Invalid node state")
             definitions = catalog[kind][1]
+            if stack == "software" and kind == "transform" and isinstance(item["params"], dict):
+                position_keys = {"position_unit", "position_x", "position_y"}
+                if set(item["params"]) == set(definitions) - position_keys:
+                    for key in position_keys:
+                        item["params"][key] = definitions[key].default
             if stack == "software" and kind == "custom" and isinstance(item["params"], dict):
                 item["params"].setdefault("controls", "[]")
             if stack == "software" and kind == "enhance" and isinstance(item["params"], dict):
@@ -184,6 +198,8 @@ def validate_pipeline(document: Any, *, hardware_profile: str = "duo") -> dict[s
                 raise ValueError("Unknown/missing node parameter")
             for key, spec in definitions.items():
                 spec.validate(item["params"][key])
+            if stack == "software" and kind == "transform":
+                transform_matrix(item["params"])
             if stack == "software" and kind == "custom":
                 validate_custom(item["params"])
             if stack == "software" and kind == "filter":
@@ -353,15 +369,15 @@ def active_nodes(document: Any, stack: Any) -> Any:
     return [n for n in document[stack] if not n["bypass"]]
 
 
-def geometry(document: Any, rotation: Any = 0) -> Any:
+def geometry(document: dict[str, Any], rotation: int = 0) -> tuple[bool, bool]:
     """
-    Geometry.
+    Compose axis-aligned mirrors for native measurements after final viewer rotation.
     """
     horizontal = vertical = False
     for item in active_nodes(document, "software"):
-        if item["type"] == "mirror":
-            horizontal ^= item["params"]["horizontal"]
-            vertical ^= item["params"]["vertical"]
+        if item["type"] in ("mirror", "transform"):
+            horizontal = horizontal != bool(item["params"]["horizontal"])
+            vertical = vertical != bool(item["params"]["vertical"])
     # Legacy measurement coordinates mirror AFTER rotation; swap axes at 90/270.
     return (vertical, horizontal) if rotation in (90, 270) else (horizontal, vertical)
 

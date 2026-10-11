@@ -99,7 +99,7 @@ pipelines retain their explicitly configured pass counts.
 | Gamma: 0–100, neutral 50 | App colors, including white/black hot |
 | | Invert colors: each channel becomes 255 − value; orientation is preserved |
 | Boost: Off, Mode 1, Mode 2, Mode 3 | Configurable OpenCV image filters |
-| Detail enhancement, amount, Fixed detail checkbox | Horizontal and vertical mirror |
+| Detail enhancement, amount, Fixed detail checkbox | Transform: resize, skew, perspective distortion and mirror |
 | Camera colors and native palette | Adjustable antialiasing |
 | Noise reduction mode and levels | From/To temperature range |
 | | Nearest/linear/bicubic/Lanczos interpolation, 1×/2×/4× |
@@ -109,6 +109,36 @@ pipelines retain their explicitly configured pass counts.
 | | Pipeline preview (repeatable, active only when expanded) |
 | | Edge features: selected connected edges, overlays and masks |
 | | Contour regions: selected shapes, outlines, fills and masks |
+
+**Transform** replaces Mirror; older Mirror nodes migrate with their identity,
+position, bypass/expanded state and mirror settings intact. Width and Height
+range from 10–400%. **Scale within canvas** scales from the upper-left corner,
+leaving black space to the right/bottom when shrinking and clipping when enlarging.
+**Change working resolution** resizes the image passed to later nodes; the final viewer still fits
+it to the normal preview size. Interpolation choices are nearest, linear, bicubic
+and Lanczos. Horizontal/vertical skew ranges from −50–50% of the image bounds.
+Each corner has X/Y offsets from −45–45% for perspective distortion; positive X
+moves right and positive Y moves down. Corners must form a convex quadrilateral.
+**Position X/Y** translate the resulting image. Choose **Pixels** or **Percent**
+under **Position units**; positive X moves right and positive Y moves down.
+Position is anchored to the canvas's upper-left corner: X = 0, Y = 0 places a
+smaller image there; X = 10%, Y = 10% offsets it right/down from that corner.
+Pixels refer to the working canvas after resolution resizing. Percent uses its
+full width/height (for example, X = 10 moves right by 10% of the canvas width).
+Offsets accept fractions, range from −8192 to 8192, and default to zero.
+Changing units reinterprets the entered values. Older Transform nodes acquire
+zero position offsets without changing their other settings.
+Transforms apply mirror, upper-left scale, centered skew, perspective distortion, then position;
+pixels beyond the canvas are clipped and uncovered pixels are black.
+The 4-megapixel allocation limit also applies to resizing.
+
+Transforms never resample radiometric arrays or change temperature statistics.
+Mirror and working-resolution changes retain spatial measurements. Canvas scaling,
+skew, perspective distortion and nonzero position disable spatial overlays/picking until bypassed
+or reset, because thermal registration for those warps is not implemented.
+This guard includes connected branches. Native measurement histories remain
+available. Deferred Custom labels follow the transform, retain upright text and
+are omitted when their anchor falls outside the canvas.
 
 Auto calibrate, measurement units, ambient
 and reflected temperatures, optical transmission, relative humidity, distance, emissivity,
