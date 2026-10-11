@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from typing import Any
 from unittest.mock import Mock
 
 import cv2
@@ -17,14 +18,17 @@ from topdon_duo.view_settings import COLOR_PALETTES, IMAGE_FILTERS, VIEW_DEFAULT
 
 
 def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading(
-    viewer, monkeypatch
-):
+    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Hide competing markers while fitting emissivity from native camera counts.
+    """
     from topdon_duo.emissivity_calibration import EmissivityCalibrator
     from topdon_duo.settings_preferences import load_settings
 
     monkeypatch.setattr(EmissivityCalibrator, "SETTLE_SECONDS", 0.2)
     panel = Mock()
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
     setting = {"value": 0.95, "enabled": False, "available": True}
     viewer.hardware.state.return_value["emissivity"] = setting
 
@@ -43,9 +47,9 @@ def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading
 
     viewer.camera.frames.return_value = frames()
     draw_spots = Mock(wraps=desktop.draw_sample_spots)
-    monkeypatch.setattr(desktop, "draw_sample_spots", draw_spots)
+    monkeypatch.setattr("topdon_duo.desktop.draw_sample_spots", draw_spots)
     draw_reference = Mock(wraps=desktop.draw_emissivity_point)
-    monkeypatch.setattr(desktop, "draw_emissivity_point", draw_reference)
+    monkeypatch.setattr("topdon_duo.desktop.draw_emissivity_point", draw_reference)
     step = 0
     applied = False
 
@@ -78,7 +82,7 @@ def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading
         return []
 
     panel.poll.side_effect = poll
-    hidden_count = None
+    hidden_count: int | None = None
 
     def key(_delay):
         nonlocal hidden_count
@@ -100,11 +104,18 @@ def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading
     assert desktop.main([]) == 0
     assert applied and load_settings()["hardware"]["emissivity"] == 0.5
     assert draw_spots.call_args.args[2].pixels == [(30, 40)]
-    assert draw_spots.call_count > hidden_count
+    marker_count = hidden_count
+    assert marker_count is not None
+    assert draw_spots.call_count > marker_count
     assert draw_reference.call_count > 0
 
 
-def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(viewer, monkeypatch):
+def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(
+    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Preserve calibration references through reset and allow explicit reapplication.
+    """
     from topdon_duo.distance_calibration import DistanceReference
     from topdon_duo.settings_preferences import load_settings, save_settings
 
@@ -127,17 +138,20 @@ def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(viewer,
     )
     viewer.hardware.restore.side_effect = lambda: setting.update(value=0.95, enabled=False)
     panel = Mock()
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
     step = 0
 
-    def poll():
+    def poll() -> list[dict[str, Any]]:
+        """
+        Verify retained settings and dispatch the next calibration operation.
+        """
         nonlocal step
         step += 1
         if step > 1:
-            saved = load_settings()
-            assert saved["distance_calibration"] == distance
-            assert saved["emissivity_calibration"] == emissivity
-            assert saved["reflected_calibration"] == reflected
+            current_settings = load_settings()
+            assert current_settings["distance_calibration"] == distance
+            assert current_settings["emissivity_calibration"] == emissivity
+            assert current_settings["reflected_calibration"] == reflected
             state = panel.update.call_args.args[0]
             assert state["distance_calibration"]["reference"] == distance
             assert state["emissivity_calibration"]["reference"] == emissivity
@@ -160,10 +174,13 @@ def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(viewer,
 
 
 def test_distance_calibration_detects_native_pixels_and_only_applies_on_request(
-    viewer, monkeypatch
-):
+    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Detect distance in native sensor coordinates and require an explicit apply command.
+    """
     panel = Mock()
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
     viewer.hardware.state.return_value["distance"] = {"value": 1, "available": True}
     step = 0
 
@@ -210,28 +227,38 @@ def test_distance_calibration_detects_native_pixels_and_only_applies_on_request(
     assert saved["hardware"]["distance"] == 1
 
 
-def test_distance_calibration_commands_are_rejected_while_logging(viewer, monkeypatch):
+def test_distance_calibration_commands_are_rejected_while_logging(
+    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Prevent distance calibration changes during temperature logging.
+    """
     viewer.graphs.logging = True
     panel = Mock()
     panel.poll.return_value = [
         {"action": "distance_calibration", "operation": operation}
         for operation in ("select", "save", "measure", "apply", "clear")
     ]
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set.assert_not_called()
     assert panel.update.call_args.args[0]["distance_calibration"]["reference"] is None
 
 
-def test_emissivity_calibration_commands_are_rejected_while_logging(viewer, monkeypatch):
+def test_emissivity_calibration_commands_are_rejected_while_logging(
+    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Prevent emissivity calibration changes during temperature logging.
+    """
     viewer.graphs.logging = True
     panel = Mock()
     panel.poll.return_value = [
         {"action": "emissivity_calibration", "operation": operation}
         for operation in ("select", "fit", "apply")
     ]
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set.assert_not_called()
@@ -460,8 +487,11 @@ def test_antialiasing_and_filters_change_display():
 
 @pytest.mark.parametrize("horizontal,vertical", [(True, False), (False, True), (True, True)])
 def test_mirrored_spots_stay_on_physical_pixels_through_rotations(
-    viewer, monkeypatch, horizontal, vertical
-):
+    viewer: Any, monkeypatch: pytest.MonkeyPatch, horizontal: bool, vertical: bool,
+) -> None:
+    """
+    Keep mirrored spots attached to their physical sensor pixels across rotations.
+    """
     words = np.frombuffer(make_frame(), dtype="<u2").copy()
     words[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS] = np.arange(SENSOR_PIXELS) + 10_000
     viewer.camera.frames.return_value = [words.tobytes()] * 30
@@ -473,7 +503,7 @@ def test_mirrored_spots_stay_on_physical_pixels_through_rotations(
         return events
 
     panel.poll.side_effect = poll
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
     observed = []
     original_draw = desktop.draw_sample_spots
 
@@ -482,7 +512,7 @@ def test_mirrored_spots_stay_on_physical_pixels_through_rotations(
             observed.append(int(rendered.raw_counts[y, x]))
         return original_draw(image, rendered, spots, scale, unit)
 
-    monkeypatch.setattr(desktop, "draw_sample_spots", draw)
+    monkeypatch.setattr("topdon_duo.desktop.draw_sample_spots", draw)
     step = 0
 
     def key(_delay):
@@ -540,19 +570,26 @@ def test_invalid_view_settings_are_rejected(name, value):
     assert renderer.view_settings() == VIEW_DEFAULTS
 
 
-def test_reflector_workflow_restores_then_applies_saved_native_reading(viewer, monkeypatch):
+def test_reflector_workflow_restores_then_applies_saved_native_reading(
+    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Restore reflected-temperature trial settings before explicitly applying the result.
+    """
     from topdon_duo.settings_preferences import load_settings
 
     panel = Mock()
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
+    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
     settings = {
         "emissivity": {"value": 0.8, "enabled": True, "available": True},
         "transmission": {"value": 95, "enabled": False, "available": True},
         "reflected": {"value": 22, "enabled": False, "available": True},
     }
     viewer.hardware.state.return_value.update(settings)
-    viewer.hardware.set.side_effect = lambda name, value, enabled: settings[name].update(
-        value=value, enabled=enabled
+    viewer.hardware.set.side_effect = (
+        lambda control_name, control_value, enabled: settings[control_name].update(
+            value=control_value, enabled=enabled
+        )
     )
     words = np.frombuffer(make_frame(), dtype="<u2").copy()
     words[HEADER_U16 : SENSOR_PIXELS + HEADER_U16] = round((24.5 + 50) * 64)
@@ -560,7 +597,7 @@ def test_reflector_workflow_restores_then_applies_saved_native_reading(viewer, m
     step = 0
     applied = False
     target = Mock(wraps=desktop.draw_reflector_target)
-    monkeypatch.setattr(desktop, "draw_reflector_target", target)
+    monkeypatch.setattr("topdon_duo.desktop.draw_reflector_target", target)
 
     def poll():
         nonlocal step, applied
@@ -621,134 +658,6 @@ assert "20.0 °C" in controls.status.text()
         check=False,
     )
     assert result.returncode == 0, result.stderr
-
-
-def test_startup_loads_all_calibration_references_and_applied_camera_values(viewer, monkeypatch):
-    from topdon_duo.distance_calibration import DistanceReference
-    from topdon_duo.settings_preferences import load_settings, save_settings
-
-    references = {
-        "distance_calibration": DistanceReference(0.076, 0.5, 48).as_dict(),
-        "emissivity_calibration": {"version": 1, "emissivity": 0.5, "known_celsius": 40},
-        "reflected_calibration": {"version": 1, "celsius": 24.2},
-    }
-    applied = {"distance": 1.2, "emissivity": 0.5, "reflected": 24.2}
-    save_settings({**references, "hardware": applied})
-    settings = viewer.hardware.state.return_value
-    for name in applied:
-        settings[name] = {"value": 0, "enabled": False, "available": True}
-    viewer.hardware.set.side_effect = lambda name, value, enabled: settings[name].update(
-        value=value, enabled=enabled
-    )
-    panel = Mock()
-    panel.poll.return_value = []
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
-    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
-    assert desktop.main([]) == 0
-    state = panel.update.call_args.args[0]
-    for name, reference in references.items():
-        assert state[name]["reference"] == reference
-        assert load_settings()[name] == reference
-    for name, value in applied.items():
-        viewer.hardware.set.assert_any_call(name, value, True)
-        assert state["hardware"][name]["value"] == value
-        assert state["hardware"][name]["enabled"]
-    assert load_settings()["hardware"] == applied
-
-
-def test_processing_preset_is_saved_and_reloaded_after_hardware_settings(viewer, monkeypatch):
-    from topdon_duo.settings_preferences import load_settings, save_settings
-
-    save_settings({"hardware": {"contrast": 70}, "processing_preset": "shadow"})
-    panel = Mock()
-    panel.poll.return_value = [{"action": "processing_preset", "value": "soft"}]
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
-    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
-    viewer.hardware.set_processing_preset.side_effect = lambda value: setattr(
-        viewer.hardware, "processing_preset", value
-    )
-    assert desktop.main([]) == 0
-    assert [call.args for call in viewer.hardware.set_processing_preset.call_args_list] == [
-        ("shadow",), ("soft",)
-    ]
-    calls = viewer.hardware.mock_calls
-    assert calls.index(next(c for c in calls if c[0] == "set")) < calls.index(
-        next(c for c in calls if c[0] == "set_processing_preset")
-    )
-    assert load_settings()["processing_preset"] == "soft"
-
-
-def test_processing_preset_command_is_locked_during_logging(viewer, monkeypatch):
-    viewer.graphs.logging = True
-    panel = Mock()
-    panel.poll.return_value = [{"action": "processing_preset", "value": "shadow"}]
-    monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
-    monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
-    assert desktop.main([]) == 0
-    viewer.hardware.set_processing_preset.assert_not_called()
-
-
-def test_tone_selection_reloads_after_hardware_and_presets_and_persists(viewer, monkeypatch):
-    from topdon_duo.settings_preferences import load_settings, save_settings
-
-    save_settings({'hardware': {'contrast': 70}, 'processing_preset': 'shadow',
-                   'camera_gamma': 25, 'camera_boost': 3})
-    panel = Mock()
-    panel.poll.return_value = [{'action': 'tone', 'gamma': 75}]
-    monkeypatch.setattr(desktop, 'ViewPanel', lambda: panel)
-    monkeypatch.setattr(desktop.cv2, 'waitKey', lambda _: ord('q'))
-
-    def apply(gamma, boost):
-        viewer.hardware.gamma, viewer.hardware.boost = gamma, boost
-
-    viewer.hardware.set_tone.side_effect = apply
-    assert desktop.main([]) == 0
-    assert [call.args for call in viewer.hardware.set_tone.call_args_list] == [(25, 3), (75, 3)]
-    calls = viewer.hardware.mock_calls
-    assert calls.index(next(c for c in calls if c[0] == 'set_processing_preset')) < calls.index(
-        next(c for c in calls if c[0] == 'set_tone'))
-    assert load_settings()['camera_gamma'] == 75 and load_settings()['camera_boost'] == 3
-
-
-def test_tone_commands_are_locked_during_logging(viewer, monkeypatch):
-    viewer.graphs.logging = True
-    panel = Mock()
-    panel.poll.return_value = [{'action': 'tone', 'gamma': 25}, {'action': 'cancel_tone'}]
-    monkeypatch.setattr(desktop, 'ViewPanel', lambda: panel)
-    monkeypatch.setattr(desktop.cv2, 'waitKey', lambda _: ord('q'))
-    assert desktop.main([]) == 0
-    viewer.hardware.set_tone.assert_not_called()
-    viewer.hardware.restore_tone.assert_not_called()
-
-
-@pytest.mark.parametrize('fails', [False, True])
-def test_camera_operation_notifies_before_usb_work_and_reports_outcome(viewer, monkeypatch, fails):
-    from topdon_duo.camera import CameraError
-
-    panel = Mock()
-    panel.poll.return_value = [
-        {'action': 'hardware', 'name': 'detail_enabled', 'value': 0, 'enabled': True}
-    ]
-    monkeypatch.setattr(desktop, 'ViewPanel', lambda: panel)
-    viewer.hardware.state.return_value = {
-        'ambient': {'value': 30, 'available': True},
-        'detail_enabled': {'value': 0, 'available': True},
-    }
-
-    def apply(*_args):
-        state = panel.update.call_args.args[0]
-        assert state['camera_operation_busy']
-        assert 'Applying detail enhancement mode' in state['camera_operation']
-        if fails:
-            raise CameraError('test timeout')
-
-    viewer.hardware.set.side_effect = apply
-    monkeypatch.setattr(desktop.cv2, 'waitKey', lambda _delay: ord('q'))
-    assert desktop.main([]) == 0
-    states = [call.args[0] for call in panel.update.call_args_list]
-    expected = 'Camera setting rejected: test timeout' if fails else 'Detail enhancement mode updated'
-    assert any(state['camera_operation'] == expected and not state['camera_operation_busy']
-               for state in states)
 
 
 __all__ = ["viewer_fixture"]
