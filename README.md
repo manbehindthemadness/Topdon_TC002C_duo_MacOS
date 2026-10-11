@@ -1,9 +1,19 @@
-# TOPDON TC002C Duo for macOS and Ubuntu
+# based-thermals
 
-An experimental native thermal-camera viewer for the TOPDON TC002C Duo on
-Apple Silicon Macs and Ubuntu Linux. It reads the camera directly over USB, extracts the native
-`256x192` 16-bit radiometric plane, and provides both a Qt desktop app and
-a browser-based MJPEG viewer.
+An experimental, extensible thermal-camera viewer and processing pipeline editor
+for Apple Silicon Macs and Ubuntu Linux, with a Qt desktop app and a browser-based
+MJPEG viewer. The verified TOPDON TC002C Duo backend reads USB frames and native
+`256x192` 16-bit radiometry. Additional backends describe their own hardware features;
+dual-camera support currently has virtual-camera tests and remains physically untested.
+
+The installed distribution and primary commands are `based-thermals`,
+`based-thermals-desktop`, and `based-thermals-models`. The previous `topdon-duo`,
+`topdon-duo-desktop`, and `topdon-duo-models` commands remain compatibility aliases.
+The `topdon_duo` Python namespace remains stable for Custom nodes and integrations.
+Existing `topdon-duo` preference, model-cache, baseline and Qt settings locations
+are retained, preserving saved pipelines, calibrations and downloaded models.
+Existing checkouts can keep their directory name and IDE configuration; new clones
+use `based-thermals` as their directory name.
 
 ## Features
 
@@ -31,7 +41,7 @@ The original macOS setup remains available below. On Ubuntu, install the runtime
 libraries and GTK save dialog, then create a local Python environment:
 
 ```bash
-cd /usr/src/Topdon_TC002C_duo_MacOS
+cd /usr/src/based-thermals
 sudo apt install python3-venv libusb-1.0-0 libgl1 libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 zenity
 python3 -m venv .venv
 .venv/bin/python -m pip install uv
@@ -49,10 +59,10 @@ sudo udevadm control --reload-rules
 Unplug and reconnect the camera, then run:
 
 ```bash
-.venv/bin/topdon-duo --diagnose
-.venv/bin/topdon-duo-desktop --rotate 90
+.venv/bin/based-thermals --diagnose
+.venv/bin/based-thermals-desktop --rotate 90
 # Alternatively, start the browser viewer:
-.venv/bin/topdon-duo --ambient 21.9 --rotate 90
+.venv/bin/based-thermals --ambient 21.9 --rotate 90
 ```
 
 Linux's `uvcvideo` driver is temporarily detached only from this camera's two
@@ -88,12 +98,12 @@ in the pipeline node execution controls.
 ### macOS
 
 ```bash
-git clone https://github.com/manbehindthemadness/Topdon_TC002C_duo_MacOS.git
-cd Topdon_TC002C_duo_MacOS
+git clone https://github.com/manbehindthemadness/based-thermals.git
+cd based-thermals
 uv sync
 
 # Launch as your normal user. Only the USB helper requests sudo authorization.
-.venv/bin/topdon-duo-desktop --rotate 90
+.venv/bin/based-thermals-desktop --rotate 90
 ```
 
 Launch from a terminal and enter your password if the USB helper requests it.
@@ -160,16 +170,16 @@ Install the optional weights once (not while capturing):
 
 ```bash
 uv sync
-uv run topdon-duo-models espcn mewzoom
-uv run topdon-duo-models mewzoom-v0-2x
+uv run based-thermals-models espcn mewzoom
+uv run based-thermals-models mewzoom-v0-2x
 # Optional newer TrunkNet models (keeps V0 available):
-uv run topdon-duo-models mewzoom-v1-2x mewzoom-v1-4x
+uv run based-thermals-models mewzoom-v1-2x mewzoom-v1-4x
 # Lightweight general-purpose 4x upscaler:
-uv run topdon-duo-models realesr-general-x4v3
+uv run based-thermals-models realesr-general-x4v3
 # One-time conversion of the authors' denoising weights:
 uv run scripts/export_visual_denoisers.py dncnn-25 ffdnet-gray
 # Then launch the camera viewer (install commands do not launch it):
-uv run topdon-duo-desktop
+uv run based-thermals-desktop
 ```
 
 In **Imaging → Pipeline**, insert **AI enhancement** in a
@@ -312,9 +322,9 @@ Torch or launch an export automatically.
 Manual pre-installation remains available if desired:
 
 ```bash
-uv run topdon-duo-models style-mosaic style-candy
-uv run topdon-duo-models style-rain-princess style-udnie style-pointillism style-line-art style-animegan-sketch
-uv run topdon-duo-desktop
+uv run based-thermals-models style-mosaic style-candy
+uv run based-thermals-models style-rain-princess style-udnie style-pointillism style-line-art style-animegan-sketch
+uv run based-thermals-desktop
 ```
 
 In **Imaging → Pipeline**, add **AI image styling** and choose Mosaic, Candy,
@@ -364,7 +374,8 @@ execute on the GPU; each model needs local speed/quality testing.
 
 Weights are checksum-verified and cached outside the repository (macOS:
 `~/Library/Caches/topdon-duo/models`; Linux: `$XDG_CACHE_HOME/topdon-duo/models`
-or `~/.cache/topdon-duo/models`). `TOPDON_MODEL_DIR` overrides the directory.
+or `~/.cache/topdon-duo/models`). `BASED_THERMALS_MODEL_DIR` overrides the directory;
+the legacy `TOPDON_MODEL_DIR` remains supported, with the new variable taking precedence.
 Inference never downloads weights or executes model-provided Python code.
 V1 installation obtains the publisher's SHA256 from its Git LFS pointer over
 verified HTTPS and saves that checksum beside the verified weights for offline
@@ -387,7 +398,7 @@ native crashes and keeping model work off the GUI and USB acquisition threads.
 The default native camera canvas is **1024×768** in landscape (768×1024 when
 rotated), with the toolbar above it. The camera retains its aspect ratio.
 The viewer still remembers your resized window; use
-`uv run topdon-duo-desktop --reset-window-size` once to use the new native size.
+`uv run based-thermals-desktop --reset-window-size` once to use the new native size.
 `--scale 3` selects the previous 768×576 camera canvas. Graphs are rendered at
 their pane's displayed size, rather than enlarged from a fixed low-resolution plot.
 
@@ -704,7 +715,7 @@ Apple Core ML ACNet is available through **AI enhancement**; the old separate
 node is retained only for existing pipelines. `uv sync` installs its prebuilt
 runtime automatically on macOS only. Startup detection exposes Apple execution
 controls when Metal and Core ML are available; saved pipelines remain unchanged. Launch with
-`uv run topdon-duo-desktop`; no OpenCV rebuild is needed.
+`uv run based-thermals-desktop`; no OpenCV rebuild is needed.
 See [Apple node setup and limitations](docs/processing-pipelines.md#experimental-apple-core-ml-node).
 
 AI enhancement nodes offer Anime4K09 and bundled ACNet ONNX models, with amount,
@@ -770,13 +781,13 @@ Start the local server:
 
 ```bash
 # Run as your regular user; macOS authorizes only the separate USB helper.
-.venv/bin/topdon-duo --ambient 21.9 --rotate 90
+.venv/bin/based-thermals --ambient 21.9 --rotate 90
 ```
 
 Then open <http://127.0.0.1:5001>. To make it available on your local network:
 
 ```bash
-.venv/bin/topdon-duo --host 0.0.0.0 --port 5001
+.venv/bin/based-thermals --host 0.0.0.0 --port 5001
 ```
 
 Only use `0.0.0.0` when you intend to expose the viewer to other devices on the
@@ -787,7 +798,7 @@ network.
 Camera discovery can be checked without claiming its USB interfaces:
 
 ```bash
-uv run topdon-duo --diagnose
+uv run based-thermals --diagnose
 ```
 
 During camera shutter calibration (shown as “Auto calibrate”), frozen temperature frames hold the last
@@ -1133,7 +1144,7 @@ temperatures remain separate from native-grid measurements. The Duo remains the
 default and the only physical camera currently implemented.
 
 Experimental dual-camera support includes an offline virtual backend. Run
-`.venv/bin/topdon-duo-desktop --camera virtual-dual --image-source visible`
+`.venv/bin/based-thermals-desktop --camera virtual-dual --image-source visible`
 without elevation or camera access. Visible light is selectable as a pipeline
 source, blend input and mask; a separate visible-light hardware stack appears
 only for a second camera and keeps its controls independent of thermal settings.

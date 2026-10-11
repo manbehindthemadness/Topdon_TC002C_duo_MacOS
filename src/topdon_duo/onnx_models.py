@@ -146,7 +146,7 @@ def model_path(model: str, *, spec: dict[str, Any] | None = None) -> Path:
     Locate a catalog or custom model in the shared host-specific cache.
     """
     spec = MODELS[model] if spec is None else spec
-    override = os.environ.get("TOPDON_MODEL_DIR")
+    override = os.environ.get("BASED_THERMALS_MODEL_DIR") or os.environ.get("TOPDON_MODEL_DIR")
     if override:
         base = Path(override)
     elif sys.platform == "darwin":
@@ -190,10 +190,13 @@ def verified_model(model: str, *, spec: dict[str, Any] | None = None) -> bytes:
     return data
 
 
-def install_command(model):
+def install_command(model: str) -> str:
+    """
+    Describe the current model-install command while retaining offline conversion instructions.
+    """
     if MODELS[model].get("local_export"):
         return "uv run scripts/export_visual_denoisers.py " + model
-    return "uv run topdon-duo-models " + model
+    return "uv run based-thermals-models " + model
 
 
 def download_ssl_context():

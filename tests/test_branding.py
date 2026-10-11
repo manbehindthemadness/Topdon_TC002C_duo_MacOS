@@ -1,0 +1,109 @@
+"""
+Application branding changes preserve commands, pipeline imports and installed data.
+"""
+
+import json
+import subprocess
+import sys
+from importlib.metadata import distribution
+from pathlib import Path
+
+import pytest
+from support.qt_process import run_popup
+
+from topdon_duo import APP_NAME, onnx_models
+from topdon_duo.desktop_app.constants import WINDOW_NAME
+from topdon_duo.pipeline import default_pipeline
+from topdon_duo.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
+from topdon_duo.web import LiveStream, create_app
+
+
+@pytest.mark.parametrize("suffix", ["", "-desktop", "-models"])
+def test_renamed_distribution_installs_working_commands_and_legacy_aliases(suffix: str) -> None:
+    """
+    Run both installed command spellings without opening a camera or downloading models.
+    """
+    installed = distribution("based-thermals")
+    assert installed.metadata["Name"] == "based-thermals"
+    entry_points = {entry.name: entry.value for entry in installed.entry_points}
+    current, legacy = f"based-thermals{suffix}", f"topdon-duo{suffix}"
+    assert entry_points[current] == entry_points[legacy]
+    for command in (current, legacy):
+        result = subprocess.run(
+            [str(Path(sys.executable).parent / command), "--help"],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        if suffix != "-models":
+            assert "based-thermals" in result.stdout
+
+
+def test_web_title_is_application_brand_and_device_identity_remains_visible() -> None:
+    """
+    Distinguish the application title from its actual connected camera's metadata.
+    """
+    stream = LiveStream()
+    response = create_app(stream).test_client().get("/")
+    text = response.get_data(as_text=True)
+    assert "<title>based-thermals</title>" in text
+    assert "<h1>based-thermals</h1>" in text
+    assert stream.profile.title in text
+    assert APP_NAME == WINDOW_NAME == "based-thermals"
+
+
+def test_model_directory_override_prefers_new_name_and_accepts_legacy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Reuse the existing model cache unless an explicit current or legacy override is supplied.
+    """
+    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path / "legacy"))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path / "current"))
+    assert onnx_models.model_path("espcn").parent == tmp_path / "current"
+    monkeypatch.delenv("BASED_THERMALS_MODEL_DIR")
+    assert onnx_models.model_path("espcn").parent == tmp_path / "legacy"
+    monkeypatch.delenv("TOPDON_MODEL_DIR")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert onnx_models.model_path("espcn").parent == tmp_path / "topdon-duo" / "models"
+
+
+@pytest.mark.parametrize("format_name", ["based-thermals-pipelines", "topdon-duo-pipelines"])
+def test_named_exports_use_current_brand_and_read_both_formats(
+    format_name: str, tmp_path: Path,
+) -> None:
+    """
+    Keep all saved settings importable while new portable bundles carry the project name.
+    """
+    path = tmp_path / "portable.json"
+    document = default_pipeline()
+    write_pipelines(path, {"Saved": document}, single=False)
+    payload = json.loads(path.read_text())
+    assert payload["format"] == "based-thermals-pipelines"
+    payload["format"] = format_name
+    path.write_text(json.dumps(payload))
+    loaded = read_pipelines(path)
+    assert len(loaded) == 1 and loaded[0].name == "Saved"
+    assert loaded[0].document == document
+    payload["version"] = 99
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="Unsupported"):
+        read_pipelines(path)
+
+
+def test_qt_viewer_uses_generic_application_title(tmp_path: Path) -> None:
+    """
+    Check the actual Qt window separately from OpenCV's native binding.
+    """
+    result = run_popup(
+        '''
+from PySide6.QtWidgets import QApplication
+from topdon_duo.viewer_window import ViewerWindow
+app = QApplication([])
+window = ViewerWindow(lambda message: None)
+assert window.windowTitle() == "based-thermals"
+window.close()
+''',
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr

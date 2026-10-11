@@ -62,7 +62,7 @@ the failure. Use `uv sync` to return to the locked CPU environment.
 .venv/bin/python -m topdon_duo.nvidia_acceleration
 .venv/bin/python experiments/experiment_nvidia_inference.py \
   --output diagnostics/linux-cuda
-.venv/bin/topdon-duo-desktop --rotate 90
+.venv/bin/based-thermals-desktop --rotate 90
 ```
 
 The probe must report `"available": true`. The experiment verifies CUDA operator

@@ -333,6 +333,9 @@ def test_camera_disconnect_finalizes_active_recording(
 def test_save_dialog_uses_mp4_filename_and_filter(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """
+    Offer a branded timelapse filename while retaining the MP4 save-dialog filter.
+    """
     process = Mock()
     popen = Mock(return_value=process)
     monkeypatch.setattr(desktop.subprocess, "Popen", popen)
@@ -340,7 +343,7 @@ def test_save_dialog_uses_mp4_filename_and_filter(
     assert dialog.open(tmp_path, suffix=".mp4", kind="timelapse")
     command = popen.call_args.args[0]
     assert "--file-filter=MP4 videos | *.mp4" in command
-    assert any("TC002C-Duo-timelapse-" in arg and arg.endswith(".mp4") for arg in command)
+    assert any("based-thermals-timelapse-" in arg and arg.endswith(".mp4") for arg in command)
     mac_command = desktop.MacSaveDialog()._command("video.mp4", str(tmp_path))
     assert "Save thermal recording" in mac_command[2]
     assert mac_command[-2:] == ["video.mp4", str(tmp_path)]

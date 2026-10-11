@@ -98,10 +98,14 @@ def snapshot(pid: int) -> dict:
 
 
 def main() -> int:
+    """
+    Monitor an existing viewer process and its named window without opening the camera.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pid", type=int)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--duration", type=float, default=3600, help="Maximum seconds to monitor")
+    parser.add_argument("--window-title", default="based-thermals", help="Viewer window title")
     args = parser.parse_args()
     if args.duration <= 0:
         parser.error("--duration must be positive")
@@ -112,8 +116,12 @@ def main() -> int:
     next_display = started
     with args.output.open("a", buffering=1) as output:
 
-        def write(record):
-            output.write(json.dumps(record) + "\n")
+        def write(sample: dict) -> None:
+            """
+            Append one monitor observation without buffering away intermediate samples.
+            """
+            serialized = json.dumps(sample) + "\n"
+            output.write(serialized)
 
         write(
             {
@@ -164,7 +172,7 @@ def main() -> int:
                     )
                 if shutil.which("xwininfo"):
                     record["display"]["viewer_window"] = command_output(
-                        ["xwininfo", "-name", "TOPDON TC002C Duo"]
+                        ["xwininfo", "-name", args.window_title]
                     )
                 next_display = now + 10
             write(record)

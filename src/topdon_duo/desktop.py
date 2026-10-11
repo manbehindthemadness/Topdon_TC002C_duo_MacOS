@@ -16,6 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from . import APP_NAME
 from .apple_acceleration import apple_acceleration
 from .camera import (
     DEFAULT_USB_QUEUE_DEPTH,
@@ -88,7 +89,7 @@ from .window_preferences import load_main_window_size, save_main_window_size
 from .window_style import set_black_window_backgrounds, window_resize_size
 
 LOG = logging.getLogger(__name__)
-WINDOW_NAME = "TOPDON TC002C Duo"
+WINDOW_NAME = APP_NAME
 TOOLBAR_BUTTON_HEIGHT = 24
 TOOLBAR_PADDING = 4
 TOOLBAR_FONT_SCALE = 0.36

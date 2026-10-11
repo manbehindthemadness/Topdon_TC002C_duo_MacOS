@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import APP_NAME
+
 
 class CaptureWindow(QWidget):
     def __init__(self, send) -> None:
@@ -136,7 +138,8 @@ def run_window(
     Run a separate Qt presentation window with nonblocking JSON messages.
     """
     app = QApplication(sys.argv)
-    app.setApplicationName(title)
+    app.setApplicationName(APP_NAME)
+    app.setApplicationDisplayName(APP_NAME if title == APP_NAME else f"{APP_NAME} · {title}")
 
     def send(message: dict) -> None:
         try:

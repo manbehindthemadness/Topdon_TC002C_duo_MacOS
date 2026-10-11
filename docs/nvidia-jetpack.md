@@ -34,7 +34,7 @@ distribution with the tested ARM64 GPU wheel from Microsoft's CUDA 13 feed:
 .venv/bin/uv pip uninstall onnxruntime
 .venv/bin/uv pip install --no-deps --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/ 'onnxruntime-gpu==1.28.0.dev20260722004'
 .venv/bin/python -m topdon_duo.nvidia_acceleration
-.venv/bin/topdon-duo-desktop --rotate 90
+.venv/bin/based-thermals-desktop --rotate 90
 ```
 
 The probe should report `"available": true` and `"cuda": true`. Open the pipeline
@@ -49,7 +49,7 @@ An ordinary `uv sync` or `uv run` restores the locked CPU dependency; repeat the
 replacement commands afterward. For example:
 
 ```bash
-.venv/bin/uv run --no-sync topdon-duo-models espcn
+.venv/bin/uv run --no-sync based-thermals-models espcn
 .venv/bin/uv run --no-sync pytest
 .venv/bin/uv run --no-sync ruff check .
 ```

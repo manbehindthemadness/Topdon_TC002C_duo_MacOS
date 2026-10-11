@@ -9,7 +9,8 @@ from typing import Any
 
 from ...pipeline import validate_pipeline
 
-BUNDLE_FORMAT = "topdon-duo-pipelines"
+BUNDLE_FORMAT = "based-thermals-pipelines"
+LEGACY_BUNDLE_FORMAT = "topdon-duo-pipelines"
 
 
 @dataclass
@@ -40,7 +41,7 @@ def read_pipelines(path: Path) -> list[IncomingPipeline]:
     Validate a complete bundle or derive a preset name from a legacy file name.
     """
     saved = json.loads(path.read_text())
-    if isinstance(saved, dict) and saved.get("format") == BUNDLE_FORMAT:
+    if isinstance(saved, dict) and saved.get("format") in (BUNDLE_FORMAT, LEGACY_BUNDLE_FORMAT):
         if set(saved) != {"format", "version", "pipelines"} or type(saved["version"]) is not int:
             raise ValueError("Invalid pipeline bundle")
         documents = saved["pipelines"]

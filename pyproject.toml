@@ -1,7 +1,7 @@
 [project]
-name = "topdon-tc002c-duo-macos"
+name = "based-thermals"
 version = "0.1.0"
-description = "Live TOPDON TC002C Duo thermal viewer for macOS and Linux"
+description = "Extensible thermal-camera viewer and processing pipelines for macOS and Linux"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
@@ -15,7 +15,13 @@ dependencies = [
     "pyside6-essentials>=6.8.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/manbehindthemadness/based-thermals"
+
 [project.scripts]
+based-thermals = "topdon_duo.web:main"
+based-thermals-desktop = "topdon_duo.desktop:main"
+based-thermals-models = "topdon_duo.onnx_models:main"
 topdon-duo = "topdon_duo.web:main"
 topdon-duo-desktop = "topdon_duo.desktop:main"
 topdon-duo-models = "topdon_duo.onnx_models:main"

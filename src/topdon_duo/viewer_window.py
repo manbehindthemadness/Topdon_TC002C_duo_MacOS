@@ -11,6 +11,7 @@ from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QImage, QKeyEvent, QResizeEvent
 from PySide6.QtWidgets import QMainWindow
 
+from . import APP_NAME
 from .capture_window import run_window
 from .viewer_panel import FRAME_CAPACITY
 from .viewer_ui.canvas import ImageCanvas
@@ -43,7 +44,7 @@ class ViewerWindow(QMainWindow):
         self.addToolBar(self.drawing_toolbar)
         self._viewer_state: dict = {}
         self.orientation_dialog = OrientationDialog(self.send, self)
-        self.setWindowTitle("TOPDON TC002C Duo")
+        self.setWindowTitle(APP_NAME)
         self.resize(1024, 800)
         self.statusBar().showMessage("Waiting for camera…")
 
@@ -210,7 +211,7 @@ def main() -> int:
     """
     Run the Qt viewer without the popup windows' always-on-top flag.
     """
-    result = run_window(ViewerWindow, "TOPDON TC002C Duo", stays_on_top=False, poll_ms=10)
+    result = run_window(ViewerWindow, APP_NAME, stays_on_top=False, poll_ms=10)
     return result
 
 

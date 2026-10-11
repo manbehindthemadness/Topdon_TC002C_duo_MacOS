@@ -8,6 +8,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from .. import APP_NAME
 from ..dialog_preferences import load_dialog_directory, remember_dialog_directory
 from .constants import (
     LOG,
@@ -36,11 +37,11 @@ class MacSaveDialog:
         self, default_directory: Path | None = None, *, suffix: str = ".png", kind: str = ""
     ) -> bool:
         """
-        Open.
+        Open a native save dialog with a hardware-independent default capture name.
         """
         if self._process is not None:
             return False
-        prefix = f"TC002C-Duo-{kind}-" if kind else "TC002C-Duo-"
+        prefix = f"{APP_NAME}-{kind}-" if kind else f"{APP_NAME}-"
         default_name = prefix + datetime.now().astimezone().strftime("%Y%m%d-%H%M%S") + suffix
         self._directory_kind = (
             kind

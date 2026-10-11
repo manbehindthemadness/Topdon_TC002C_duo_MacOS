@@ -4,10 +4,11 @@ Desktop labels, toolbar dimensions, and recording defaults.
 
 import logging
 
+from .. import APP_NAME
 from ..camera import FRAME_RATE
 
 LOG = logging.getLogger(__name__)
-WINDOW_NAME = "TOPDON TC002C Duo"
+WINDOW_NAME = APP_NAME
 TOOLBAR_BUTTON_HEIGHT = 24
 TOOLBAR_PADDING = 4
 TOOLBAR_FONT_SCALE = 0.36

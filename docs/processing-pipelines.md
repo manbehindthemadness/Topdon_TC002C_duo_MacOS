@@ -491,7 +491,7 @@ CUDA 13 runtime replacement and `uv run --no-sync` workflow.
 ### Experimental Apple Core ML node
 
 On macOS, `uv sync` automatically installs the prebuilt Apple runtime; Linux does
-not install it. Launch with `uv run topdon-duo-desktop`. At startup a short,
+not install it. Launch with `uv run based-thermals-desktop`. At startup a short,
 isolated probe checks `MTLCreateSystemDefaultDevice` and the Core ML provider.
 Apple execution controls in **AI enhancement** are exposed when both are
 available; Imaging controls show readiness or the reason it is unavailable. Detection does not
@@ -562,11 +562,12 @@ selection. Export includes the current pipeline with pending edits and any check
 saved presets. When the current pipeline is a loaded preset, its current edits
 represent that preset in the checklist. Exporting only an unnamed current pipeline
 retains the original individual-document format; named or multiple selections use
-a bundle with format `topdon-duo-pipelines`, version 1, and a `pipelines` mapping
+a bundle with format `based-thermals-pipelines`, version 1, and a `pipelines` mapping
 from names to complete documents. Each document contains hardware and all four
 software tabs, not units, spots, logging or calibrations.
 
-Import accepts bundles and original individual files, and permits selecting several
+Import accepts current bundles, legacy `topdon-duo-pipelines` bundles and original
+individual files, and permits selecting several
 files together. Individual files use their filename as the suggested preset name.
 The checklist offers Rename, Replace, or Skip for conflicts. Rename suggests a
 unique suffix and permits editing the name; Replace explicitly uses the incoming

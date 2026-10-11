@@ -15,7 +15,7 @@ from typing import cast
 import cv2
 from flask import Flask, Response, jsonify, render_template_string
 
-from . import __version__
+from . import APP_NAME, __version__
 from .camera import CameraError, TC002CDuoCamera, platform_warning
 from .camera_backends import DUO_PROFILE, CameraBackend, CameraFrame, CameraProfile, create_camera
 from .render import ThermalRenderer
@@ -27,7 +27,7 @@ PAGE = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ camera.title }}</title>
+  <title>{{ app_name }}</title>
   <style>
     :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
     body { margin: 0; background: #090b10; color: #edf1f7; display: grid;
@@ -46,10 +46,10 @@ PAGE = """<!doctype html>
   </style>
 </head>
 <body><main>
-  <header><h1>{{ camera.title }}</h1><span id="status">Connecting...</span></header>
+  <header><h1>{{ app_name }}</h1><span id="status">Connecting...</span></header>
   <div class="controls"><button id="rotate" type="button">Rotate 90° clockwise</button></div>
   <img src="/stream.mjpg" alt="Live thermal camera stream">
-  <footer>Native {{ camera.native_size[0] }}x{{ camera.native_size[1] }} · {{ camera.frame_rate }} fps
+  <footer>{{ camera.title }} · Native {{ camera.native_size[0] }}x{{ camera.native_size[1] }} · {{ camera.frame_rate }} fps
     · {{ 'Radiometric measurements' if camera.radiometry else 'Preview only; radiometry unavailable' }}</footer>
   <script>
     const status = document.querySelector('#status');
@@ -182,11 +182,18 @@ class LiveStream:
 
 
 def create_app(stream: LiveStream) -> Flask:
+    """
+    Build the branded viewer while displaying the selected camera as separate device metadata.
+    """
     app = Flask(__name__)
 
     @app.get("/")
-    def index():
-        return render_template_string(PAGE, camera=stream.profile)
+    def index() -> str:
+        """
+        Present the application name independently of its active camera backend.
+        """
+        page = render_template_string(PAGE, app_name=APP_NAME, camera=stream.profile)
+        return page
 
     @app.get("/stream.mjpg")
     def video_stream():
@@ -204,8 +211,11 @@ def create_app(stream: LiveStream) -> Flask:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """
+    Parse options for the hardware-independent web viewer.
+    """
     parser = argparse.ArgumentParser(
-        description="TOPDON TC002C Duo live viewer for macOS and Linux"
+        description=f"{APP_NAME} live thermal-camera viewer for macOS and Linux"
     )
     parser.add_argument("--host", default="127.0.0.1", help="web bind address")
     parser.add_argument("--camera", default="duo", help="Registered camera backend (default: duo)")

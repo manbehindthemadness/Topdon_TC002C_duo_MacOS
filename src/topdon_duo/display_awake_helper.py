@@ -6,10 +6,14 @@ import signal
 import subprocess
 import sys
 
+from . import APP_NAME
 from .display_awake import REASON
 
 
-def gnome_main(executable):
+def gnome_main(executable: str) -> int:
+    """
+    Hold the GNOME idle inhibitor under the application name until its parent exits.
+    """
     # Hold GNOME's inhibit-only process and watch our stdin for parent lifetime.
     signal.signal(signal.SIGTERM, lambda *_args: sys.exit(0))
     process = subprocess.Popen(
@@ -19,7 +23,7 @@ def gnome_main(executable):
             "idle",
             "--inhibit-only",
             "--app-id",
-            "topdon-duo",
+            APP_NAME,
             "--reason",
             REASON,
         ],
@@ -43,9 +47,13 @@ def gnome_main(executable):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=1)
+    return 2
 
 
-def dbus_main():
+def dbus_main() -> int:
+    """
+    Request a session-owned ScreenSaver inhibitor under the application name.
+    """
     from PySide6.QtCore import QCoreApplication, QSocketNotifier
     from PySide6.QtDBus import QDBusConnection, QDBusInterface, QDBusMessage
 
@@ -55,15 +63,21 @@ def dbus_main():
         "org.freedesktop.ScreenSaver", "/ScreenSaver", "org.freedesktop.ScreenSaver", bus
     )
     interface.setTimeout(2000)
-    reply = interface.call("Inhibit", "topdon-duo", REASON)
-    if reply.type() == QDBusMessage.ErrorMessage:
+    reply = interface.call("Inhibit", APP_NAME, REASON)
+    if reply.type() == QDBusMessage.MessageType.ErrorMessage:
         print(reply.errorMessage(), file=sys.stderr)
         return 2
     # The connection owns the inhibitor; disconnecting releases it on exit.
-    notifier = QSocketNotifier(sys.stdin.fileno(), QSocketNotifier.Read)
-    notifier.activated.connect(
-        lambda *_args: app.quit() if not os.read(sys.stdin.fileno(), 4096) else None
-    )
+    notifier = QSocketNotifier(sys.stdin.fileno(), QSocketNotifier.Type.Read)
+
+    def parent_closed(*_args: object) -> None:
+        """
+        Release the session inhibitor when the parent closes its input pipe.
+        """
+        if not os.read(sys.stdin.fileno(), 4096):
+            app.quit()
+
+    notifier.activated.connect(parent_closed)
     return app.exec()
 
 

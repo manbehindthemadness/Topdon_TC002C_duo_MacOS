@@ -342,6 +342,9 @@ class TC002CDuoCamera:
         }
 
     def open(self) -> NegotiatedMode:
+        """
+        Claim this backend's USB interfaces and negotiate its verified radiometric mode.
+        """
         if self.device is not None:
             return self.mode  # type: ignore[return-value]
         device = self.find()
@@ -385,7 +388,7 @@ class TC002CDuoCamera:
                         "and reconnect the camera (see README.md)."
                     ) from exc
                 raise CameraAccessError(
-                    "macOS owns the camera's UVC interface. Run: sudo .venv/bin/topdon-duo"
+                    "macOS owns the camera's UVC interface. Run: sudo .venv/bin/based-thermals"
                 ) from exc
             raise CameraError(f"USB setup failed: {exc}") from exc
         except Exception:

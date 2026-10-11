@@ -67,7 +67,7 @@ a 160×120 thermal display and a 320×240 visible-light stream at 15 fps. Launch
 without USB access or elevation:
 
 ```sh
-.venv/bin/topdon-duo-desktop --camera virtual-dual --image-source visible
+.venv/bin/based-thermals-desktop --camera virtual-dual --image-source visible
 ```
 
 `CameraProfile.visible` advertises a second camera. `CameraFrame.visible` owns a

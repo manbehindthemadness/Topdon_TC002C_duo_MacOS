@@ -8,6 +8,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from .. import APP_NAME
 from ..camera import (
     DEFAULT_USB_QUEUE_DEPTH,
 )
@@ -18,9 +19,9 @@ from .constants import (
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """
-    Parse args.
+    Parse desktop options without coupling the application identity to one camera backend.
     """
-    parser = argparse.ArgumentParser(description="Native TOPDON TC002C Duo viewer")
+    parser = argparse.ArgumentParser(description=f"{APP_NAME} native thermal-camera viewer")
     parser.add_argument("--camera", default="duo", help="Camera backend: duo, virtual-dual, or a registered backend (default: duo)")
     parser.add_argument("--ambient", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=None)

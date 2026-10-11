@@ -13,6 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .. import APP_NAME
 from ..render import (
     RenderedThermalFrame,
     draw_temperature_readout,
@@ -51,7 +52,7 @@ def save_capture(
     captured_at = datetime.now().astimezone()
     stamp = captured_at.strftime("%Y%m%d-%H%M%S-%f")
     if base_path is None:
-        base = output_directory / f"TC002C-Duo-{stamp}"
+        base = output_directory / f"{APP_NAME}-{stamp}"
     else:
         base = base_path
         if base.suffix.lower() in (".png", ".npz", ".json"):

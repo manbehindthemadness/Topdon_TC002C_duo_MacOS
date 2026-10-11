@@ -3,9 +3,9 @@
 Start the desktop or web viewer as your normal user from a terminal:
 
 ```sh
-.venv/bin/topdon-duo-desktop --rotate 90
+.venv/bin/based-thermals-desktop --rotate 90
 # Or:
-.venv/bin/topdon-duo --ambient 21.9 --rotate 90
+.venv/bin/based-thermals --ambient 21.9 --rotate 90
 ```
 
 The real Duo backend on macOS starts a separate USB helper through `/usr/bin/sudo`.

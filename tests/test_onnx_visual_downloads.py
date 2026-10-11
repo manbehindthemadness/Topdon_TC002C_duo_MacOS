@@ -108,6 +108,9 @@ def test_v1_installer_rejects_invalid_or_oversized_publisher_metadata(
 
 
 def test_missing_model_is_actionable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """
+    Point missing-model errors at the current application command.
+    """
     monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
-    with pytest.raises(ValueError, match="uv run topdon-duo-models mewzoom"):
+    with pytest.raises(ValueError, match="uv run based-thermals-models mewzoom"):
         onnx_models.verified_model("mewzoom")
