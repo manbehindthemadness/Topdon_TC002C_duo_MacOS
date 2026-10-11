@@ -109,6 +109,8 @@ class ControlsController(SessionState):
                     self.spots.clear(command["spot"])
                 elif action == "clear_all":
                     self.spots.clear()
+                elif action == "draw":
+                    self.begin_measurement_drawing(command)
                 elif action in ("create", "configure"):
                     state = self.spots_state()
                     if command.get("orientation") != state["orientation"]:

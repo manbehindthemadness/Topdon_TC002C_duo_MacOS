@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any, cast
 
 from ..camera_backends import CameraProfile
+from ..measurements.drawing import MeasurementDrawing
 from .capture import CaptureController
 from .controls import ControlsController
+from .measurement_drawing import MeasurementDrawingController
 from .presentation import PresentationController
 from .settings import SettingsController
 from .viewer import ViewerController
@@ -12,7 +14,7 @@ from .viewer import ViewerController
 
 class DesktopSession(
     SettingsController, CaptureController, ControlsController, PresentationController,
-    ViewerController,
+    ViewerController, MeasurementDrawingController,
 ):
     """
     Coordinate one viewer session while controllers own individual responsibilities.
@@ -142,6 +144,7 @@ class DesktopSession(
         )
         self.ambient_input_celsius = self.saved_settings.get("ambient_input_celsius")
         self.spot_drag = self.api.SpotDrag()
+        self.measurement_drawing = MeasurementDrawing()
         self.distance_calibration = self.api.DistanceCalibrator(
             self.saved_settings.get("distance_calibration")
         )

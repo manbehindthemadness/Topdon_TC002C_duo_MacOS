@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from .. import desktop as api_types
     from ..camera_backends import CameraFrame
+    from ..measurements.drawing import MeasurementDrawing
 
 
 @dataclass
@@ -64,6 +65,7 @@ class SessionState:
     last_saved_spots: dict[str, Any] = field(default_factory=dict)
     last_selected: tuple[int, int] | None = None
     last_window_size: tuple[int, int] | None = None
+    measurement_drawing: MeasurementDrawing = field(init=False)
     layout: api_types.ToolbarLayout = field(init=False)
     next_hardware_retry: float = 0.0
     nvidia_capability: dict[str, Any] = field(default_factory=dict)

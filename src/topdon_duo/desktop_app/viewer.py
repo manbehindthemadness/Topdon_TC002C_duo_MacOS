@@ -22,7 +22,9 @@ class ViewerController(SessionState):
         """
         Return toolbar activity, graph settings and measurement locks.
         """
+        self.reconcile_measurement_drawing()
         return {
+            "measurement_drawing": self.measurement_drawing.state(),
             "unit": self.renderer.temperature_unit,
             "show_graph": self.show_graph,
             "show_instructions": self.show_instructions,
@@ -66,6 +68,8 @@ class ViewerController(SessionState):
                     self.viewer_pointer(command)
                 elif action == "spots":
                     self.spots_panel.open(self.spots_state())
+                elif action in ("draw_finish", "draw_cancel", "draw_undo"):
+                    self.measurement_drawing_action(action)
                 elif isinstance(action, str) and action in keys:
                     self.viewer_keys.append(ord(keys[action]))
                 elif action == "key":
@@ -117,6 +121,8 @@ class ViewerController(SessionState):
         ):
             return
         if not (-1 <= x <= 16384 and -1 <= y <= 16384 and 0 <= flags <= 63):
+            return
+        if self.measurement_drawing_pointer(command):
             return
         pointer_event = cast(int, event)
         self.picker.callback(pointer_event, x, y, flags, None)

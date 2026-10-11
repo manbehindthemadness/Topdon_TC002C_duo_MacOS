@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QMainWindow
 from .capture_window import run_window
 from .viewer_panel import FRAME_CAPACITY
 from .viewer_ui.canvas import ImageCanvas
+from .viewer_ui.drawing_toolbar import DrawingToolbar
 from .viewer_ui.toolbar import ViewerToolbar
 
 
@@ -36,6 +37,9 @@ class ViewerWindow(QMainWindow):
         self.setCentralWidget(self.canvas)
         self.toolbar = ViewerToolbar(self._command, self)
         self.addToolBar(self.toolbar)
+        self.drawing_toolbar = DrawingToolbar(self._command, self)
+        self.addToolBarBreak()
+        self.addToolBar(self.drawing_toolbar)
         self.setWindowTitle("TOPDON TC002C Duo")
         self.resize(1024, 800)
         self.statusBar().showMessage("Waiting for camera…")
@@ -91,6 +95,13 @@ class ViewerWindow(QMainWindow):
                 self.send({"action": "frame_read", "serial": frame.get("serial")})
         if "unit" in state:
             self.toolbar.update_state(state)
+            drawing = state.get("measurement_drawing", {})
+            drawing_was_active = self.drawing_toolbar.active
+            self.drawing_toolbar.update_state(drawing if isinstance(drawing, dict) else {})
+            if self.drawing_toolbar.active and not drawing_was_active:
+                self.raise_()
+                self.activateWindow()
+                self.canvas.setFocus()
             self.statusBar().showMessage(str(state.get("status", "Ready")))
         size = state.get("resize")
         if (
@@ -118,7 +129,8 @@ class ViewerWindow(QMainWindow):
         self._geometry_pending = False
         size = [self.canvas.width(), self.canvas.height()]
         if not self.isFullScreen():
-            self._windowed_size = size
+            drawing_height = self.drawing_toolbar.height() if self.drawing_toolbar.isVisible() else 0
+            self._windowed_size = [size[0], size[1] + drawing_height]
         self.send({"action": "geometry", "size": size, "windowed_size": self._windowed_size})
 
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -145,6 +157,14 @@ class ViewerWindow(QMainWindow):
         Keep viewer shortcuts and let Escape leave fullscreen before requesting quit.
         """
         key = event.key()
+        if self.drawing_toolbar.active and key in (
+            Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Backspace,
+        ):
+            action = ("draw_cancel" if key == Qt.Key.Key_Escape else "draw_undo"
+                      if key == Qt.Key.Key_Backspace else "draw_finish")
+            self._command({"action": action})
+            event.accept()
+            return
         if key == Qt.Key.Key_Escape and self.isFullScreen():
             self.showNormal()
             event.accept()

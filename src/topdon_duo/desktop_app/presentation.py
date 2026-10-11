@@ -267,7 +267,7 @@ class PresentationController(SessionState):
                 toolbar_height=self.layout.height,
                 temperature_unit=self.renderer.temperature_unit,
                 spots=self.spots,
-                dragging_spot=self.spot_drag.number is not None,
+                dragging_spot=self.spot_drag.number is not None or self.measurement_drawing.kind is not None,
                 pointer_over_image=self.viewer.over_image if self.viewer is not None
                 else self.pointer_monitor.over_image(
                     pointer_image_height, pointer_toolbar_height
@@ -308,6 +308,7 @@ class PresentationController(SessionState):
                 self.renderer.scale,
                 self.renderer.temperature_unit,
             )
+        self.display = self.draw_measurement_draft(self.display)
         if self.show_instructions:
             self.display = self.api.draw_control_instructions(self.display)
         if self.recorder.is_recording:

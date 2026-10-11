@@ -15,6 +15,35 @@ Dragging an area in the image translates its whole geometry, keeping every
 vertex/control handle inside the sensor. Existing measurement and calibration
 locks apply to all mutations.
 
+## Drawing on live video
+
+Choose the shape and **Draw on preview** in the popup; **Draw exclusion** chooses
+subtraction behavior. The popup hides and the viewer gains contextual drawing
+controls. Completed shapes reopen the popup for names, labels and detailed edits.
+
+| Tool | Gesture |
+| --- | --- |
+| Spot | Drag from center to radius; a click makes a radius-zero spot |
+| Rectangle / oval | Drag opposite corners of the bounding rectangle |
+| Polygon | Click successive vertices; at least three are required |
+| Bézier | Click-and-drag successive anchors to set tangent direction/length; at least two anchors are required |
+
+For polygons/curves, **Finish**, Enter or right-click closes the shape. macOS
+Control-click also finishes. **Undo**/Backspace removes the last anchor or cancels
+the current drag; **Cancel**/Esc discards the draft without creating a measurement.
+In fullscreen, this first Esc cancels drawing and preserves fullscreen. Polygon
+hovering previews the next vertex; a Bézier drag previews its tangent and curve.
+Curve handles are clamped inside the native sensor grid and remain editable in
+the popup after creation.
+
+The parent maps the displayed camera pane back to native coordinates, including
+resizing and the adjoining graph pane. Graph pixels and letterbox/padding clicks
+are not measurement input. Releasing a drag outside the camera discards that
+gesture. Drawing takes precedence over ordinary point placement and body dragging;
+the original placement toggle is retained afterward. Logging/calibration locks or
+rotation/mirroring cancel unfinished drawings. Drafts exist only in live
+presentation: they are not sampled, graphed, recorded or saved as measurements.
+
 ## Geometry and sampling
 
 | Shape | Geometry | Kernel |

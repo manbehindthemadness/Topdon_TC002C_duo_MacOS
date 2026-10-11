@@ -67,6 +67,9 @@ class MeasurementsWindow(QWidget):
             self.kind.addItem("Bézier" if kind == "bezier" else kind.title(), kind)
         self.create = QPushButton("Create")
         self.create.clicked.connect(self._create)
+        self.draw = QPushButton("Draw on preview")
+        self.draw.clicked.connect(self._draw)
+        self.draw_exclude = QCheckBox("Draw exclusion")
         self.placing = QCheckBox("Place spots on image (P)")
         self.placing.toggled.connect(
             lambda enabled: self.send({"action": "placing", "enabled": enabled})
@@ -75,6 +78,8 @@ class MeasurementsWindow(QWidget):
         self.calibrate.clicked.connect(lambda: self.send({"action": "calibrate_now"}))
         header.addWidget(self.kind)
         header.addWidget(self.create)
+        header.addWidget(self.draw)
+        header.addWidget(self.draw_exclude)
         header.addWidget(self.placing)
         header.addStretch()
         header.addWidget(self.calibrate)
@@ -210,6 +215,18 @@ class MeasurementsWindow(QWidget):
         if self._selected is not None and not self._state.get("locked"):
             self.send({"action": "clear", "spot": self._selected})
             self._dirty = False
+
+    def _draw(self) -> None:
+        """
+        Arm the selected video drawing tool and uncover the camera image.
+        """
+        if self._state.get("locked") or (self._dirty and not self._apply()):
+            return
+        self.send({"action": "draw", "kind": self.kind.currentData(),
+                   "exclude": self.draw_exclude.isChecked(),
+                   "orientation": self._state.get("orientation")})
+        self._creating = True
+        self.hide()
 
     def _clear_history(self) -> None:
         """
@@ -543,7 +560,7 @@ class MeasurementsWindow(QWidget):
         with QSignalBlocker(self.placing):
             self.placing.setChecked(bool(state.get("placing")))
         self._loading = False
-        for control in (self.kind, self.create, self.placing, self.clear):
+        for control in (self.kind, self.create, self.draw, self.draw_exclude, self.placing, self.clear):
             control.setEnabled(not locked)
         selected = self._selected in new_items
         self.delete.setEnabled(selected and not locked)
