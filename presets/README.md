@@ -13,7 +13,10 @@ and model/backend preferences:
 - `Reaper Day GPU.pipeline.json`
 - `Detail Enhanced CPU Upscale.pipeline.json`
 
+Shipped defaults use collapsed nodes throughout every hardware/software stack and
+branch. The exports retain their original expansion states as capture references.
+
 The active pipeline matched the saved Yautja GPU at capture time. The older
 `Redneck Combat.pipeline.json` remains the original reference export. Tests compare
-the bundled presets with these captured exports. Local settings files and unrelated
+the bundled processing settings with these captured exports. Local settings files and unrelated
 viewer preferences are not part of the exports.

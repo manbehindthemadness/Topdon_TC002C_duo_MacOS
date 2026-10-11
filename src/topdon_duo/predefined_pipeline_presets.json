@@ -9,7 +9,7 @@
           "value": "balanced"
         },
         "bypass": false,
-        "expanded": true
+        "expanded": false
       }
     ],
     "software": [
@@ -168,7 +168,7 @@
             "amount": 0.7
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "83f3109745b24263bbae355b705ee471",
@@ -177,7 +177,7 @@
             "amount": 1.05
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "d70aad88413c4d62bbc892e53f69a61f",
@@ -213,7 +213,7 @@
             "amount": 3
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "cf1ee3dec77a49748b1366cfca06abec",
@@ -257,7 +257,7 @@
           "value": "balanced"
         },
         "bypass": false,
-        "expanded": true
+        "expanded": false
       }
     ],
     "software": [
@@ -444,7 +444,7 @@
           "value": "balanced"
         },
         "bypass": false,
-        "expanded": true
+        "expanded": false
       }
     ],
     "software": [
@@ -924,7 +924,7 @@
             "source": "raw"
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "22e61683fda5478e939e41ca7e0c86f4",
@@ -933,14 +933,14 @@
             "amount": 3
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "6bfd78976d0942e8bc02750b83c710dd",
           "type": "preview",
           "params": {},
           "bypass": false,
-          "expanded": true
+          "expanded": false
         }
       ],
       "D": [
@@ -960,14 +960,14 @@
             "palette": "camera_19"
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "861039472bd046ae9b4c8e914de59619",
           "type": "preview",
           "params": {},
           "bypass": false,
-          "expanded": true
+          "expanded": false
         }
       ]
     }
@@ -1214,7 +1214,7 @@
             "source": "raw"
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "22e61683fda5478e939e41ca7e0c86f4",
@@ -1223,7 +1223,7 @@
             "amount": 3
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "6bfd78976d0942e8bc02750b83c710dd",
@@ -1250,7 +1250,7 @@
             "palette": "camera_19"
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "861039472bd046ae9b4c8e914de59619",
@@ -1463,7 +1463,7 @@
           "type": "preview",
           "params": {},
           "bypass": false,
-          "expanded": true
+          "expanded": false
         }
       ],
       "C": [
@@ -1664,7 +1664,7 @@
             "palette": "black_hot"
           },
           "bypass": false,
-          "expanded": true
+          "expanded": false
         },
         {
           "id": "4ea1af26a2ae43fb8cd0c670add2cfaf",
@@ -1709,7 +1709,7 @@
           "type": "preview",
           "params": {},
           "bypass": false,
-          "expanded": true
+          "expanded": false
         }
       ],
       "C": [
@@ -1746,7 +1746,7 @@
           "value": "balanced"
         },
         "bypass": false,
-        "expanded": true
+        "expanded": false
       }
     ],
     "software": [
@@ -1825,7 +1825,7 @@
           "amount": 0.7
         },
         "bypass": false,
-        "expanded": true
+        "expanded": false
       },
       {
         "id": "f8fa7fccf5284b14b54f5e7bfa7cc29d",

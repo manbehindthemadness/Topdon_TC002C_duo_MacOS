@@ -1,13 +1,31 @@
 import json
 import subprocess
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 from test_capture_panel import popup_environment
 
 
-def test_predefined_redneck_combat_matches_original_export():
+def collapsed_nodes(document: dict) -> dict:
+    """
+    Preserve captured settings while applying the requested collapsed presentation state.
+    """
+    result = deepcopy(document)
+    stacks = [result["hardware"], result["software"], *result["branches"].values()]
+    if "visible_hardware" in result:
+        stacks.append(result["visible_hardware"])
+    for stack in stacks:
+        for item in stack:
+            item["expanded"] = False
+    return result
+
+
+def test_predefined_redneck_combat_matches_original_export() -> None:
+    """
+    Preserve the original reference's settings with collapsed default nodes.
+    """
     from topdon_duo.pipeline import validate_pipeline
     from topdon_duo.pipeline_presets import predefined_presets
 
@@ -16,7 +34,7 @@ def test_predefined_redneck_combat_matches_original_export():
             Path(__file__).resolve().parents[1] / "presets" / "Redneck Combat.pipeline.json"
         ).read_text()
     )
-    assert predefined_presets()["Redneck Combat"] == validate_pipeline(exported)
+    assert predefined_presets()["Redneck Combat"] == collapsed_nodes(validate_pipeline(exported))
 
 
 def test_predefined_redneck_gpu_retains_current_enhancement_and_branch_settings() -> None:
@@ -100,13 +118,13 @@ def test_current_saved_presets_are_bundled_and_available_on_fresh_install(
     name: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """
-    Match captured user exports exactly without needing a local preferences file.
+    Preserve captured processing settings with collapsed nodes on a fresh installation.
     """
     from topdon_duo.pipeline_presets import load_presets, predefined_presets
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     export = Path(__file__).resolve().parents[1] / "presets" / f"{name}.pipeline.json"
-    captured = json.loads(export.read_text())
+    captured = collapsed_nodes(json.loads(export.read_text()))
     assert predefined_presets()[name] == captured
     assert load_presets()[name] == captured
     assert not (tmp_path / "topdon-duo" / "pipeline-presets.json").exists()
