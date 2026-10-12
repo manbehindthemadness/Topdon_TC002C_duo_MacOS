@@ -1174,3 +1174,11 @@ this repository. The folder uses the repository-local `.agents/skills` layout
 supported by [Codex skill discovery](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
 The skill does not perform camera probes when loaded; live experiments require
 the actual target's protocol evidence and the session's authorized scope.
+
+For GPU runtime research and integration, invoke
+[$integrate-gpu-backend](.agents/skills/integrate-gpu-backend/SKILL.md).
+It covers new execution providers, CUDA/cuDNN and ONNX Runtime versions, and
+Apple GPU generations such as M5. Its workflow checks actual model execution,
+operator placement and performance, then integrates verified support across
+startup setup, processing workers, execution controls and Custom devices while
+preserving CPU fallback and native thermal measurements.

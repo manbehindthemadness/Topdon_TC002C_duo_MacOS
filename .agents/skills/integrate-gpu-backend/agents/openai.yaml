@@ -1,0 +1,4 @@
+interface:
+  display_name: "GPU Backend Integration"
+  short_description: "Research and safely integrate GPU runtime backends"
+  default_prompt: "Use $integrate-gpu-backend to investigate this GPU or runtime version and implement verified support in based-thermals."
