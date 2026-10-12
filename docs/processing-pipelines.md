@@ -1,5 +1,7 @@
 # Camera processing pipelines
 
+[Imaging how-to](imaging-guide.md) · [Documentation home](../README.md)
+
 The public pipeline modules keep their import paths while delegating to
 `pipeline_model/` (catalog and document validation), `pipeline_ui/` (editor,
 widgets, and state updates), and `processing/` (image operations, branch
@@ -54,7 +56,7 @@ and Reaper Day GPU. The current saved Yautja GPU, Reaper Night/Day GPU, and Deta
 Enhanced CPU Upscale configurations are captured as individual exports in `presets/`
 and included in the package defaults, so they are available without local preferences.
 **Create new** starts a blank, unsaved pipeline: the hardware stack is empty,
-tab A contains only Source and Output, and B–D contain only Source. It returns
+tab A contains only Source and Output, with no auxiliary tabs. It returns
 the editor to tab A and leaves saved presets unchanged.
 **Rename current pipeline…**, directly beneath Create new, renames the loaded
 preset and selects its new name. The dialog starts with the existing name and
@@ -84,8 +86,9 @@ during logging and calibration measurements, like the other pipeline controls.
 Hardware order only organizes the menu. Hardware commands run in an audited,
 fixed order, and bypass/removal restores the affected original camera fields.
 Software nodes run from top to bottom. Rotation still runs last, using the main
-window's existing Rotate button. Spots continue to measure the same physical
-sensor pixels through mirror changes and rotation.
+window's existing Rotate button. Measurements sample the native thermal canvas;
+software pipeline transforms and mirrors do not relocate their sampling. Viewer
+rotation rotates that canvas and its measurement geometry together.
 
 Selecting ACNet starts with one pass (2× output). Each extra ACNet pass doubles
 both dimensions again; Anime4K09's three default passes refine one 2× output.
@@ -95,25 +98,25 @@ pipelines retain their explicitly configured pass counts.
 
 ## Available nodes
 
-| Camera hardware (one each) | Software (repeatable) |
-| --- | --- |
-| | Image source (mandatory, first) |
-| | Brightness: −100–100%, neutral 0 |
-| Processing preset: Balanced, Shadow, Soft | Contrast: 0–3, neutral 1 |
-| Brightness and contrast: 0–100 | Gamma: 0.1–3, neutral 1 |
-| Gamma: 0–100, neutral 50 | App colors, including white/black hot |
-| | Invert colors: each channel becomes 255 − value; orientation is preserved |
-| Boost: Off, Mode 1, Mode 2, Mode 3 | Configurable OpenCV image filters |
-| Detail enhancement, amount, Fixed detail checkbox | Transform: resize, skew, perspective distortion and mirror |
-| Camera colors and native palette | Adjustable antialiasing |
-| Noise reduction mode and levels | From/To temperature range |
-| | Nearest/linear/bicubic/Lanczos interpolation, 1×/2×/4× |
-| | Anime4K09 or ACNet enhancement |
-| | Combine: another tab, camera preview or raw thermal |
-| | Output → viewer (mandatory, last, tab A only) |
-| | Pipeline preview (repeatable, active only when expanded) |
-| | Edge features: selected connected edges, overlays and masks |
-| | Contour regions: selected shapes, outlines, fills and masks |
+| Camera hardware (one each)                        | Software (repeatable)                                                     |
+| ------------------------------------------------- | ------------------------------------------------------------------------- |
+|                                                   | Image source (mandatory, first)                                           |
+|                                                   | Brightness: −100–100%, neutral 0                                          |
+| Processing preset: Balanced, Shadow, Soft         | Contrast: 0–3, neutral 1                                                  |
+| Brightness and contrast: 0–100                    | Gamma: 0.1–3, neutral 1                                                   |
+| Gamma: 0–100, neutral 50                          | App colors, including white/black hot                                     |
+|                                                   | Invert colors: each channel becomes 255 − value; orientation is preserved |
+| Boost: Off, Mode 1, Mode 2, Mode 3                | Configurable OpenCV image filters                                         |
+| Detail enhancement, amount, Fixed detail checkbox | Transform: resize, skew, perspective distortion and mirror                |
+| Camera colors and native palette                  | Adjustable antialiasing                                                   |
+| Noise reduction mode and levels                   | From/To temperature range                                                 |
+|                                                   | Nearest/linear/bicubic/Lanczos interpolation, 1×/2×/4×                    |
+|                                                   | Anime4K09 or ACNet enhancement                                            |
+|                                                   | Combine: another tab, camera preview or raw thermal                       |
+|                                                   | Output → viewer (mandatory, last, tab A only)                             |
+|                                                   | Pipeline preview (repeatable, active only when expanded)                  |
+|                                                   | Edge features: selected connected edges, overlays and masks               |
+|                                                   | Contour regions: selected shapes, outlines, fills and masks               |
 
 **Transform** replaces Mirror; older Mirror nodes migrate with their identity,
 position, bypass/expanded state and mirror settings intact. Width and Height
@@ -331,24 +334,24 @@ settings. **Blend amount** mixes the filtered image with the incoming image:
 0 keeps the original; 1 applies the full result. None passes the image through.
 These filters change display pixels, leaving sensor temperatures and CSV data intact.
 
-| Filter | Configuration |
-| --- | --- |
-| Box blur | Kernel size, border handling, color/luminance channels |
-| Edge-preserving denoise (bilateral) | Kernel, color sigma, spatial sigma, borders, channels |
-| Median denoise | Kernel, channels |
-| Smooth (Gaussian) | Kernel, Gaussian sigma, borders, channels |
-| Sharpen | Kernel, Gaussian sigma, sharpening amount, borders, channels |
-| Sobel edges | Kernel, X/Y/magnitude direction, response gain, borders |
-| Scharr edges | X/Y/magnitude direction, response gain, borders |
-| Laplacian edges | Kernel, response gain, borders |
-| Canny edges | Aperture/kernel, lower/upper thresholds, accurate L2 gradient |
-| Local contrast (CLAHE) | Clip limit, tiles per axis |
-| Histogram equalization | Blend amount |
-| Threshold / Otsu | Binary/inverted/truncate/to-zero/Otsu method, threshold when applicable, maximum output |
-| Adaptive threshold | Mean/Gaussian method, block size, offset C, invert, maximum output |
-| Morphology | Erode/dilate/open/close/gradient/top-hat/black-hat, kernel shape/size, iterations, borders, channels |
-| Emboss | Direction, response gain, neutral offset, borders |
-| High-pass detail | Kernel, Gaussian sigma, response gain, neutral offset, borders, channels |
+| Filter                              | Configuration                                                                                        |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Box blur                            | Kernel size, border handling, color/luminance channels                                               |
+| Edge-preserving denoise (bilateral) | Kernel, color sigma, spatial sigma, borders, channels                                                |
+| Median denoise                      | Kernel, channels                                                                                     |
+| Smooth (Gaussian)                   | Kernel, Gaussian sigma, borders, channels                                                            |
+| Sharpen                             | Kernel, Gaussian sigma, sharpening amount, borders, channels                                         |
+| Sobel edges                         | Kernel, X/Y/magnitude direction, response gain, borders                                              |
+| Scharr edges                        | X/Y/magnitude direction, response gain, borders                                                      |
+| Laplacian edges                     | Kernel, response gain, borders                                                                       |
+| Canny edges                         | Aperture/kernel, lower/upper thresholds, accurate L2 gradient                                        |
+| Local contrast (CLAHE)              | Clip limit, tiles per axis                                                                           |
+| Histogram equalization              | Blend amount                                                                                         |
+| Threshold / Otsu                    | Binary/inverted/truncate/to-zero/Otsu method, threshold when applicable, maximum output              |
+| Adaptive threshold                  | Mean/Gaussian method, block size, offset C, invert, maximum output                                   |
+| Morphology                          | Erode/dilate/open/close/gradient/top-hat/black-hat, kernel shape/size, iterations, borders, channels |
+| Emboss                              | Direction, response gain, neutral offset, borders                                                    |
+| High-pass detail                    | Kernel, Gaussian sigma, response gain, neutral offset, borders, channels                             |
 
 Auto kernel uses 3×3 for most filters and 5×5 for bilateral. Gaussian-based
 filters calculate their kernel from sigma when Auto is selected. Median and

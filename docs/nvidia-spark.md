@@ -1,11 +1,21 @@
 # NVIDIA DGX Spark GPU inference
 
 DGX Spark uses the existing Linux USB capture and NVIDIA CUDA inference backend.
-Follow the Ubuntu system-library and udev setup in the README first. A graphical
-desktop is required for `topdon-duo-desktop`; the browser viewer also works from
+Follow [Ubuntu installation and USB permissions](setup.md#ubuntu-2404-and-later) first. A graphical
+desktop is required for `based-thermals-desktop`; the browser viewer also works from
 a terminal without a display.
 
-## Install on CUDA 13.0
+## Normal startup
+
+The viewer now provisions verified runtimes in a separate application cache.
+Use the normal setup/launch commands; manual replacement of the environment's
+CPU package is not the default installation path. Ordinary `uv sync` and `uv run`
+do not replace the automatic runtime cache. See [automatic setup](onnx-runtime-setup.md).
+The commands below document the previously verified manual environment and remain
+useful for managed installations. Standalone experiments need that environment or
+an entry point that calls `ensure_runtime()` before importing ONNX Runtime.
+
+## Manual installation on CUDA 13.0
 
 This setup was verified on DGX Spark with NVIDIA GB10, Ubuntu ARM64, Python 3.12,
 driver 580.173.02, and the system CUDA 13.0 toolkit. Use the released ARM64 ONNX

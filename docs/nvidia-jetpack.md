@@ -45,6 +45,11 @@ The manual instructions below remain available for managed environments.
 
 ## Manual setup on JetPack 7.1 / CUDA 13.0
 
+This is a generic compatibility trial, not the preferred Orin setup. On Orin use
+the automatic pinned-build path above; a generic wheel can lack its GPU kernels.
+Normal viewer startup uses the separate cache and does not require these manual
+environment replacement commands.
+
 The normal `uv sync --dev` install provides CPU ONNX Runtime. NVIDIA detection
 correctly reports unavailable until a GPU runtime is installed in that same environment.
 CUDA 13.0 matches the published CUDA 13 ONNX Runtime family (1.27–1.30), requiring
@@ -73,7 +78,7 @@ See the official [ONNX Runtime CUDA compatibility table](https://onnxruntime.ai/
 
 ## Previously verified JetPack 7.2.1 / CUDA 13.2
 
-Use the normal Ubuntu system-library and USB-permission setup in the README.
+Use [Ubuntu system-library and USB-permission setup](setup.md#ubuntu-2404-and-later).
 Install the project dependencies first, then replace the CPU ONNX Runtime
 distribution with the tested ARM64 GPU wheel from Microsoft's CUDA 13 feed:
 

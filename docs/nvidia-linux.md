@@ -63,14 +63,14 @@ ONNX Runtime, installs pip CUDA/cuDNN libraries, and tests actual GPU inference.
 It does not install or update the NVIDIA driver. A successful resolution alone
 does not prove the driver or GPU can execute the model.
 
-| Target | Package selection | Verification status |
-| --- | --- | --- |
-| Linux x86-64, CUDA 12 | ONNX Runtime GPU `>=1.23,<1.27`, cuDNN 9 | Attempted; package resolution checked |
-| Linux x86-64, CUDA 13 | ONNX Runtime GPU `>=1.27,<1.31`, cuDNN 9 | Attempted; package resolution checked |
-| Linux ARM64/SBSA, CUDA 13 | Same CUDA 13 releases when compatible wheels exist | DGX Spark verified; other hosts unverified |
-| Linux ARM64, CUDA 12 | Vendor/source GPU build may be required | No matching PyPI ARM64 wheel found in the selected release range |
-| Jetson / JetPack | Use [JetPack instructions](nvidia-jetpack.md) | Documented AGX Orin configuration verified |
-| DGX Spark | Use [Spark instructions](nvidia-spark.md) | GB10 configuration verified |
+| Target                    | Package selection                                  | Verification status                                              |
+| ------------------------- | -------------------------------------------------- | ---------------------------------------------------------------- |
+| Linux x86-64, CUDA 12     | ONNX Runtime GPU `>=1.23,<1.27`, cuDNN 9           | Attempted; package resolution checked                            |
+| Linux x86-64, CUDA 13     | ONNX Runtime GPU `>=1.27,<1.31`, cuDNN 9           | Attempted; package resolution checked                            |
+| Linux ARM64/SBSA, CUDA 13 | Same CUDA 13 releases when compatible wheels exist | DGX Spark verified; other hosts unverified                       |
+| Linux ARM64, CUDA 12      | Vendor/source GPU build may be required            | No matching PyPI ARM64 wheel found in the selected release range |
+| Jetson / JetPack          | Use [JetPack instructions](nvidia-jetpack.md)      | Documented AGX Orin configuration verified                       |
+| DGX Spark                 | Use [Spark instructions](nvidia-spark.md)          | GB10 configuration verified                                      |
 
 The ranges deliberately separate PyPI's CUDA 12 builds from the CUDA 13 builds
 introduced in ONNX Runtime 1.27. Follow the official
@@ -112,5 +112,6 @@ Camera status. Radiometric measurements and ordinary filters remain on CPU.
 Use `.venv/bin/` executables or `uv run --no-sync` afterward: ordinary `uv sync`
 or `uv run` restores the locked CPU dependency. Repeat optional setup after a
 dependency sync. Desktop operation also needs your distribution's GUI libraries;
-USB capture needs libusb and camera permissions. The README's Ubuntu apt and
-udev commands are examples, not package-manager instructions for every distro.
+USB capture needs libusb and camera permissions. The
+[setup guide's Ubuntu apt and udev commands](setup.md#ubuntu-2404-and-later) are
+examples, not package-manager instructions for every distro.
