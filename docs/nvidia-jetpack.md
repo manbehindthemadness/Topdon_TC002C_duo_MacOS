@@ -23,7 +23,35 @@ is the effective backend,
 including fallback from a saved CUDA preference. They do not configure NVIDIA
 execution.
 
-## Install on JetPack 7.2.1 / CUDA 13.2
+## Fresh install on JetPack 7.1 / CUDA 13.0
+
+The normal `uv sync --dev` install provides CPU ONNX Runtime. NVIDIA detection
+correctly reports unavailable until a GPU runtime is installed in that same environment.
+CUDA 13.0 matches the published CUDA 13 ONNX Runtime family (1.27–1.30), requiring
+cuDNN 9.x. Use JetPack's existing CUDA/cuDNN libraries rather than replacing them
+with pip NVIDIA library packages:
+
+```bash
+uv sync --dev
+.venv/bin/python -m topdon_duo.cuda_setup --cuda 13 --system-libraries --dry-run
+.venv/bin/python -m topdon_duo.cuda_setup --cuda 13 --system-libraries
+.venv/bin/based-thermals-desktop --rotate 90
+```
+
+The helper first resolves a wheel against the active Python, ARM64 and glibc tags.
+If resolution fails, it leaves the CPU runtime intact. It then replaces both ORT
+distributions with one GPU build and checks actual bundled ACNet inference in an
+isolated process. Setup success requires that inference to pass; package availability
+alone does not establish GPU support. Failure prints the probe reason. JetPack 7.1
+has not been physically verified by this repository; retain the probe output when
+checking this setup. No camera or root access is needed for setup/verification.
+
+After GPU installation, use the entry-point executable above or `uv run --no-sync`.
+Ordinary `uv sync` or `uv run` reinstalls the locked CPU build; rerun the GPU setup
+after syncing dependencies. Saved CUDA preferences and downloaded models remain intact.
+See the official [ONNX Runtime CUDA compatibility table](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#cuda-13x).
+
+## Previously verified JetPack 7.2.1 / CUDA 13.2
 
 Use the normal Ubuntu system-library and USB-permission setup in the README.
 Install the project dependencies first, then replace the CPU ONNX Runtime

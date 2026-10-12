@@ -47,7 +47,12 @@ def _probe() -> dict[str, Any]:
         import onnxruntime as ort
 
         if "CUDAExecutionProvider" not in ort.get_available_providers():
-            return {**result, "reason": "Install a CUDA-compatible ONNX Runtime GPU build"}
+            return {
+                **result,
+                "reason": "Install a CUDA-compatible ONNX Runtime GPU build; the loaded runtime "
+                "has no CUDA provider. Fresh uv installs use the CPU build. "
+                "See docs/nvidia-jetpack.md or docs/nvidia-linux.md for GPU setup.",
+            }
         from .onnx_upsampling import ONNXRuntime
 
         runtime = ONNXRuntime()

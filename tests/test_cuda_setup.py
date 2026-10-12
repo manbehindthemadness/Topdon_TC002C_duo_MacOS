@@ -47,6 +47,35 @@ def test_dry_run_and_system_library_mode(commands: Mock) -> None:
     assert "onnxruntime-gpu>=1.27,<1.31" in commands.call_args.args[0]
 
 
+def test_jetpack_arm64_uses_system_libraries_and_verifies_inference(
+    commands: Mock, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Resolve ARM64 CUDA 13 wheels before replacing CPU ORT, without pip NVIDIA libraries.
+    """
+    monkeypatch.setattr(setup.platform, "machine", lambda: "aarch64")
+    assert setup.main(["--cuda", "13", "--system-libraries"]) == 0
+    calls = commands.call_args_list
+    assert "onnxruntime-gpu>=1.27,<1.31" in calls[0].args[0]
+    assert "--dry-run" in calls[0].args[0]
+    assert calls[1].args[0][1:3] == ["pip", "uninstall"]
+    assert "onnxruntime-gpu>=1.27,<1.31" in calls[2].args[0]
+    assert calls[3].kwargs["timeout"] == 30
+
+
+def test_gpu_verification_failure_preserves_diagnostic_reason(
+    commands: Mock, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Surface library/driver failures rather than requiring another manual probe to see them.
+    """
+    commands.side_effect = [SimpleNamespace(returncode=0)] * 3 + [
+        SimpleNamespace(returncode=0, stdout='{"available": false, "reason": "cuDNN unavailable"}'),
+    ]
+    assert setup.main(["--cuda", "13", "--system-libraries"]) == 1
+    assert "cuDNN unavailable" in capsys.readouterr().err
+
+
 def test_install_failure_restores_cpu(commands: Mock) -> None:
     commands.side_effect = [SimpleNamespace(returncode=code) for code in (0, 0, 1, 0)]
     assert setup.main(["--cuda", "12"]) == 1

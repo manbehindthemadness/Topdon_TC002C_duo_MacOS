@@ -21,7 +21,9 @@ def install_command(uv: str, cuda: str, system_libraries: bool) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Resolve compatible wheels before replacing CPU ORT, then verify inference."""
+    """
+    Resolve compatible wheels before replacing CPU ORT, then report the inference check.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cuda", choices=("12", "13"), required=True,
                         help="CUDA runtime family supported by your NVIDIA driver")
@@ -82,6 +84,9 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError, subprocess.TimeoutExpired):
         result = {}
     if not isinstance(result, dict) or result.get("available") is not True:
+        reason = result.get("reason") if isinstance(result, dict) else None
+        if isinstance(reason, str) and reason:
+            print(reason, file=sys.stderr)
         print("GPU inference unavailable; viewer CPU fallback remains enabled. "
               "Run .venv/bin/python -m topdon_duo.nvidia_acceleration for details.",
               file=sys.stderr)
