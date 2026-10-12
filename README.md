@@ -35,6 +35,13 @@ use `based-thermals` as their directory name.
 
 ## Quick start
 
+Both viewers perform [automatic ONNX Runtime setup](docs/onnx-runtime-setup.md)
+before camera acquisition. Startup checks Apple CoreML, Linux NVIDIA CUDA 12/13,
+or CPU support and installs a replacement only when needed. Verified replacements
+are cached separately from the project environment, so `uv sync` does not remove
+them. Initial GPU setup may download large native libraries; offline failures retain
+the installed CPU fallback. No system driver or USB permission is changed.
+
 ### Ubuntu
 
 The original macOS setup remains available below. On Ubuntu, install the runtime
@@ -76,9 +83,9 @@ assembler and radiometric decoding remain unchanged.
 ### Other Linux NVIDIA CUDA systems (experimental)
 
 Linux x86-64 and ARM64 systems can attempt CUDA inference with compatible GPU
-runtime packages. The [general Linux CUDA setup](docs/nvidia-linux.md) includes
-a setup helper for CUDA 12 or 13, package compatibility checks, live inference
-verification, and CPU fallback. Systems other than the documented Spark and
+runtime packages. Startup selects and verifies a runtime automatically; the
+[general Linux CUDA setup](docs/nvidia-linux.md) also includes a manual setup
+helper and vendor-build guidance. Systems other than the documented Spark and
 JetPack hosts have not been verified on physical hardware.
 
 ### NVIDIA Jetson / JetPack

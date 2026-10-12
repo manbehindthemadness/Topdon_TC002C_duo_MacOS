@@ -78,6 +78,7 @@ from .render import (
     ThermalRenderer,
     draw_temperature_readout,
 )
+from .runtime_setup import ensure_runtime
 from .settings_preferences import load_settings, save_settings
 from .spot_preferences import validate_spots
 from .spots_panel import SpotsPanel
@@ -229,6 +230,7 @@ __all__ = [
     "draw_sample_spots",
     "draw_temperature_readout",
     "draw_toolbar",
+    "ensure_runtime",
     "execution_dependencies",
     "field",
     "geometry",

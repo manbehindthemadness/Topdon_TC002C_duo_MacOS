@@ -19,6 +19,7 @@ from . import APP_NAME, __version__
 from .camera import CameraError, TC002CDuoCamera, platform_warning
 from .camera_backends import DUO_PROFILE, CameraBackend, CameraFrame, CameraProfile, create_camera
 from .render import ThermalRenderer
+from .runtime_setup import ensure_runtime
 
 LOG = logging.getLogger(__name__)
 
@@ -254,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(TC002CDuoCamera.diagnostics(), indent=2))
         return 0
 
+    ensure_runtime()
     stream = LiveStream(camera=create_camera(args.camera, duo_factory=TC002CDuoCamera),
                         ambient_celsius=args.ambient, rotation=args.rotate)
     app = create_app(stream)

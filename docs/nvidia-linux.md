@@ -9,9 +9,17 @@ and native startup failures leave the viewer usable on CPU.
 DGX Spark and the documented JetPack host have live verification. Other
 Linux systems are **experimental and unverified on physical hardware**.
 
-Fresh `uv sync` installations provide CPU ONNX Runtime. A missing CUDA provider
-therefore means a GPU runtime still needs installing; it does not reject a particular
-NVIDIA product. Detection and setup do not require JetPack, Jetson or DGX identifiers.
+Fresh `uv sync` installations provide CPU ONNX Runtime. Both viewers now perform
+[automatic runtime setup](onnx-runtime-setup.md) before camera acquisition, selecting
+CUDA from driver capabilities and caching verified packages outside the project venv.
+Ordinary `uv run` and `uv sync` therefore work with automatic viewer setup. A missing
+CUDA provider before setup does not reject a particular NVIDIA product. Detection
+and setup do not require JetPack, Jetson or DGX identifiers.
+
+The procedures below remain available for manual environment installation and vendor
+builds. Their `uv run --no-sync` advice applies to those environment-installed packages;
+automatic viewer setup uses a separate cache. Standalone probes/experiments do not
+activate that cache unless their entry point calls `ensure_runtime()` first.
 
 ## Existing CUDA 13.0 / cuDNN 9 system libraries
 

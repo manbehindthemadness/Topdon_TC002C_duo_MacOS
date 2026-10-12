@@ -26,6 +26,11 @@ class DesktopSession(
         """
         super().__init__(api=api)
         self.args = self.api.parse_args(argv)
+        self.api.logging.basicConfig(
+            level=self.api.logging.DEBUG if self.args.verbose else self.api.logging.INFO,
+            format="%(levelname)s %(message)s",
+        )
+        self.api.ensure_runtime()
         self.camera = self.api.create_camera(
             self.args.camera, duo_factory=self.api.TC002CDuoCamera,
         )
@@ -77,10 +82,6 @@ class DesktopSession(
             None if self.args.reset_window_size else self.api.load_main_window_size()
         )
         self.last_window_size = None
-        self.api.logging.basicConfig(
-            level=self.api.logging.DEBUG if self.args.verbose else self.api.logging.INFO,
-            format="%(levelname)s %(message)s",
-        )
         self.apple_capability = self.api.apple_acceleration()
         self.api.LOG.info("Apple acceleration: %s", self.apple_capability["reason"])
         self.nvidia_capability = self.api.nvidia_acceleration()

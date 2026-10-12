@@ -8,6 +8,14 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def no_runtime_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Keep startup provisioning and external package installation out of application tests.
+    """
+    monkeypatch.setenv("BASED_THERMALS_RUNTIME_SETUP", "0")
+
+
+@pytest.fixture(autouse=True)
 def no_live_viewer_window(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Keep GUI processes out of unit tests using the injectable HighGUI boundary.
