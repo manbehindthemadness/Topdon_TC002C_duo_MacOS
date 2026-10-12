@@ -47,13 +47,14 @@ def test_dry_run_and_system_library_mode(commands: Mock) -> None:
     assert "onnxruntime-gpu>=1.27,<1.31" in commands.call_args.args[0]
 
 
-def test_jetpack_arm64_uses_system_libraries_and_verifies_inference(
-    commands: Mock, monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("machine", ["x86_64", "aarch64"])
+def test_cuda13_uses_system_libraries_on_supported_linux_architectures(
+    commands: Mock, monkeypatch: pytest.MonkeyPatch, machine: str,
 ) -> None:
     """
-    Resolve ARM64 CUDA 13 wheels before replacing CPU ORT, without pip NVIDIA libraries.
+    Use CUDA capabilities on desktop and ARM64 hosts without any vendor-product detection.
     """
-    monkeypatch.setattr(setup.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(setup.platform, "machine", lambda: machine)
     assert setup.main(["--cuda", "13", "--system-libraries"]) == 0
     calls = commands.call_args_list
     assert "onnxruntime-gpu>=1.27,<1.31" in calls[0].args[0]

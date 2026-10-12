@@ -9,6 +9,32 @@ and native startup failures leave the viewer usable on CPU.
 DGX Spark and the documented JetPack host have live verification. Other
 Linux systems are **experimental and unverified on physical hardware**.
 
+Fresh `uv sync` installations provide CPU ONNX Runtime. A missing CUDA provider
+therefore means a GPU runtime still needs installing; it does not reject a particular
+NVIDIA product. Detection and setup do not require JetPack, Jetson or DGX identifiers.
+
+## Existing CUDA 13.0 / cuDNN 9 system libraries
+
+For a Linux x86-64 or ARM64 host with existing CUDA 13.0 (or newer) and cuDNN 9.x,
+use the general installer with system libraries:
+
+```bash
+.venv/bin/python -m topdon_duo.cuda_setup --cuda 13 --system-libraries --dry-run
+.venv/bin/python -m topdon_duo.cuda_setup --cuda 13 --system-libraries
+.venv/bin/based-thermals-desktop
+```
+
+This path selects the published CUDA 13 GPU runtime family (1.27–1.30). It validates
+wheel tags for the active Python/architecture/glibc before removing the CPU runtime,
+then verifies actual bundled inference in a separate process. A failed resolution
+leaves the working runtime intact; a failed inference check prints its diagnostic reason.
+System mode reuses installed CUDA/cuDNN libraries instead of adding pip NVIDIA packages.
+This procedure also applies to JetPack 7.1/CUDA 13.0, without any JetPack-specific gate.
+
+After installation, launch through `.venv/bin/` or `uv run --no-sync`. Ordinary
+`uv sync` or `uv run` reinstalls the locked CPU package, requiring GPU setup again.
+See the official [CUDA 13 compatibility table](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#cuda-13x).
+
 ## Optional setup
 
 Install the normal project dependencies and your distribution's NVIDIA driver

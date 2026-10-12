@@ -20,9 +20,9 @@ def cuda_providers() -> list[Any]:
 
     # Pip-installed cuDNN lives outside the system loader's search path. Every
     # spawned inference process must preload it before constructing a session.
-    # Older JetPack runtimes without this API keep their system-library path.
+    # Older GPU runtimes without this API keep their system-library path.
     preload = getattr(ort, "preload_dlls", None)
-    if preload is not None:
+    if callable(preload):
         # ORT writes loader diagnostics to stdout; keep the probe's JSON intact.
         with redirect_stdout(sys.stderr):
             preload(msvc=False)
@@ -50,8 +50,8 @@ def _probe() -> dict[str, Any]:
             return {
                 **result,
                 "reason": "Install a CUDA-compatible ONNX Runtime GPU build; the loaded runtime "
-                "has no CUDA provider. Fresh uv installs use the CPU build. "
-                "See docs/nvidia-jetpack.md or docs/nvidia-linux.md for GPU setup.",
+                "has no CUDA provider. The default project install uses the CPU build. "
+                "See docs/nvidia-linux.md for GPU setup.",
             }
         from .onnx_upsampling import ONNXRuntime
 
