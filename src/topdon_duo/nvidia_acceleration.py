@@ -7,9 +7,10 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from collections.abc import Callable
 from contextlib import redirect_stdout
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 
 def cuda_providers() -> list[Any]:
@@ -23,9 +24,10 @@ def cuda_providers() -> list[Any]:
     # Older GPU runtimes without this API keep their system-library path.
     preload = getattr(ort, "preload_dlls", None)
     if callable(preload):
+        load_libraries = cast(Callable[..., None], preload)
         # ORT writes loader diagnostics to stdout; keep the probe's JSON intact.
         with redirect_stdout(sys.stderr):
-            preload(msvc=False)
+            load_libraries(msvc=False)
     return [
         (
             "CUDAExecutionProvider",
