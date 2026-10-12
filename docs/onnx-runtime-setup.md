@@ -8,13 +8,16 @@ not permanently remove GPU support.
 | Host capability | Runtime selection |
 | --- | --- |
 | macOS with a Metal device | Standard `onnxruntime>=1.23,<1.31`, with CoreML verification |
+| Linux ARM64 Tegra234 (Jetson Orin), CUDA driver supporting 13+ | Verified `onnxruntime-gpu==1.28.0.dev20260722004` from Microsoft's CUDA 13 feed, using system libraries; generic CUDA choices follow if unavailable |
 | Linux x86-64/ARM64, CUDA driver supporting 13+ | `onnxruntime-gpu>=1.27,<1.31`; try CUDA 12 if unavailable |
 | Linux x86-64/ARM64, CUDA driver supporting 12 | `onnxruntime-gpu>=1.23,<1.27` |
 | No supported accelerator | Standard ONNX Runtime with CPU execution |
 
 Apple uses CoreML's `CPUAndGPU` execution mode, rather than a separate Metal wheel.
-NVIDIA detection calls the CUDA driver in a disposable subprocess; neither JetPack
-identifiers, `nvidia-smi`, nor an installed compiler toolkit are required. The driver
+NVIDIA detection calls the CUDA driver in a disposable subprocess; neither `nvidia-smi`
+nor an installed compiler toolkit is required. An exact `nvidia,tegra234` entry in
+`/proc/device-tree/compatible` selects the Orin-specific CUDA 13 build on Linux ARM64.
+Other hosts, including DGX Spark, retain the generic selection. The driver
 version reports compatibility, not the version of installed CUDA libraries. Actual
 session initialization and bundled ACNet inference must pass before a runtime is
 selected. Probe responses use a separate temporary JSON file, keeping native stdout
@@ -26,12 +29,17 @@ TensorRT are outside the application's current backend support.
 A working environment runtime, including a compatible vendor build, is retained.
 Otherwise, setup stages a compatible wheel in the application's separate cache and
 tests it before activation. CUDA first tries existing system libraries; if that fails,
-setup installs the CUDA/cuDNN dependencies declared in the wheel's metadata and
+generic setup installs the CUDA/cuDNN dependencies declared in the wheel's metadata and
 tries inference again. `uv` resolves native Python/architecture/glibc wheel tags.
+The pinned Orin build uses JetPack's system libraries only. Matching wheel tags alone
+do not guarantee compatible GPU kernels: the generic 1.30.0 ARM64 wheel failed on
+the verified Orin with `cudaErrorNoKernelImageForDevice`. The pinned build has its own
+cache family and must pass the same bundled inference check before activation.
 Unsupported wheels or drivers fall back to the next supported option, ending with CPU.
 Some ARM64 hosts still need vendor builds; automatic wheel selection cannot create
-a build that upstream does not publish. The new provisioning path has deterministic
-tests; its NVIDIA downloads and inference still require verification on physical hosts.
+a build that upstream does not publish. The provisioning path has deterministic
+tests and the Orin path was verified on AGX Orin, L4T R39.2.1, CUDA 13.2, cuDNN 9.20,
+and Python 3.12. Other JetPack configurations still require physical verification.
 
 The project environment and `uv.lock` are untouched. Verified replacements live in
 `~/Library/Caches/topdon-duo/runtimes` on macOS or

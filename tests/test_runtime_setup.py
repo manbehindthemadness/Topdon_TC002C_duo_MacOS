@@ -28,6 +28,7 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNamespace
     monkeypatch.setattr(setup, "find_uv", lambda: "/fake/uv")
     monkeypatch.setattr(setup.sys, "platform", "linux")
     monkeypatch.setattr(setup.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(setup, "orin_host", lambda: False)
     install = Mock(return_value=True)
     query = Mock(return_value={"available": False, "reason": "missing provider"})
     activate = Mock()
@@ -55,6 +56,7 @@ def test_host_selection(
     """
     monkeypatch.setattr(setup.sys, "platform", system)
     monkeypatch.setattr(setup.platform, "machine", lambda: machine)
+    monkeypatch.setattr(setup, "orin_host", lambda: False)
     query = Mock(return_value={"cuda": version, "available": True})
     monkeypatch.setattr(setup, "query", query)
     assert setup.candidates() == expected
@@ -62,7 +64,67 @@ def test_host_selection(
         query.assert_not_called()
 
 
-@pytest.mark.parametrize("selection", ["cpu", "coreml", "cuda12", "cuda13"])
+@pytest.mark.parametrize("compatible,expected", [
+    (b"nvidia,p3701-0000\0nvidia,tegra234\0", True),
+    (b"nvidia,tegra264\0", False),
+    (b"nvidia,tegra234-other\0", False),
+    (b"", False),
+    (OSError("no device tree"), False),
+])
+def test_orin_identification(
+    monkeypatch: pytest.MonkeyPatch, compatible: bytes | OSError, expected: bool,
+) -> None:
+    """
+    Use an exact device-tree identifier; missing files and other Tegra devices stay generic.
+    """
+    read = Mock(side_effect=[compatible])
+    monkeypatch.setattr(Path, "read_bytes", read)
+    assert setup.orin_host() is expected
+    assert read.call_count == 1
+
+
+@pytest.mark.parametrize("system,machine,version,expected", [
+    ("linux", "aarch64", 13020, ["cuda13-orin", "cuda13", "cuda12", "cpu"]),
+    ("linux", "arm64", 13000, ["cuda13-orin", "cuda13", "cuda12", "cpu"]),
+    ("linux", "aarch64", 12060, ["cuda12", "cpu"]),
+    ("linux", "x86_64", 13000, ["cuda13", "cuda12", "cpu"]),
+    ("darwin", "arm64", 13000, ["coreml", "cpu"]),
+])
+def test_orin_selection_is_scoped(
+    monkeypatch: pytest.MonkeyPatch, system: str, machine: str, version: int, expected: list[str],
+) -> None:
+    """
+    Limit the verified Orin build to ARM64 Linux with a CUDA 13-capable driver.
+    """
+    monkeypatch.setattr(setup.sys, "platform", system)
+    monkeypatch.setattr(setup.platform, "machine", lambda: machine)
+    monkeypatch.setattr(setup, "orin_host", lambda: True)
+    monkeypatch.setattr(setup, "query", Mock(return_value={"cuda": version, "available": True}))
+    assert setup.candidates() == expected
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_orin_install_uses_pinned_feed_and_system_libraries(
+    isolated: SimpleNamespace, available: bool,
+) -> None:
+    """
+    Verify the pinned build before activation without adding SBSA library packages to JetPack.
+    """
+    isolated.query.side_effect = [
+        {"available": False, "reason": "CPU environment"},
+        {"available": available, "reason": "Orin inference check"},
+    ]
+    assert setup.prepare("cuda13-orin", retry=False) is available
+    isolated.install.assert_called_once()
+    call = isolated.install.call_args
+    assert call.args[2] == ["onnxruntime-gpu==1.28.0.dev20260722004"]
+    assert call.kwargs == {"index_url": installer.ORIN_INDEX}
+    assert call.args[1].parent.name.endswith("-cuda13-orin")
+    assert isolated.query.call_args.args[0] == "cuda"
+    assert isolated.activate.called is available
+
+
+@pytest.mark.parametrize("selection", ["cpu", "coreml", "cuda12", "cuda13", "cuda13-orin"])
 def test_healthy_environment_requires_no_download(isolated: SimpleNamespace, selection: str) -> None:
     """
     Preserve a working runtime, including compatible vendor builds.
@@ -73,7 +135,7 @@ def test_healthy_environment_requires_no_download(isolated: SimpleNamespace, sel
     isolated.activate.assert_not_called()
 
 
-@pytest.mark.parametrize("selection", ["cpu", "coreml", "cuda13"])
+@pytest.mark.parametrize("selection", ["cpu", "coreml", "cuda13", "cuda13-orin"])
 def test_verified_runtime_reused_after_uv_sync(isolated: SimpleNamespace, selection: str) -> None:
     """
     Publish only verified packages and prefer the cached runtime over a replaced project dependency.
@@ -228,19 +290,23 @@ def test_activation_propagates_to_subprocesses_and_workers(
     setup.nvidia_acceleration.cache_clear.assert_called_once()
 
 
+@pytest.mark.parametrize("selections", [
+    ["cuda13", "cuda12", "cpu"],
+    ["cuda13-orin", "cuda13", "cuda12", "cpu"],
+])
 def test_setup_falls_back_through_supported_backends(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, selections: list[str],
 ) -> None:
     """
     Preserve CPU operation after missing wheels, native failures, or read-only cache errors.
     """
     monkeypatch.delenv("BASED_THERMALS_RUNTIME_SETUP")
     monkeypatch.delitem(setup.sys.modules, "onnxruntime", raising=False)
-    monkeypatch.setattr(setup, "candidates", lambda: ["cuda13", "cuda12", "cpu"])
-    prepare = Mock(side_effect=[PermissionError("read-only"), False, True])
+    monkeypatch.setattr(setup, "candidates", lambda: selections)
+    prepare = Mock(side_effect=[PermissionError("read-only"), *([False] * (len(selections) - 2)), True])
     monkeypatch.setattr(setup, "prepare", prepare)
     setup.ensure_runtime()
-    assert [call.args[0] for call in prepare.call_args_list] == ["cuda13", "cuda12", "cpu"]
+    assert [call.args[0] for call in prepare.call_args_list] == selections
 
 
 def test_disabled_setup_never_discovers_hardware(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -330,6 +396,22 @@ def test_target_installer_keeps_venv_packages_untouched(
     assert "--no-deps" in command
     assert "uninstall" not in command
     assert run.call_args.kwargs["timeout"] == 600
+    assert "--index-url" not in command
+
+
+def test_orin_index_is_explicit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """
+    Resolve the pinned build exclusively from its feed without affecting ordinary installs.
+    """
+    run = Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    assert installer.install(
+        "/fake/uv", tmp_path, [installer.REQUIREMENTS["cuda13-orin"]],
+        index_url=installer.ORIN_INDEX,
+    )
+    command = run.call_args.args[0]
+    assert command[command.index("--index-url") + 1] == installer.ORIN_INDEX
+    assert "--no-deps" in command
 
 
 def test_malformed_state_is_ignored(tmp_path: Path) -> None:

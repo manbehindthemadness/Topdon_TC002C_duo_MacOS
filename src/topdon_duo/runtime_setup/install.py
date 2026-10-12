@@ -17,7 +17,14 @@ REQUIREMENTS = {
     "coreml": "onnxruntime>=1.23,<1.31",
     "cuda12": "onnxruntime-gpu>=1.23,<1.27",
     "cuda13": "onnxruntime-gpu>=1.27,<1.31",
+    # Newer ARM64 PyPI wheels can omit Orin kernels despite matching Python tags.
+    # Keep the physically verified Tegra234 build isolated from generic CUDA hosts.
+    "cuda13-orin": "onnxruntime-gpu==1.28.0.dev20260722004",
 }
+ORIN_INDEX = (
+    "https://aiinfra.pkgs.visualstudio.com/PublicPackages/"
+    "_packaging/ort-cuda-13-nightly/pypi/simple/"
+)
 
 
 def find_uv() -> str | None:
@@ -29,13 +36,18 @@ def find_uv() -> str | None:
     return executable or (str(local) if local.is_file() else None)
 
 
-def install(uv: str, path: Path, requirements: list[str], *, dependencies: bool = False) -> bool:
+def install(
+    uv: str, path: Path, requirements: list[str], *, dependencies: bool = False,
+    index_url: str | None = None,
+) -> bool:
     """
     Resolve wheels for the running interpreter and contain network/installer failures.
     """
     command = [uv, "pip", "install", "--python", sys.executable, "--target", str(path)]
     if not dependencies:
         command.append("--no-deps")
+    if index_url is not None:
+        command.extend(["--index-url", index_url])
     command.extend(requirements)
     LOG.info("Setting up ONNX Runtime: %s", ", ".join(requirements))
     try:

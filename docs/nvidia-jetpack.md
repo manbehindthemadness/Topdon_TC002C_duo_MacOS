@@ -23,7 +23,27 @@ is the effective backend,
 including fallback from a saved CUDA preference. They do not configure NVIDIA
 execution.
 
-## Fresh install on JetPack 7.1 / CUDA 13.0
+## Automatic setup on CUDA 13 Orin
+
+Normal viewer startup now detects Tegra234 on Linux ARM64 and first stages
+`onnxruntime-gpu==1.28.0.dev20260722004` from Microsoft's CUDA 13 feed in the
+separate runtime cache. It uses existing JetPack libraries, verifies bundled CUDA
+inference before activation, and leaves the project environment and lockfile intact.
+The generic ARM64 1.30.0 wheel resolves successfully here but fails inference with
+`cudaErrorNoKernelImageForDevice`; installing additional libraries does not fix
+missing GPU kernels. Other NVIDIA hosts retain their existing automatic selection.
+
+Run setup directly without opening a camera:
+
+```bash
+.venv/bin/python -m topdon_duo.runtime_setup --retry
+```
+
+This automatic path was verified on the AGX Orin configuration listed below.
+See [automatic runtime setup](onnx-runtime-setup.md) for cache and fallback behavior.
+The manual instructions below remain available for managed environments.
+
+## Manual setup on JetPack 7.1 / CUDA 13.0
 
 The normal `uv sync --dev` install provides CPU ONNX Runtime. NVIDIA detection
 correctly reports unavailable until a GPU runtime is installed in that same environment.

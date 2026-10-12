@@ -17,7 +17,7 @@ from typing import Any, cast
 
 from ..apple_acceleration import apple_acceleration as apple_acceleration
 from ..nvidia_acceleration import nvidia_acceleration as nvidia_acceleration
-from .install import REQUIREMENTS, cuda_dependencies
+from .install import ORIN_INDEX, REQUIREMENTS, cuda_dependencies
 from .install import find_uv as find_uv
 from .install import install as install_packages
 from .probes import environment
@@ -47,6 +47,16 @@ def cache_root() -> Path:
     return base / "topdon-duo" / "runtimes"
 
 
+def orin_host() -> bool:
+    """
+    Identify Tegra234 without treating other ARM64 NVIDIA hosts as Jetson Orin.
+    """
+    try:
+        return b"nvidia,tegra234" in Path("/proc/device-tree/compatible").read_bytes().split(b"\0")
+    except OSError:
+        return False
+
+
 def candidates() -> list[str]:
     """
     Select supported host backends from CUDA driver capabilities rather than product names.
@@ -58,6 +68,8 @@ def candidates() -> list[str]:
     }:
         version = query("driver").get("cuda", 0)
         if version >= 13000:
+            if platform.machine().lower() in {"aarch64", "arm64"} and orin_host():
+                return ["cuda13-orin", "cuda13", "cuda12", "cpu"]
             return ["cuda13", "cuda12", "cpu"]
         if version >= 12000:
             return ["cuda12", "cpu"]
@@ -165,10 +177,14 @@ def prepare(selection: str, *, retry: bool) -> bool:
         stage = Path(tempfile.mkdtemp(prefix="staging-", dir=root))
         ready = False
         try:
-            if not install_packages(uv, stage, [REQUIREMENTS[selection]]):
+            options = {"index_url": ORIN_INDEX} if selection == "cuda13-orin" else {}
+            if not install_packages(uv, stage, [REQUIREMENTS[selection]], **options):
                 return False
             result = query(backend(selection), stage)
-            if result.get("available") is not True and selection.startswith("cuda"):
+            if (
+                result.get("available") is not True and selection.startswith("cuda")
+                and selection != "cuda13-orin"
+            ):
                 LOG.info("System CUDA libraries unavailable: %s", result.get("reason"))
                 requirements = cuda_dependencies(stage)
                 if not install_packages(uv, stage, requirements, dependencies=True):
