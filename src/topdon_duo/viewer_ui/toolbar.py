@@ -25,6 +25,11 @@ class ViewerToolbar(QToolBar):
         self.setFloatable(False)
         self.buttons: dict[str, QPushButton] = {}
         self.graph_widgets: list[QAction] = []
+        self.graph_toolbar = QToolBar("Chart controls", parent if parent is not None else self)
+        self.graph_toolbar.setMovable(False)
+        self.graph_toolbar.setFloatable(False)
+        self.graph_toolbar.hide()
+        self._graph_portrait = False
         for action, label in (
             ("rotate", "Rotate"), ("unit", "Units: C/cm"), ("view", "Imaging"),
             ("spots", "Measurements"), ("capture", "Capture"), ("graph", "Show graph"),
@@ -73,6 +78,7 @@ class ViewerToolbar(QToolBar):
         unit = state.get("unit", "C")
         self.buttons["unit"].setText(f"Units: {unit}/{'in' if unit == 'F' else 'cm'}")
         graph = bool(state.get("show_graph"))
+        self._set_graph_layout(state.get("viewer_layout", "landscape") == "portrait")
         self.buttons["graph"].setText("Hide graph" if graph else "Show graph")
         for action, value in (
             ("graph", graph),
@@ -101,3 +107,18 @@ class ViewerToolbar(QToolBar):
         self.history.setText(state.get("history", "History"))
         for action in self.graph_widgets:
             action.setVisible(graph)
+        self.graph_widgets[0].setVisible(graph and not self._graph_portrait)
+        self.graph_toolbar.setVisible(graph and self._graph_portrait)
+
+    def _set_graph_layout(self, portrait: bool) -> None:
+        """
+        Move existing chart actions between bars without replacing controls or connections.
+        """
+        if portrait == self._graph_portrait:
+            return
+        source = self if portrait else self.graph_toolbar
+        destination = self.graph_toolbar if portrait else self
+        for action in self.graph_widgets:
+            source.removeAction(action)
+            destination.addAction(action)
+        self._graph_portrait = portrait

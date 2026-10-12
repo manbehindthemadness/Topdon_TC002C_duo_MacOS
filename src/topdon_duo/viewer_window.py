@@ -39,6 +39,8 @@ class ViewerWindow(QMainWindow):
         self.setCentralWidget(self.canvas)
         self.toolbar = ViewerToolbar(self._command, self)
         self.addToolBar(self.toolbar)
+        self.addToolBar(Qt.ToolBarArea.BottomToolBarArea, self.toolbar.graph_toolbar)
+        self.toolbar.graph_toolbar.hide()
         self.drawing_toolbar = DrawingToolbar(self._command, self)
         self.addToolBarBreak()
         self.addToolBar(self.drawing_toolbar)
@@ -118,8 +120,13 @@ class ViewerWindow(QMainWindow):
             and all(type(n) is int and 0 < n <= 16384 for n in size)
             and not self.isFullScreen()
         ):
+            chart_height = (
+                0 if self.toolbar.graph_toolbar.isHidden()
+                else self.toolbar.graph_toolbar.sizeHint().height()
+            )
             self.resize(
-                size[0], size[1] + self.toolbar.height() + self.statusBar().height()
+                size[0], size[1] + self.toolbar.sizeHint().height()
+                + chart_height + self.statusBar().height()
             )
         self._schedule_geometry()
 

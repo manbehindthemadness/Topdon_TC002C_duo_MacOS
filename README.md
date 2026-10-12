@@ -401,6 +401,9 @@ The viewer still remembers your resized window; use
 `uv run based-thermals-desktop --reset-window-size` once to use the new native size.
 `--scale 3` selects the previous 768×576 camera canvas. Graphs are rendered at
 their pane's displayed size, rather than enlarged from a fixed low-resolution plot.
+In portrait layout, the chart controls from **History** onward move to a bottom
+toolbar beneath the video and graphs. Landscape keeps them in the top toolbar.
+The bottom toolbar appears only while graphs are shown.
 
 **Show graph** doubles the main window width, keeping its height and displaying
 thermal history on the right. **Hide graph** halves the width again. The toggle
