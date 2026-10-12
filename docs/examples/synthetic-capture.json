@@ -1,0 +1,132 @@
+{
+  "captured_at": "2026-10-12T14:11:16.681463-06:00",
+  "camera": "Virtual dual camera \u2014 experimental; physical hardware untested",
+  "camera_profile": {
+    "id": "virtual-dual",
+    "title": "Virtual dual camera \u2014 experimental; physical hardware untested",
+    "native_size": [
+      80,
+      60
+    ],
+    "frame_rate": 25,
+    "radiometry": true,
+    "preview": true,
+    "calibration_key": "synthetic-v1",
+    "firmware": "",
+    "device_id": "",
+    "visible": true,
+    "experimental": true,
+    "visible_max_age": 0.25
+  },
+  "radiometry_available": true,
+  "measurement_mapping_valid": true,
+  "streams": {
+    "thermal": {
+      "timestamp": 62.84,
+      "sequence": 1571,
+      "status": ""
+    },
+    "visible": {
+      "available": true,
+      "status": "",
+      "timestamp": 62.8,
+      "sequence": 942,
+      "size": [
+        320,
+        240
+      ],
+      "to_thermal": [
+        0.25,
+        0.0,
+        0.0,
+        0.0,
+        0.25,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "registration_source": "Synthetic common coordinate grid; not physical lens calibration",
+      "mapping_valid": true
+    }
+  },
+  "reported_readings": [],
+  "sensor_shape": [
+    60,
+    80
+  ],
+  "ambient_celsius": null,
+  "rotation_degrees": 0,
+  "display_unit": "C",
+  "image_source": "raw",
+  "display_settings": {
+    "temperature_unit": "C",
+    "image_source": "raw",
+    "analyze_mode": false,
+    "mirror_horizontal": false,
+    "mirror_vertical": false,
+    "image_filter": "none",
+    "upsampling": "off",
+    "enhancement_amount": 1.0,
+    "enhancement_input": "native",
+    "anime4k_passes": 3,
+    "antialiasing": true,
+    "color_palette": "inferno",
+    "palette_source": "camera",
+    "raw_temperature_low": 15.0,
+    "raw_temperature_high": 45.0,
+    "raw_sharpen_amount": 0.0,
+    "raw_upsampling": "bicubic",
+    "raw_anime4k_passes": 3,
+    "raw_palette": "white_hot",
+    "pipeline": {
+      "version": 4,
+      "hardware": [],
+      "software": [
+        {
+          "id": "172c61c52118437e9cbf2fdac1e237ae",
+          "type": "source",
+          "params": {
+            "source": "raw"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "fddb32416e58470e84cb73030cdf6378",
+          "type": "colors",
+          "params": {
+            "palette": "inferno"
+          },
+          "bypass": false,
+          "expanded": false
+        },
+        {
+          "id": "16e9585b521f47bc9876170da2b06215",
+          "type": "output",
+          "params": {},
+          "bypass": false,
+          "expanded": false
+        }
+      ],
+      "branches": {}
+    }
+  },
+  "temperature_stats_celsius": {
+    "minimum": 22.0,
+    "average": 23.77,
+    "maximum": 51.99,
+    "center": 51.99
+  },
+  "measurements_valid": true,
+  "measurement_status": "",
+  "radiometric_file": "synthetic-capture.npz",
+  "image_file": "synthetic-capture.png",
+  "graphs_included": false,
+  "selected_pixel": {
+    "x": 40,
+    "y": 30,
+    "temperature_celsius": 51.99,
+    "raw_count": 5199
+  }
+}

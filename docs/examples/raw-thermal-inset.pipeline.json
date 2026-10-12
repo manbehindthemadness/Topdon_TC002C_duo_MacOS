@@ -1,0 +1,103 @@
+{
+  "version": 4,
+  "hardware": [],
+  "software": [
+    {
+      "id": "documentation-A-0",
+      "type": "source",
+      "params": {
+        "source": "raw"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "documentation-A-1",
+      "type": "colors",
+      "params": {
+        "palette": "inferno"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "documentation-A-2",
+      "type": "combine",
+      "params": {
+        "tab": "B",
+        "mode": "replace",
+        "opacity": 1.0,
+        "mask_source": "none",
+        "mask_kind": "luminance",
+        "mask_threshold": 127,
+        "mask_invert": false,
+        "raw_low": 15.0,
+        "raw_high": 45.0,
+        "base_weight": 1.0,
+        "input_weight": 1.0,
+        "offset": 0,
+        "threshold": 127,
+        "invert": false,
+        "interpolation": "linear"
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "documentation-A-3",
+      "type": "output",
+      "params": {},
+      "bypass": false,
+      "expanded": false
+    }
+  ],
+  "branches": {
+    "B": [
+      {
+        "id": "documentation-B-0",
+        "type": "source",
+        "params": {
+          "source": "raw"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "documentation-B-1",
+        "type": "colors",
+        "params": {
+          "palette": "white_hot"
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "documentation-B-2",
+        "type": "transform",
+        "params": {
+          "resize_mode": "canvas",
+          "width": 25,
+          "height": 25,
+          "position_unit": "percent",
+          "position_x": 0,
+          "position_y": 0,
+          "method": "bicubic",
+          "horizontal": false,
+          "vertical": false,
+          "skew_x": 0,
+          "skew_y": 0,
+          "top_left_x": 0,
+          "top_left_y": 0,
+          "top_right_x": 0,
+          "top_right_y": 0,
+          "bottom_right_x": 0,
+          "bottom_right_y": 0,
+          "bottom_left_x": 0,
+          "bottom_left_y": 0
+        },
+        "bypass": false,
+        "expanded": false
+      }
+    ]
+  }
+}

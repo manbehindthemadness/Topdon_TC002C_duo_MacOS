@@ -7,6 +7,12 @@ All measurements use native thermal data, not palette colors, AI output or
 transformed display branches. On the Duo this is a 256×192 sensor grid. A pixel
 radius therefore refers to native sensor pixels, not the enlarged preview's pixels.
 
+![Measurements editor with a rectangle, a circular reference and an oval exclusion](images/measurements-editor.png)
+
+*The selected rectangle has Name/Min/Max/Average labels enabled. The list also
+contains a positive-radius spot and an oval exclusion. This example uses the
+virtual camera's 80×60 grid; use your camera's native coordinates for real measurements.*
+
 ## Create a measurement on the image
 
 1. Choose Spot, Rectangle, Oval, Polygon or Bézier in the shape dropdown.
@@ -69,6 +75,12 @@ not change cursor readings, scene/master statistics, calibration, raw capture da
 or other pixels in the native thermal array. Ordinary overlapping measurement
 areas sample independently; they do not subtract from one another.
 
+In the illustrated scene, **Master stats** still has a maximum near 52 °C,
+while **Warm region** peaks around 44.9 °C because the oval excludes its hottest
+pixels. The bright center remains visible in the image and present in the
+[sample NPZ](examples/synthetic-capture.npz): an exclusion changes user sampling,
+not the image or saved thermal array. These are synthetic example temperatures.
+
 ## Readings and labels
 
 Areas and positive-radius spots report minimum, average and maximum over remaining
@@ -91,6 +103,13 @@ distance, emissivity or reflected-temperature settings; see [calibration](calibr
 Choose **Show graph** (`G`). Landscape places charts to the right; portrait places
 them below. Choose layout in **Rotate**; portrait chart controls move to the bottom.
 Areas have Min/Avg/Max curves; exclusions never have charts.
+
+![Portrait viewer with measurements over synthetic thermal data and charts below](images/viewer-portrait.png)
+
+*Portrait layout puts charts and their controls below the image. Warm region and
+Reference each have three curves; Exclude peak has none. The same synthetic scene
+appears in the README's landscape example. On narrow windows, use toolbar overflow
+for controls that do not fit.*
 
 - **Update (s)** sets the sampling/update interval.
 - **Config** chooses the entire session or a recent time window, the point budget,

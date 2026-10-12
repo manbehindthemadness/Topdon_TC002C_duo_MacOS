@@ -1,0 +1,35 @@
+# Screenshot provenance
+
+These PNGs are captures of the application's real Qt widget classes, rendered
+offscreen with the portable Fusion style. They are not AI-generated mockups.
+Window decoration, fonts and colors can vary on your operating system.
+
+The viewer images use `VirtualDualCamera.make_frame()`, the normal thermal
+renderer, measurement/exclusion kernels, graph painter, and Transform/Combine
+processing. The source is a synthetic 80×60 temperature grid with a moving warm
+region. Graphs contain 60 seconds of synthetic samples at 0.5-second intervals.
+The virtual camera is not a physical temperature or calibration reference.
+
+Capture and Measurements show their real dialogs with configured demo state.
+Pipeline images capture the editor component within Imaging so its relevant
+controls fit in the documentation. All provider capability flags are CPU-only
+for this exercise; the screenshots do not assert GPU compatibility or performance.
+
+## Regenerate
+
+From the repository root with the project environment installed:
+
+```sh
+.venv/bin/python tools/render_documentation_images.py
+```
+
+The script writes these seven images and the files in `docs/examples/`. It opens
+no USB devices, creates no GPU/model sessions, performs no downloads, and keeps
+OpenCV frame generation and Qt capture in separate processes. Preferences and Qt
+settings are isolated in a temporary directory. It does not start recordings or
+change the running viewer. Regeneration replaces the checked-in documentation
+artifacts; capture timestamps and platform font rendering can change.
+
+See [the capture guide](../capture-guide.md#inspect-an-example-capture) for the
+synthetic PNG/NPZ/JSON export set and [the Imaging guide](../imaging-guide.md#example-put-a-raw-thermal-inset-in-a-processed-image)
+for importing the matching inset pipeline.

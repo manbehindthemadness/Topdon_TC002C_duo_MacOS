@@ -80,6 +80,11 @@ remove the links first. Surviving tab names remain stable.
 
 ### Example: put a raw thermal inset in a processed image
 
+![Raw thermal image displayed as a grayscale inset over an Inferno main image](images/raw-inset.png)
+
+*A working Transform/Replace composition using synthetic frames. The upper-left
+25% inset is white-hot; the main image uses Inferno. Both depict the same frame.*
+
 1. Keep the main composition in A. Add B with **Raw thermal** as its Source.
 2. In B, add **Transform** and select **Scale within canvas**.
 3. Set Width/Height to a smaller percentage (for example, 25% each).
@@ -89,6 +94,34 @@ remove the links first. Surviving tab names remain stable.
 Replace copies B's occupied region, including genuine black pixels, while leaving
 the rest of A intact. Other blend modes can treat black differently. Position X/Y
 uses the canvas's upper-left corner; changing units reinterprets the values.
+
+<details>
+<summary>Show the exact Tab B Transform controls</summary>
+
+![Tab B Transform controls set to a 25 percent inset at position zero](images/pipeline-transform.png)
+
+*In B: Scale within canvas, Width/Height = 25%, Position units = Percent,
+Position X/Y = 0. The node editor shown here is the actual Imaging component.*
+
+</details>
+
+<details>
+<summary>Show the receiving Tab A Combine controls</summary>
+
+![Tab A Combine controls using Tab B and Replace mode](images/pipeline-combine.png)
+
+*In A: Blend input = Tab B, Blend mode = Replace, and no optional mix mask.*
+
+</details>
+
+To try these exact settings, download the raw
+[example pipeline JSON](examples/raw-thermal-inset.pipeline.json), then choose
+**Imaging → Import pipelines** and select the file. Load the imported selection
+when ready. It replaces the open pipeline, so save/export important work first.
+It contains no hardware nodes, Custom code or AI models. Loading it removes any
+current hardware nodes, restoring the camera fields they own, so review the change
+before loading. No models are needed for this example.
+The inset uses percentages and therefore adapts to your camera's image dimensions.
 
 ```mermaid
 flowchart LR

@@ -6,6 +6,11 @@ Open **Capture** from the toolbar or press `C`. Choose the appearance in
 [Imaging](imaging-guide.md) and arrange measurements before capturing.
 Saving and recording use the current display; radiometric arrays remain native.
 
+![Capture popup with timelapse rate and cursor/graph options](images/capture-controls.png)
+
+*Capture configured for 60 frames/minute with graphs included. Use the two Record
+buttons to choose video or timelapse; Save image data produces the three-file set.*
+
 ## Save an image and its thermal data
 
 1. Open Capture and choose **Save image data**, or press `S` in the viewer.
@@ -24,6 +29,29 @@ Keep the files together when sharing or analysing a capture. The PNG is for
 viewing; use the NPZ for numerical temperature work. Enlarging or styling the PNG
 does not enlarge the native measurement grid. Fahrenheit display does not convert
 the stored Celsius temperature array.
+
+### Inspect an example capture
+
+Download the matching [PNG](examples/synthetic-capture.png),
+[NPZ](examples/synthetic-capture.npz), and [JSON](examples/synthetic-capture.json).
+These were written by the application's capture function from its virtual camera,
+not by a physical sensor. The sample has an 80×60 native grid; the Duo's is 256×192.
+The displayed overlays do not remove pixels from the stored native array.
+
+From the repository root, inspect the numerical data with NumPy:
+
+```python
+import numpy as np
+
+with np.load("docs/examples/synthetic-capture.npz", allow_pickle=False) as data:
+    celsius = data["temperatures_celsius"]
+    print(celsius.shape, celsius.dtype)  # (60, 80), float32
+    print(float(celsius[30, 40]))  # indexing is [y, x]
+    print(bool(data["measurements_valid"]))
+```
+
+Use `temperatures_celsius` for temperature analysis. The virtual camera's raw
+encoding differs from the Duo's; the JSON identifies the profile and validity.
 
 Camera reads continue while the Save dialog is open. Check validity metadata when
 capturing during shutter calibration or a stale frame: held readings do not
