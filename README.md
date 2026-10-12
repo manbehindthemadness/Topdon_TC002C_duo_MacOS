@@ -9,11 +9,10 @@ The TOPDON TC002C Duo backend is physically verified. It captures native
 Other camera integrations are extensible; physical dual-camera support remains
 experimental. An included virtual camera lets you explore the UI without hardware.
 
-![Application viewer with measurement areas, an exclusion zone and temperature graphs](docs/images/viewer-landscape.png)
+![Thermal view of electronics with component measurement areas and temperature history graphs](docs/images/viewer-electronics.png)
 
-*The real Qt viewer with synthetic virtual-camera data. The rectangle and circular
-spot produce Min/Avg/Max curves; the dashed exclusion has no chart. Toolbar
-controls stay outside the image. [Screenshot provenance and regeneration](docs/images/README.md).*
+*Application screenshot showing temperature measurements for electronic components,
+with Min/Avg/Max history graphs and Fahrenheit readings.*
 
 ## Start here
 
