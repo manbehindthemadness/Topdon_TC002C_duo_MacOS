@@ -5,7 +5,7 @@ from itertools import pairwise
 
 import numpy as np
 
-from .camera import CameraError
+from .camera_backends.errors import CameraError
 
 
 def validate_reference(value):

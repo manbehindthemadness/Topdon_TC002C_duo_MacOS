@@ -9,7 +9,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .camera import FRAME_RATE
+from .camera_backends.duo.camera import FRAME_RATE
 
 
 class VideoRecorder:

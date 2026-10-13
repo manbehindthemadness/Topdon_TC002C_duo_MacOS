@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from .. import APP_NAME
-from ..camera import (
+from ..camera_backends.duo.camera import (
     DEFAULT_USB_QUEUE_DEPTH,
 )
 from .constants import (

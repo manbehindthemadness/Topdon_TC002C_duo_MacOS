@@ -47,9 +47,11 @@ settings activate through connected optical source/input/mask dependencies.
 Original reads, rollback and restoration must address the correct camera/channel.
 
 See [camera-backends.md](../../../../docs/camera-backends.md) for the current public
-contracts and offline launch command. The virtual backend exercises unequal sizes
-and rates, faults and synthetic control isolation; it does not prove a physical
-transport, synchronization or lens geometry.
+contracts and offline launch command. The virtual backend in
+`src/based_thermals/camera_backends/virtual_dual/` exercises unequal sizes and rates,
+faults and synthetic control isolation; it does not prove a physical transport,
+synchronization or lens geometry. A physical dual-camera backend belongs in its
+own camera package with its own transport and controls.
 
 ## Integration requirements once streams are verified
 

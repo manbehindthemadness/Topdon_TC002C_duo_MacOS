@@ -1,6 +1,6 @@
 """Validate saved measuring spots in unrotated, unmirrored sensor coordinates."""
 
-from .camera import SENSOR_HEIGHT, SENSOR_WIDTH
+from .camera_backends.duo.camera import SENSOR_HEIGHT, SENSOR_WIDTH
 from .measurements.schema import validate_region
 
 

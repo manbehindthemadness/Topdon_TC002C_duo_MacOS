@@ -6,7 +6,6 @@ import pytest
 import usb.core
 from support.frames import make_frame
 
-import based_thermals.camera as camera_module
 from based_thermals.camera import (
     FRAME_BYTES,
     HEADER_U16,
@@ -26,6 +25,7 @@ from based_thermals.camera import (
     parse_probe,
     raw_temperatures,
 )
+from based_thermals.camera_backends.duo import camera as camera_module
 
 
 def test_probe_round_trip():
@@ -190,6 +190,7 @@ def test_macos_queued_capture_preserves_tolerant_framing(monkeypatch, full_previ
         def read(self):
             return next(packets)
 
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(camera_module, "QueuedBulkReader", Reader)
     camera = TC002CDuoCamera()
     camera.device = Mock()

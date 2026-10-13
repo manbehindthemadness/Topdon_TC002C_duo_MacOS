@@ -8,8 +8,8 @@ from typing import Any, cast
 import cv2
 import numpy as np
 
-from .camera import raw_temperatures
 from .camera_backends import DUO_PROFILE, CameraFrame, CameraProfile, ReportedReading, decode_frame
+from .camera_backends.duo.camera import raw_temperatures
 from .camera_backends.visible import hold_thermal_frame, stream_metadata, visible_mapping_valid
 from .pipeline import default_pipeline, validate_pipeline
 from .pipeline_model.sources import display_source, source_required

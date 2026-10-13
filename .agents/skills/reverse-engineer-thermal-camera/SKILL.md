@@ -24,8 +24,11 @@ capture backend is a valid first milestone; lack of safe controls must not block
   for the next experiment; continue independent offline work while waiting.
 - Read [program-integration.md](references/program-integration.md) to locate the
   capture, control, radiometry and pipeline boundaries. This program currently
-  has explicit backend/frame/capability contracts. The Duo transport and host
-  calibration remain target-specific; a new camera still requires its own verified backend.
+  has explicit backend/frame/capability contracts and one package per camera under
+  `src/based_thermals/camera_backends/`. Put a new camera's transport, decoding,
+  controls and platform workarounds in its own backend package. Duo USB queueing,
+  frame assembly, authorization and host calibration remain target-specific;
+  reuse requires evidence from the new hardware.
 - For devices with thermal and visible-light cameras, read
   [dual-camera.md](references/dual-camera.md). Distinguish an upsampled thermal
   display from an optical camera stream; the application has experimental
@@ -73,8 +76,10 @@ state the concrete reason and the evidence missing.
 4. **Integrate only the demonstrated capabilities.** Follow
    [program-integration.md](references/program-integration.md). Keep unsupported
    settings unavailable, measurements independent of display processing, and the
-   existing Duo backend working. Test byte-level behavior with recorded fixtures
-   and mocked USB before bounded hardware checks.
+   existing Duo backend working. Register the new package through the shared
+   registry; keep generic contracts and acquisition coordination independent of
+   its transport imports. Test byte-level behavior with recorded fixtures and
+   mocked USB before bounded hardware checks.
 5. **Leave a resumable handoff.** Record successes, failed probes and unrelated
    leads with exact evidence paths and device/firmware scope. State what was
    restored, what remains unknown, and the next safe experiment.

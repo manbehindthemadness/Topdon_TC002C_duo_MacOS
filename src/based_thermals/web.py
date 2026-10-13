@@ -16,8 +16,8 @@ import cv2
 from flask import Flask, Response, jsonify, render_template_string
 
 from . import APP_NAME, __version__
-from .camera import CameraError, TC002CDuoCamera, platform_warning
 from .camera_backends import DUO_PROFILE, CameraBackend, CameraFrame, CameraProfile, create_camera
+from .camera_backends.duo.camera import CameraError, TC002CDuoCamera, platform_warning
 from .render import ThermalRenderer
 from .runtime_setup import ensure_runtime
 

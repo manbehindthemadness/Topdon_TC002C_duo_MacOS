@@ -8,9 +8,9 @@ from copy import deepcopy
 from typing import Any
 from uuid import uuid4
 
+from ..camera_backends.duo.hardware_controls import HARDWARE_CONTROLS
 from ..custom_nodes.bundle import validate_custom
 from ..feature_processing import validate_feature
-from ..hardware_controls import HARDWARE_CONTROLS
 from ..image_filters import validate_filter
 from ..image_transform import transform_matrix
 from ..view_settings import VIEW_DEFAULTS

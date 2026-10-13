@@ -9,7 +9,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .camera import FRAME_BYTES, FRAME_MAGIC
+from .camera_backends.duo.camera import FRAME_BYTES, FRAME_MAGIC
 
 
 class ViewerDiagnostics:

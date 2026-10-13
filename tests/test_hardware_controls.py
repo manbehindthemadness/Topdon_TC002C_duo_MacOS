@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 from test_render import frame_with_preview
 
-from based_thermals import hardware_controls as module
 from based_thermals.camera import IMAGE_OFFSET, CameraError
+from based_thermals.camera_backends.duo import hardware_controls as module
 from based_thermals.hardware_controls import (
     BLOCK_LENGTHS,
     HardwareControls,

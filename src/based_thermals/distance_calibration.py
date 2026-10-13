@@ -7,7 +7,7 @@ from itertools import combinations
 import cv2
 import numpy as np
 
-from .camera import SENSOR_HEIGHT, SENSOR_WIDTH
+from .camera_backends.duo.camera import SENSOR_HEIGHT, SENSOR_WIDTH
 
 
 def _edge_squares(thermal):

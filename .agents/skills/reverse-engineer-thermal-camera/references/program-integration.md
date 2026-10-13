@@ -1,6 +1,6 @@
 # Integrating another camera into this program
 
-Paths below describe the repository as inspected on 2026-10-10. Re-read the
+Paths below describe the repository as inspected on 2026-10-13. Re-read the
 current files before implementation; earlier research documents describe old UI
 and capture behavior. Read [camera-backends.md](../../../../docs/camera-backends.md)
 for the implemented contract; another physical camera still needs protocol evidence.
@@ -10,9 +10,13 @@ for the implemented contract; another physical camera still needs protocol evide
 | Files | Responsibility and relevant invariants |
 | --- | --- |
 | `camera_backends/` | Explicit factories, compatible profiles, immutable decoded planes, reported readings, control metadata and reversible device/spot ownership |
-| `src/based_thermals/camera.py` | `TC002CDuoCamera`, UVC negotiation, frame assembly, queued/synchronous reads, Duo decode, temperature conversion and validity detection |
-| `queued_usb.py`, `frame_pump.py` | Continuous acquisition; queued bulk transfers, cancellation and latest-complete-frame consumption independent of UI |
-| `hardware_controls.py`, `tone_curves.py` | Target-specific blocks, SDK initialization, saved originals, status polling, presets, shutter and incremental LUT upload/restore |
+| `camera_backends/registry.py` | Explicit `register_backend`/`create_camera` factories; no automatic probing or plugin discovery |
+| `camera_backends/contracts.py`, `camera_backends/errors.py`, `camera_backends/frames.py`, `camera_backends/visible.py` | Shared backend/profile/control contracts, `CameraError`, decoded thermal planes and independent optical frames |
+| `camera_backends/duo/camera.py`, `camera_backends/duo/adapter.py` | `TC002CDuoCamera`, Duo UVC negotiation, frame assembly, decode, temperature conversion and validity detection |
+| `camera_backends/duo/queued_usb.py`, `camera_backends/duo/macos_usb/` | Duo queued bulk transfers/cancellation and its macOS authorized USB helper; not assumed reusable for other hardware |
+| `frame_pump.py` | Backend-independent acquisition coordination and latest-complete-frame consumption |
+| `camera_backends/virtual_dual/` | Synthetic dual-camera implementation for offline tests; not evidence of a physical camera's transport or timing |
+| `camera_backends/duo/hardware_controls.py`, `tone_curves.py` | Duo blocks, SDK initialization, saved originals, status polling, presets, shutter and incremental LUT upload/restore |
 | `pipeline_hardware.py` | Applies owned fields in audited order, preserves calibration/correction fields, skips USB for software/reorder/collapse edits |
 | `render.py` | Native-grid measurements, invalid-frame handling, smoothing and geometry; display enhancement is separate |
 | `pipeline.py`, `pipeline_processing.py` | Versioned dynamic pipeline tabs, sources, filters/features, model processing, Combine masks, per-branch threads and preview timing |
@@ -23,6 +27,11 @@ for the implemented contract; another physical camera still needs protocol evide
 | `graphs.py`, `graph_window.py`, `recording.py` | Measurement sampling, named spots/logging, recording and graph capture |
 | `viewer_diagnostics.py`, `tools/watch_ui.py` | Opt-in stage timing, stream health and thread/stall observations |
 | `tools/inspect_telemetry.py` | Offline Duo-frame explorer; hardcodes Duo offsets and is not a generic parser |
+
+Paths without `src/based_thermals/` are relative to that package, except `tools/`.
+Root `camera.py`, `queued_usb.py`, `hardware_controls.py` and
+`camera_backends.virtual` are public import facades, not implementation locations.
+Edit and patch the owning backend module when investigating protocol behavior.
 
 The Duo decoder returns telemetry uint16 words, a 192×256 native count plane
 and an 8-bit preview luminance plane. Its bridge preserves the byte-frame API.
@@ -36,6 +45,35 @@ It is a processed thermal display, not a second optical camera. For dual-sensor
 investigations, read [dual-camera.md](dual-camera.md) before designing frame or
 integration. Experimental optical sources and separate hardware owners are
 implemented with an offline virtual backend; physical dual-camera support is untested.
+
+## Organize the target backend
+
+Create `src/based_thermals/camera_backends/<backend>/` for the target camera.
+Keep its transport negotiation, packet layouts/constants, frame assembly,
+decoding/conversion, control serializers and platform workarounds together there.
+Split cohesive modules as needed to respect the repository's 800-line limit;
+small backends need not copy the Duo's internal file layout.
+
+The existing `duo/` package owns its queued USB reader and `macos_usb/` client,
+binary protocol and authorized service. Do not subclass the Duo camera or reuse
+its bulk framing, queue depths, cancellation rules or helper merely because a
+new device is USB/UVC. Establish the new camera's actual endpoint/OS behavior
+first. Promote code into the shared layer only when verified reuse justifies it.
+
+Use the shared `CameraBackend`, `CameraProfile`, `CameraFrame`, `ControlSpec`
+and `CameraError` contracts. Generic control ownership and profile persistence
+stay shared; the backend supplies target-compatible reads/writes and temperature
+conversion. Keep `frame_pump.py` responsible for acquisition coordination through
+the contract, with transport-specific assembly and shutdown inside the backend.
+Importing shared infrastructure or constructing the virtual camera must not
+import a physical backend's transport implementation. Keep device opening in the
+backend's `open()` operation; registration must not acquire hardware.
+
+Expose an application-owned factory with `register_backend(name, factory)` before
+the desktop/web entry point and select it through `--camera name`. Registration
+must not execute the factory or discover devices. `duo` and `virtual-dual` are
+reserved selections; unknown names fail explicitly. Preserve existing public
+imports and update private helper launch targets alongside package moves.
 
 ## Choose the smallest honest support boundary
 
@@ -129,8 +167,11 @@ ownership and cancellation. Control tests need payload preservation, fresh
 readback, failure cleanup and unsupported-feature behavior.
 
 Run the affected acquisition/control/measurement/persistence/pipeline tests and
-required lint. Existing commands use `.venv/bin/pytest` and `.venv/bin/ruff`; inspect
-`pyproject.toml` before assuming tooling. Expand to the full suite before a broad
+required lint using the configured interpreter and repository commands. Include
+`tests/test_camera_backend_layout.py` and `tests/test_camera_backends.py` for
+factory selection, import isolation and preserved public entry points. Add
+target-specific tests with fake transport boundaries; patch the owning backend
+module rather than a root facade. Expand to the full suite before a broad
 camera-provider change is declared complete. Tests may require offline Qt setup;
 reuse `tests/test_capture_panel.py::popup_environment` rather than inheriting
 OpenCV's incompatible Qt plugin environment.

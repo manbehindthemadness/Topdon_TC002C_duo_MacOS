@@ -18,7 +18,8 @@ import numpy as np
 
 from . import APP_NAME
 from .apple_acceleration import apple_acceleration
-from .camera import (
+from .camera_backends import DUO_PROFILE, CameraProfile, create_camera
+from .camera_backends.duo.camera import (
     DEFAULT_USB_QUEUE_DEPTH,
     FRAME_RATE,
     SENSOR_HEIGHT,
@@ -27,7 +28,12 @@ from .camera import (
     TC002CDuoCamera,
     raw_temperatures,
 )
-from .camera_backends import DUO_PROFILE, CameraProfile, create_camera
+from .camera_backends.duo.hardware_controls import (
+    HARDWARE_CONTROLS,
+    HardwareControls,
+    HardwareProtocolError,
+    camera_operation_title,
+)
 from .capture_panel import CapturePanel
 from .dialog_preferences import load_dialog_directory, remember_dialog_directory
 from .display_awake import DisplayAwake
@@ -46,12 +52,6 @@ from .graphs import (
     graph_interval_rect,
     graph_log_button_rect,
     graph_reset_rect,
-)
-from .hardware_controls import (
-    HARDWARE_CONTROLS,
-    HardwareControls,
-    HardwareProtocolError,
-    camera_operation_title,
 )
 from .model_downloads import MODEL_DOWNLOADS
 from .nvidia_acceleration import nvidia_acceleration

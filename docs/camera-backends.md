@@ -4,6 +4,30 @@ The viewer defaults to the existing TOPDON TC002C Duo implementation. Other came
 can be integrated through `src/based_thermals/camera_backends/`; this foundation does
 not provide protocols or verified support for another physical camera.
 
+Each implemented camera has its own package:
+
+```text
+camera_backends/
+    contracts.py, errors.py, frames.py, visible.py
+    registry.py, controls.py, preferences.py
+    duo/
+        camera.py, queued_usb.py, hardware_controls.py, adapter.py
+        macos_usb/
+            client.py, protocol.py, service.py
+    virtual_dual/
+        camera.py
+```
+
+The shared layer owns backend selection, decoded frame contracts, capability
+metadata and reversible control ownership. `frame_pump.py` coordinates acquisition
+through the backend interface and retains the newest frame. Duo USB negotiation,
+frame assembly, queueing, platform workarounds and authorization belong entirely
+to `duo/`; another camera must provide its own transport until reuse is verified.
+The root `camera.py`, `queued_usb.py`, `hardware_controls.py` and old
+`camera_backends.virtual` entry point only re-export their existing public APIs.
+Application imports use the owning backend packages. Importing shared contracts
+or constructing the virtual backend does not load the Duo USB implementation.
+
 On macOS, normal-user Duo factories select the private USB helper facade described
 in [macOS USB authorization](macos-usb.md). The original Duo USB protocol and queued
 capture run in the authorized helper; decoding, controls ownership, processing and

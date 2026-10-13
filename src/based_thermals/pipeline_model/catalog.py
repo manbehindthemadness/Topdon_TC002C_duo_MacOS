@@ -8,7 +8,7 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from ..hardware_controls import HARDWARE_CONTROLS
+from ..camera_backends.duo.hardware_controls import HARDWARE_CONTROLS
 from ..image_filters import FILTER_MODES, KERNELS
 from ..view_settings import COLOR_PALETTES
 from .tabs import is_tab_name

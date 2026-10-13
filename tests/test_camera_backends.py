@@ -13,7 +13,13 @@ from support.frames import frame_with_preview
 
 from based_thermals import camera_backends, desktop
 from based_thermals.camera import CameraError, decode_duo_frame
-from based_thermals.camera_backends import CameraFrame, CameraProfile, ControlSpec, ReportedReading
+from based_thermals.camera_backends import (
+    CameraFrame,
+    CameraProfile,
+    ControlSpec,
+    ReportedReading,
+    registry,
+)
 from based_thermals.camera_backends.controls import DeviceControls
 from based_thermals.desktop_app.session import DesktopSession
 from based_thermals.frame_pump import CameraFramePump
@@ -348,7 +354,7 @@ def test_desktop_uses_registered_backend_without_duo_commands(
             """
             return owner
 
-    monkeypatch.setattr(camera_backends, "_FACTORIES", {"test-sensor": Camera})
+    monkeypatch.setattr(registry, "_FACTORIES", {"test-sensor": Camera})
     session = DesktopSession(desktop, ["--camera", "test-sensor"])
     assert session.initialize_hardware()
     assert not writes.called and not session.calibration_available

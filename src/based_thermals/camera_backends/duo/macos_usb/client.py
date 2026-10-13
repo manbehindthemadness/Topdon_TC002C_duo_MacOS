@@ -24,7 +24,7 @@ def helper_command() -> list[str]:
     sudo reads authorization from the controlling terminal, never the protocol pipe.
     """
     return ["/usr/bin/sudo", "--", sys.executable, "-I", "-B", "-m",
-            "based_thermals.macos_usb.service"]
+            "based_thermals.camera_backends.duo.macos_usb.service"]
 
 
 class ControlDevice:

@@ -3,8 +3,8 @@
 from copy import deepcopy
 from typing import Any
 
-from .camera import CameraError
 from .camera_backends.controls import DeviceControls
+from .camera_backends.errors import CameraError
 from .pipeline import active_nodes, preview_required, validate_pipeline
 from .pipeline_model.sources import source_required
 

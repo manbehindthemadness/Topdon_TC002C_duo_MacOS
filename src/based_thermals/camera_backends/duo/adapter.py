@@ -5,15 +5,8 @@ Compatibility boundary around the existing audited TC002C Duo backend.
 import cv2
 import numpy as np
 
-from ..camera import (
-    IMAGE_OFFSET,
-    decode_duo_frame,
-    has_yuy2_preview,
-    measurement_frame_status,
-    raw_temperatures,
-)
-from .contracts import CameraProfile, ControlSpec
-from .frames import CameraFrame
+from ..contracts import CameraProfile, ControlSpec
+from ..frames import CameraFrame
 
 PROFILE = CameraProfile("duo", "TOPDON TC002C Duo", (256, 192), 25,
                         calibration_key="tc002c-duo-v1")
@@ -25,6 +18,8 @@ def temperatures(
     """
     Preserve desktop camera conversion and the web viewer's legacy ambient anchoring.
     """
+    from .camera import raw_temperatures
+
     anchor = ambient_celsius if ambient_celsius is not None else 22.0
     return raw_temperatures(counts, ambient_celsius=anchor, offset=50 if native else None)
 
@@ -33,6 +28,13 @@ def decode_frame(frame: bytes) -> CameraFrame:
     """
     Decode Duo layouts only here, preserving their preview fallback and validity rules.
     """
+    from .camera import (
+        IMAGE_OFFSET,
+        decode_duo_frame,
+        has_yuy2_preview,
+        measurement_frame_status,
+    )
+
     telemetry, counts, preview = decode_duo_frame(frame)
     bgr = None
     if has_yuy2_preview(frame):
@@ -50,7 +52,7 @@ def control_specs() -> dict[str, ControlSpec]:
     """
     Publish display metadata without exposing USB selectors, offsets or serializers.
     """
-    from ..hardware_controls import HARDWARE_CONTROLS
+    from .hardware_controls import HARDWARE_CONTROLS
 
     return {
         name: ControlSpec(

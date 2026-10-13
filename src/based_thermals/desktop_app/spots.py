@@ -11,7 +11,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from ..camera import (
+from ..camera_backends.duo.camera import (
     SENSOR_HEIGHT,
     SENSOR_WIDTH,
 )

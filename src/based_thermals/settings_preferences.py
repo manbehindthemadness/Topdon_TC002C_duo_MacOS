@@ -4,14 +4,18 @@ import json
 import math
 from typing import Any, cast
 
-from .camera import FRAME_RATE
 from .camera_backends import CameraProfile, ControlSpec
+from .camera_backends.duo.camera import FRAME_RATE
+from .camera_backends.duo.hardware_controls import (
+    BLOCK_LENGTHS,
+    HARDWARE_CONTROLS,
+    PROCESSING_PRESETS,
+)
 from .camera_backends.preferences import DEVICE_KEYS, settings_path
 from .distance_calibration import DistanceReference
 from .emissivity_calibration import validate_reference
 from .graph_settings import validate_graph_settings
 from .graphs import validate_graph_interval
-from .hardware_controls import BLOCK_LENGTHS, HARDWARE_CONTROLS, PROCESSING_PRESETS
 from .pipeline import legacy_calibration_values, validate_pipeline
 from .preference_io import save_json
 from .reflected_calibration import validate_reference as validate_reflected_reference

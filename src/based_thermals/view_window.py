@@ -16,8 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .camera_backends.duo.hardware_controls import HARDWARE_CONTROLS, camera_operation_title
 from .capture_window import run_window
-from .hardware_controls import HARDWARE_CONTROLS, camera_operation_title
 from .view_controls import (
     ControlRow,
     NoWheelCheckBox,

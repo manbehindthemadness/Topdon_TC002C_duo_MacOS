@@ -16,6 +16,11 @@ The public `desktop.py`, `pipeline.py`, `pipeline_editor.py`, and
 `pipeline_processing.py` modules retain the entry points and imports used by
 callers. Their implementation lives in these packages:
 
+- `camera_backends/duo/`: Duo capture, frame assembly, queued USB transfers,
+  hardware controls and the macOS authorized USB helper. These transport details
+  are specific to the Duo. `camera_backends/virtual_dual/` owns the synthetic camera;
+  contracts, registration and generic control ownership remain in `camera_backends/`.
+  Root camera/control/USB modules preserve public imports as thin facades.
 - `desktop_app/`: a session coordinator with settings, capture, hardware-control,
   and presentation controllers; shared typed session state; toolbar/graph layout,
   spot handling, overlays, dialogs, and capture helpers.

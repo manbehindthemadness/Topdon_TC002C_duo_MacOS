@@ -7,8 +7,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ..camera import CameraError
 from .contracts import CameraProfile, ControlSpec, ControlValue
+from .errors import CameraError
 
 DUO_NODES = {
     "brightness": ("brightness",), "contrast": ("contrast",),

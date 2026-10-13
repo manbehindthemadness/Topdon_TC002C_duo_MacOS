@@ -7,8 +7,8 @@ from collections import deque
 from collections.abc import Callable, Iterator
 from typing import Any, cast
 
-from .camera import CameraError
 from .camera_backends import CameraFrame, CameraProfile
+from .camera_backends.errors import CameraError
 
 
 class CameraFramePump:

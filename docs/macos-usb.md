@@ -9,6 +9,8 @@ Start the desktop or web viewer as your normal user from a terminal:
 ```
 
 The real Duo backend on macOS starts a separate USB helper through `/usr/bin/sudo`.
+Its client, protocol and service live under `camera_backends/duo/macos_usb/`;
+the private service module is `based_thermals.camera_backends.duo.macos_usb.service`.
 Enter your password in the launching terminal if requested. The helper runs the
 configured interpreter in isolated mode (`-I`) with bytecode writes disabled (`-B`),
 with a minimal environment and `/`

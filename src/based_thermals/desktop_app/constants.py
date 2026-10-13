@@ -5,7 +5,7 @@ Desktop labels, toolbar dimensions, and recording defaults.
 import logging
 
 from .. import APP_NAME
-from ..camera import FRAME_RATE
+from ..camera_backends.duo.camera import FRAME_RATE
 
 LOG = logging.getLogger(__name__)
 WINDOW_NAME = APP_NAME
