@@ -103,6 +103,10 @@ fit within 64 KiB. Generated controls honor pipeline locks, and JSON edits refre
 their displayed values. Controls update configuration; they do not invoke Python
 callbacks in the UI process.
 
+Unfinished text edits survive routine viewer updates and are included when saving
+or exporting the pipeline. Explicit JSON/folder replacements supersede those drafts;
+locking the pipeline discards uncommitted drafts and prevents configuration writes.
+
 Model controls discover ONNX files in the shared cache, bundled models and the
 path library created by Browse (`custom-models.json` in the model cache). Browsing
 registers/selects an existing file without copying it or importing a model. The

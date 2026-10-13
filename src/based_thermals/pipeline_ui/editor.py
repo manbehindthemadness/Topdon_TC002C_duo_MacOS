@@ -267,7 +267,7 @@ class PipelineEditor(PipelineTabs, QWidget):
 
     def commit_pending_inputs(self) -> None:
         """
-        Include spinbox edits that are still waiting on their debounce timer.
+        Include pending ordinary controls and Custom input drafts in saved snapshots.
         """
         control_groups = [controls for _, controls, *_ in list(self.widgets.values())]
         control_groups.extend(fields.rows for fields in self.hardware_widgets.values())
@@ -277,6 +277,8 @@ class PipelineEditor(PipelineTabs, QWidget):
                     row.input.interpretText()
                 if row.timer.isActive():
                     row.timer.timeout.emit()
+        for custom in list(self.custom_widgets.values()):
+            custom.commit_pending_inputs()
 
     def create_new_pipeline(self) -> None:
         """

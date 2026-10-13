@@ -563,11 +563,15 @@ Import pipelines and Export pipelines use `.pipeline.json` and remember separate
 directories. Their dialogs offer per-pipeline checkboxes, Select all, and Clear
 selection. Export includes the current pipeline with pending edits and any checked
 saved presets. When the current pipeline is a loaded preset, its current edits
-represent that preset in the checklist. Exporting only an unnamed current pipeline
+represent that preset in the checklist, including unfinished Custom text inputs.
+Exporting only an unnamed current pipeline
 retains the original individual-document format; named or multiple selections use
 a bundle with format `based-thermals-pipelines`, version 1, and a `pipelines` mapping
 from names to complete documents. Each document contains hardware and all four
 software tabs, not units, spots, logging or calibrations.
+
+Each export writes independently before replacing its destination. Concurrent exports
+to the same file leave one complete document; the last successful replacement wins.
 
 Import accepts current bundles, legacy `topdon-duo-pipelines` bundles and original
 individual files, and permits selecting several

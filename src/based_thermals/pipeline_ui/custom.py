@@ -71,9 +71,9 @@ class CustomControls(QWidget):
             layout.addWidget(button)
         self.refresh()
 
-    def refresh(self) -> None:
+    def refresh(self, *, preserve_pending: bool = True) -> None:
         """
-        Reflect accepted package names and the current editor lock.
+        Reflect accepted package names and locks without replacing pending text drafts.
         """
         self.module_label.setText(self.item["params"]["name"] or "Choose a custom module folder")
         params = self.item["params"]
@@ -95,8 +95,18 @@ class CustomControls(QWidget):
             self.layout_box.addWidget(fields)
             self.control_source = control_source
         elif self.fields is not None:
-            self.fields.refresh(values, getattr(self.editor, "last_state", {}))
+            self.fields.refresh(
+                values, getattr(self.editor, "last_state", {}),
+                preserve_pending=preserve_pending and not self.editor.locked,
+            )
         self.setEnabled(not self.editor.locked)
+
+    def commit_pending_inputs(self) -> None:
+        """
+        Include custom input drafts in saves and exports while honoring pipeline locks.
+        """
+        if not self.editor.locked and self.fields is not None:
+            self.fields.commit_pending_inputs()
 
     def change_value(self, key: str, value: Any) -> None:
         """
@@ -108,12 +118,12 @@ class CustomControls(QWidget):
         values = read_json_object(self.item["params"]["config"])
         values[key] = value
         try:
-            self.set_config(json.dumps(values, allow_nan=False))
+            self.set_config(json.dumps(values, allow_nan=False), preserve_pending=True)
         except ValueError as exc:
-            self.refresh()
+            self.refresh(preserve_pending=False)
             QMessageBox.warning(self, "Custom configuration", str(exc))
 
-    def commit(self, params: dict[str, str]) -> None:
+    def commit(self, params: dict[str, str], *, preserve_pending: bool = False) -> None:
         """
         Publish one complete update after all file/config validation succeeds.
         """
@@ -122,7 +132,7 @@ class CustomControls(QWidget):
         candidate = {**self.item["params"], **params}
         validate_custom(candidate)
         self.item["params"].update(candidate)
-        self.refresh()
+        self.refresh(preserve_pending=preserve_pending)
         self.editor.publish()
         self.editor.update_titles()
 
@@ -141,13 +151,16 @@ class CustomControls(QWidget):
         except (OSError, ValueError, UnicodeError) as exc:
             QMessageBox.warning(self, "Custom module", str(exc))
 
-    def set_config(self, text: str) -> None:
+    def set_config(self, text: str, *, preserve_pending: bool = False) -> None:
         """
         Validate and normalize a JSON object before publishing it.
         """
         config = read_json_object(text)
         read_controls(self.item["params"].get("controls", "[]"), config)
-        self.commit({"config": json.dumps(config, indent=2, ensure_ascii=False, allow_nan=False)})
+        self.commit(
+            {"config": json.dumps(config, indent=2, ensure_ascii=False, allow_nan=False)},
+            preserve_pending=preserve_pending,
+        )
 
     def import_json(self) -> None:
         """

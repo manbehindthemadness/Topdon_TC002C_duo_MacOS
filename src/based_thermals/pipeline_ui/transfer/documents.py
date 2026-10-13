@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ...pipeline import validate_pipeline
+from ...preference_io import save_json
 
 BUNDLE_FORMAT = "based-thermals-pipelines"
 LEGACY_BUNDLE_FORMAT = "topdon-duo-pipelines"
@@ -74,10 +75,4 @@ def write_pipelines(path: Path, documents: dict[str, dict[str, Any]], *, single:
         if single and len(validated) == 1
         else {"format": BUNDLE_FORMAT, "version": 1, "pipelines": validated}
     )
-    serialized = json.dumps(payload, indent=2, allow_nan=False) + "\n"
-    temporary = path.with_suffix(".json.tmp")
-    try:
-        temporary.write_text(serialized)
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    save_json(path, payload, indent=2)

@@ -31,7 +31,9 @@ class CustomFields(QWidget):
         Initialize widgets before connecting signals, avoiding unsolicited updates.
         """
         super().__init__()
+        self.changed = changed
         self.fields: dict[str, QWidget] = {}
+        self.text_values: dict[str, str] = {}
         layout = QFormLayout(self)
         for control in controls:
             key, kind = control["key"], control["type"]
@@ -51,6 +53,7 @@ class CustomFields(QWidget):
                 widget.currentTextChanged.connect(lambda value, name=key: changed(name, value))
             elif kind == "text":
                 widget = QLineEdit(values[key])
+                self.text_values[key] = values[key]
                 widget.editingFinished.connect(
                     lambda field=widget, name=key: changed(name, field.text())
                 )
@@ -66,9 +69,22 @@ class CustomFields(QWidget):
             self.fields[key] = widget
             layout.addRow(control["label"], widget)
 
-    def refresh(self, values: dict[str, Any], state: dict[str, Any] | None = None) -> None:
+    def commit_pending_inputs(self) -> None:
         """
-        Reflect JSON edits without emitting processing updates from widget signals.
+        Publish pending text and numeric input before saving or exporting a pipeline.
+        """
+        for key, widget in list(self.fields.items()):
+            if isinstance(widget, QLineEdit) and widget.text() != self.text_values[key]:
+                self.changed(key, widget.text())
+            elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                widget.interpretText()
+
+    def refresh(
+        self, values: dict[str, Any], state: dict[str, Any] | None = None,
+        *, preserve_pending: bool = True,
+    ) -> None:
+        """
+        Reflect accepted values while retaining drafts through unchanged runtime echoes.
         """
         for key, widget in self.fields.items():
             blocker = QSignalBlocker(widget)
@@ -81,7 +97,12 @@ class CustomFields(QWidget):
             elif isinstance(widget, QComboBox):
                 widget.setCurrentText(values[key])
             elif isinstance(widget, QLineEdit):
-                widget.setText(values[key])
+                if (not preserve_pending or not widget.isModified()
+                        or values[key] != self.text_values[key]):
+                    if widget.text() != values[key]:
+                        widget.setText(values[key])
+                    widget.setModified(False)
+                self.text_values[key] = values[key]
             elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
                 widget.setValue(values[key])
             blocker.unblock()

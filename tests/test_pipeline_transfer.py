@@ -3,7 +3,11 @@ Portable pipeline bundles, batch checklists and import conflict resolution.
 """
 
 import json
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier, Event
+from typing import cast
 
 import pytest
 from support.pipeline import multi_tab_pipeline as default_pipeline
@@ -83,7 +87,52 @@ def test_export_failure_preserves_existing_file(
     with pytest.raises(OSError, match="disk full"):
         write_pipelines(path, {"New": default_pipeline()}, single=False)
     assert path.read_text() == "old contents"
-    assert not path.with_suffix(".json.tmp").exists()
+    assert list(tmp_path.iterdir()) == [path]
+
+
+@pytest.mark.parametrize("fail_second", [False, True])
+def test_concurrent_exports_keep_independent_payloads_and_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_second: bool,
+) -> None:
+    """
+    Interleave writers to one destination without swapping payloads or deleting sibling temps.
+    """
+    path = tmp_path / "shared.pipeline.json"
+    barrier, first_replaced = Barrier(2), Event()
+    replace = cast(Callable[[Path, Path], Path], Path.replace)
+    temporary_paths: dict[str, Path] = {}
+
+    def interleaved_replace(source: Path, destination: Path) -> Path:
+        """
+        Pause both complete writes before replacement and force the first export to commit first.
+        """
+        name = next(iter(json.loads(source.read_text())["pipelines"]))
+        temporary_paths[name] = source
+        barrier.wait(timeout=5)
+        if name == "Second":
+            assert first_replaced.wait(5)
+            if fail_second:
+                raise OSError("second export failed")
+        result = replace(source, destination)
+        assert list(json.loads(destination.read_text())["pipelines"]) == [name]
+        if name == "First":
+            first_replaced.set()
+        return result
+
+    monkeypatch.setattr(Path, "replace", interleaved_replace)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(write_pipelines, path, {"First": default_pipeline()}, single=False)
+        second = executor.submit(write_pipelines, path, {"Second": default_pipeline()}, single=False)
+        first.result(timeout=10)
+        if fail_second:
+            with pytest.raises(OSError, match="second export failed"):
+                second.result(timeout=10)
+        else:
+            second.result(timeout=10)
+    assert temporary_paths["First"] != temporary_paths["Second"]
+    expected = "First" if fail_second else "Second"
+    assert [item.name for item in read_pipelines(path)] == [expected]
+    assert list(tmp_path.iterdir()) == [path]
 
 
 def test_batch_dialogs_import_export_conflicts_and_failures(tmp_path: Path) -> None:
