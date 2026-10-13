@@ -28,7 +28,7 @@ def update_hardware_ui(window: Any, state: dict[str, Any], locked: bool) -> None
         row = ControlRow(
             spec["title"], lambda value, field=name: window.send_hardware_command({
                 "action": "hardware", "name": field, "value": value, "enabled": True,
-            }), preserve_input=name == "ambient", **row_options(spec),
+            }), preserve_input=name == "ambient", release_only=True, **row_options(spec),
         )
         previous = window.hardware_rows.get(name)
         if previous is not None:

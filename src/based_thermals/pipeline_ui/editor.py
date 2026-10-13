@@ -647,6 +647,7 @@ class PipelineEditor(PipelineTabs, QWidget):
                         if item["type"] == "combine" and key in ("tab", "mask_source")
                         else spec.options,
                         unit=spec.unit,
+                        release_only=stack != "software",
                     )
                     if key == "apple_compute":
                         update_compute_devices(

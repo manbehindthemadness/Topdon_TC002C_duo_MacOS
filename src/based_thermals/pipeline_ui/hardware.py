@@ -119,7 +119,7 @@ class HardwareControlFields(QWidget):
             if spec:
                 value = self.editor.row_class(
                     spec["title"], lambda selected: self.editor.change(self.item, "value", selected),
-                    **row_options(spec),
+                    release_only=True, **row_options(spec),
                 )
                 self.layout_rows.addWidget(value)
                 self.rows["value"] = value

@@ -33,6 +33,10 @@ overrides are restored on orderly exit. Ambient/reflected temperature, optical
 transmission, relative humidity, distance and emissivity remain calibration controls
 outside this stack. Use [calibration guidance](calibration.md) for those settings.
 
+Camera hardware and calibration sliders show their tentative value while held and
+apply it once on release. Numeric fields retain their normal input behavior;
+software-processing sliders are unchanged.
+
 **Fixed detail** is a special mode inside Detail enhancement. It requires enabled
 detail, Balanced processing, neutral camera gamma (50), and boost Off. Ordinary
 processing presets do not all require this combination. Read the actual rejection

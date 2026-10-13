@@ -461,7 +461,13 @@ class ViewWindow(QWidget):
         rows.addWidget(units)
         for name in ("ambient", "distance", "emissivity", "reflected", "transmission", "humidity"):
             spec = HARDWARE_CONTROLS[name]
-            row = ControlRow(spec.title, lambda value, field=name: self._send({"action": "hardware", "name": field, "value": value, "enabled": True}), minimum=spec.minimum, maximum=spec.maximum, step=spec.step, options=spec.options, unit=spec.unit, preserve_input=name == "ambient")
+            row = ControlRow(
+                spec.title, lambda value, field=name: self._send({
+                    "action": "hardware", "name": field, "value": value, "enabled": True,
+                }), minimum=spec.minimum, maximum=spec.maximum, step=spec.step,
+                options=spec.options, unit=spec.unit, preserve_input=name == "ambient",
+                release_only=True,
+            )
             self.hardware_rows[name] = row
             rows.addWidget(row)
         self.distance_calibration = DistanceCalibrationControls(self._send)

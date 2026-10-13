@@ -57,7 +57,7 @@ class SpotHardwareControls(QWidget):
             self.rows = {}
             for name, spec in specs.items():
                 row = ControlRow(spec["title"], lambda value, field=name: self.change(field, value),
-                                 **row_options(spec))
+                                 release_only=True, **row_options(spec))
                 self.layout_rows.addWidget(row)
                 self.rows[name] = row
             self.signature = signature

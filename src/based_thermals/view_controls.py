@@ -6,8 +6,8 @@ from collections.abc import Callable, Sequence
 from decimal import Decimal
 from typing import Any
 
-from PySide6.QtCore import QSignalBlocker, Qt, QTimer
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtCore import QEvent, QSignalBlocker, Qt, QTimer, Signal
+from PySide6.QtGui import QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -24,8 +24,50 @@ from .view_settings import DISTANCE_METERS_PER_UNIT
 
 class NoWheelSlider(QSlider):
     """
-    Let the surrounding scroll area handle mouse-wheel input.
+    Track mouse interactions over both the handle and track while ignoring wheel input.
     """
+
+    interactionStarted = Signal()
+    interactionFinished = Signal()
+
+    def __init__(self, orientation: Qt.Orientation, parent: QWidget | None = None) -> None:
+        """
+        Initialize mouse tracking separately from Qt's handle-only slider-down state.
+        """
+        super().__init__(orientation, parent)
+        self._mouse_interaction = False
+
+    def is_interacting(self) -> bool:
+        """
+        Report a held mouse gesture or a native handle drag.
+        """
+        return self._mouse_interaction or self.isSliderDown()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """
+        Suspend outgoing edits before Qt changes the handle or track position.
+        """
+        if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
+            self._mouse_interaction = True
+            self.interactionStarted.emit()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """
+        Commit after Qt has finalized the released mouse position.
+        """
+        super().mouseReleaseEvent(event)
+        if event.button() == Qt.MouseButton.LeftButton and self._mouse_interaction:
+            self._mouse_interaction = False
+            self.interactionFinished.emit()
+
+    def changeEvent(self, event: QEvent) -> None:
+        """
+        Cancel held mouse state when a lock or unavailable control disables the slider.
+        """
+        if event.type() == QEvent.Type.EnabledChange and not self.isEnabled():
+            self._mouse_interaction = False
+        super().changeEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         """
@@ -88,12 +130,14 @@ class ControlRow(QWidget):
         options: Sequence[tuple[Any, str]] = (),
         unit: str = "",
         preserve_input: bool = False,
+        release_only: bool = False,
     ) -> None:
         """
-        Build one numeric, choice or toggle control with debounced user edits.
+        Build controls with optional hardware mouse-slider updates only on release.
         """
         super().__init__()
         self.preserve_input = preserve_input
+        self.release_only = release_only
         self.changed = changed
         self.options = tuple(options)
         self.is_switch = tuple(text for _, text in self.options) == ("Off", "On")
@@ -149,6 +193,10 @@ class ControlRow(QWidget):
             self.slider.setAccessibleName(f"{title} slider")
             self.slider.setRange(0, round((maximum - minimum) / step))
             self.slider.valueChanged.connect(self._slider_changed)
+            if release_only:
+                self.slider.interactionStarted.connect(self.timer.stop)
+                self.slider.interactionFinished.connect(self._emit)
+                self.slider.sliderPressed.connect(self.timer.stop)
             self.slider.sliderReleased.connect(self._emit)
             line.addWidget(self.slider, 1)
         else:
@@ -278,19 +326,23 @@ class ControlRow(QWidget):
 
     def _slider_changed(self, position: int) -> None:
         """
-        Synchronize a slider edit and debounce changes outside an active drag.
+        Synchronize slider movement and apply the selected hardware-release policy.
         """
         value = self.minimum + position * self.step
         self._set_value(value)
-        if self.input.isEnabled() and self.slider is not None and not self.slider.isSliderDown():
+        if self.release_only and self.slider is not None and self.slider.is_interacting():
+            self.timer.stop()
+        elif self.input.isEnabled() and self.slider is not None and not self.slider.isSliderDown():
             self.timer.start()
 
     def _emit(self) -> None:
         """
-        Send the current enabled value and clear its pending debounce.
+        Respect the hardware release policy when publishing the enabled value.
         """
         self.timer.stop()
-        if self.input.isEnabled():
+        if self.input.isEnabled() and not (
+            self.release_only and self.slider is not None and self.slider.is_interacting()
+        ):
             self.changed(self.value())
 
     def update_state(self, value: Any, available: bool = True) -> None:
@@ -298,7 +350,10 @@ class ControlRow(QWidget):
         Apply external state while preserving active local edits.
         """
         self._set_enabled(available)
-        if self.timer.isActive() or (self.slider is not None and self.slider.isSliderDown()):
+        interacting = self.slider is not None and (
+            self.slider.is_interacting() if self.release_only else self.slider.isSliderDown()
+        )
+        if self.timer.isActive() or interacting:
             return
         if value != self.value():
             self._set_value(value)
