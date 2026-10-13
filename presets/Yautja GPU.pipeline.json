@@ -240,7 +240,7 @@
           "source": "raw"
         },
         "bypass": false,
-        "expanded": true
+        "expanded": false
       },
       {
         "id": "22e61683fda5478e939e41ca7e0c86f4",
@@ -249,7 +249,7 @@
           "amount": 3
         },
         "bypass": false,
-        "expanded": true
+        "expanded": false
       },
       {
         "id": "6bfd78976d0942e8bc02750b83c710dd",
@@ -276,7 +276,7 @@
           "palette": "camera_19"
         },
         "bypass": false,
-        "expanded": true
+        "expanded": false
       },
       {
         "id": "861039472bd046ae9b4c8e914de59619",

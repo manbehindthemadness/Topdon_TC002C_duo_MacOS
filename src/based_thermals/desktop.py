@@ -67,6 +67,7 @@ from .pipeline import (
     validate_pipeline,
 )
 from .pipeline_hardware import PIPELINE_FIELDS, PipelineHardware, desired_hardware
+from .pipeline_presets import predefined_presets
 from .pipeline_processing import PipelineWorker
 from .pointer import PointerMonitor
 from .recording import VideoRecorder
@@ -257,6 +258,7 @@ __all__ = [
     "parse_args",
     "pipeline_hardware_fields",
     "place_temperature_label",
+    "predefined_presets",
     "raw_temperatures",
     "remember_dialog_directory",
     "replace",

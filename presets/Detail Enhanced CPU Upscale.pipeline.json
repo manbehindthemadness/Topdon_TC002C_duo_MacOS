@@ -8,7 +8,48 @@
         "value": "balanced"
       },
       "bypass": false,
-      "expanded": true
+      "expanded": false
+    },
+    {
+      "id": "55ff004d98e348a383d49e3f9312ec2d",
+      "type": "boost",
+      "params": {
+        "value": 3
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "5814c404058f404fb1b4407b11267d56",
+      "type": "camera_colors",
+      "params": {
+        "palette": 10
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "d9d2b46c979a4a679f9f623f017812a6",
+      "type": "detail",
+      "params": {
+        "enabled": true,
+        "amount": 70.0,
+        "fixed": false
+      },
+      "bypass": false,
+      "expanded": false
+    },
+    {
+      "id": "c26e50cbd895408fa0b9fd18772563da",
+      "type": "noise",
+      "params": {
+        "noise_mode": 2.0,
+        "noise_general": 100.0,
+        "noise_spatial": 100.0,
+        "noise_temporal": 100.0
+      },
+      "bypass": false,
+      "expanded": false
     }
   ],
   "software": [
@@ -17,15 +58,6 @@
       "type": "source",
       "params": {
         "source": "preview"
-      },
-      "bypass": false,
-      "expanded": false
-    },
-    {
-      "id": "427064fad32649f7bfa52c298091a3e4",
-      "type": "colors",
-      "params": {
-        "palette": "plasma"
       },
       "bypass": false,
       "expanded": false
@@ -52,42 +84,6 @@
       },
       "bypass": false,
       "expanded": false
-    },
-    {
-      "id": "ccbc7cede58e4c07a7cd136e8cea5552",
-      "type": "filter",
-      "params": {
-        "filter": "clahe",
-        "mix": 1.0,
-        "kernel": 0,
-        "sigma": 0.8,
-        "sigma_color": 21.0,
-        "sigma_space": 3.0,
-        "channels": "color",
-        "border": "reflect",
-        "direction": "magnitude",
-        "gain": 1.0,
-        "edge_low": 50,
-        "edge_high": 150,
-        "l2_gradient": false,
-        "clip_limit": 2.0,
-        "tile_size": 5.0,
-        "threshold": 127,
-        "threshold_type": "binary",
-        "maximum": 255,
-        "block_size": 11,
-        "adaptive_method": "gaussian",
-        "adaptive_c": 2.0,
-        "invert": false,
-        "morph_operation": "open",
-        "shape": "ellipse",
-        "iterations": 1,
-        "emboss_direction": "se",
-        "offset": 128,
-        "amount": 0.7
-      },
-      "bypass": false,
-      "expanded": true
     },
     {
       "id": "f8fa7fccf5284b14b54f5e7bfa7cc29d",
@@ -129,13 +125,13 @@
       "id": "dcdc9097a65c442f95bc0c07c171ca2a",
       "type": "antialiasing",
       "params": {
-        "amount": 1.23
+        "amount": 0.87
       },
       "bypass": false,
       "expanded": false
     },
     {
-      "id": "1a76366707734f339deb45939a4ae334",
+      "id": "541be8db2ba34f1d951736e06642af51",
       "type": "enhance",
       "params": {
         "model": "acnet",
@@ -174,7 +170,7 @@
         "type": "filter",
         "params": {
           "filter": "scharr",
-          "mix": 1,
+          "mix": 0.77,
           "kernel": 0,
           "sigma": 0.8,
           "sigma_color": 21,
@@ -182,7 +178,7 @@
           "channels": "color",
           "border": "reflect",
           "direction": "magnitude",
-          "gain": 0.52,
+          "gain": 0.46,
           "edge_low": 50,
           "edge_high": 150,
           "l2_gradient": false,
@@ -201,6 +197,42 @@
           "emboss_direction": "se",
           "offset": 128,
           "amount": 0.7
+        },
+        "bypass": false,
+        "expanded": false
+      },
+      {
+        "id": "d70aad88413c4d62bbc892e53f69a61f",
+        "type": "filter",
+        "params": {
+          "filter": "sharpen",
+          "mix": 1,
+          "kernel": 0,
+          "sigma": 1.2,
+          "sigma_color": 21,
+          "sigma_space": 3,
+          "channels": "color",
+          "border": "reflect",
+          "direction": "magnitude",
+          "gain": 1,
+          "edge_low": 50,
+          "edge_high": 150,
+          "l2_gradient": false,
+          "clip_limit": 2,
+          "tile_size": 8,
+          "threshold": 127,
+          "threshold_type": "binary",
+          "maximum": 255,
+          "block_size": 11,
+          "adaptive_method": "gaussian",
+          "adaptive_c": 2,
+          "invert": false,
+          "morph_operation": "open",
+          "shape": "ellipse",
+          "iterations": 1,
+          "emboss_direction": "se",
+          "offset": 128,
+          "amount": 2.83
         },
         "bypass": false,
         "expanded": false

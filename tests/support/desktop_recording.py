@@ -26,6 +26,8 @@ def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     monkeypatch.setattr(desktop, "parse_args", lambda argv: parse_args(["--scale", "3", *argv]))
     monkeypatch.setattr(desktop.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    # Interaction/recording assertions use the unconfigured display as their fixed baseline.
+    desktop.save_settings({"pipeline": desktop.migrate_pipeline({})})
     hardware = Mock(original={"loaded": True}, enabled=set(), error="", preview_active=False)
     hardware.processing_preset = "balanced"
     hardware.gamma = 50

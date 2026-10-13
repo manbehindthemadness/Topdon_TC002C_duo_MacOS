@@ -24,7 +24,7 @@
       "type": "detail",
       "params": {
         "enabled": true,
-        "amount": 66.0,
+        "amount": 96.0,
         "fixed": false
       },
       "bypass": false,
@@ -63,7 +63,7 @@
         "mask_source": "B",
         "mask_kind": "luminance",
         "mask_threshold": 127,
-        "mask_invert": false,
+        "mask_invert": true,
         "raw_low": 15.0,
         "raw_high": 45.0,
         "base_weight": 1.0,
@@ -77,22 +77,13 @@
       "expanded": false
     },
     {
-      "id": "985470820ae04430a7b44bb0caa1c2b5",
-      "type": "antialiasing",
-      "params": {
-        "amount": 1.7
-      },
-      "bypass": false,
-      "expanded": false
-    },
-    {
       "id": "d5c7233e9f074271ad083d0aefc08156",
       "type": "filter",
       "params": {
         "filter": "sharpen",
-        "mix": 0.2,
+        "mix": 0.81,
         "kernel": 0,
-        "sigma": 6.5,
+        "sigma": 0.1,
         "sigma_color": 21.0,
         "sigma_space": 3.0,
         "channels": "color",
@@ -116,7 +107,7 @@
         "iterations": 1,
         "emboss_direction": "se",
         "offset": 128,
-        "amount": 3.0
+        "amount": 2.21
       },
       "bypass": false,
       "expanded": false
@@ -125,9 +116,9 @@
       "id": "f64936ef646b492b9326e098546a3259",
       "type": "enhance",
       "params": {
-        "model": "dncnn-25",
+        "model": "ffdnet-gray",
         "denoise": 0,
-        "noise": 15,
+        "noise": 5.0,
         "input": "native",
         "amount": 1.0,
         "passes": 3,
@@ -163,7 +154,7 @@
           "method": "bicubic",
           "scale": 4
         },
-        "bypass": false,
+        "bypass": true,
         "expanded": false
       },
       {
@@ -173,7 +164,7 @@
           "low": -20.0,
           "high": 37.8
         },
-        "bypass": false,
+        "bypass": true,
         "expanded": false
       },
       {
@@ -182,7 +173,7 @@
         "params": {
           "amount": 0.43
         },
-        "bypass": false,
+        "bypass": true,
         "expanded": false
       },
       {
@@ -190,6 +181,42 @@
         "type": "contrast",
         "params": {
           "amount": 2.67
+        },
+        "bypass": true,
+        "expanded": false
+      },
+      {
+        "id": "7465cf20754642539b58f483d0cdcc81",
+        "type": "filter",
+        "params": {
+          "filter": "sharpen",
+          "mix": 1.0,
+          "kernel": 0,
+          "sigma": 0.6,
+          "sigma_color": 21.0,
+          "sigma_space": 3.0,
+          "channels": "color",
+          "border": "reflect",
+          "direction": "magnitude",
+          "gain": 1.0,
+          "edge_low": 50,
+          "edge_high": 150,
+          "l2_gradient": false,
+          "clip_limit": 2.0,
+          "tile_size": 8,
+          "threshold": 127,
+          "threshold_type": "binary",
+          "maximum": 255,
+          "block_size": 11,
+          "adaptive_method": "gaussian",
+          "adaptive_c": 2.0,
+          "invert": false,
+          "morph_operation": "open",
+          "shape": "ellipse",
+          "iterations": 1,
+          "emboss_direction": "se",
+          "offset": 128,
+          "amount": 2.81
         },
         "bypass": false,
         "expanded": false
@@ -199,7 +226,7 @@
         "type": "preview",
         "params": {},
         "bypass": false,
-        "expanded": true
+        "expanded": false
       }
     ],
     "C": [

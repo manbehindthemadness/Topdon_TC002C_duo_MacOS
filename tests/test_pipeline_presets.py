@@ -108,6 +108,10 @@ def test_predefined_yautja_gpu_preserves_compositing_and_realesr_settings() -> N
 @pytest.mark.parametrize(
     "name",
     [
+        "Detail Enhanced GPU Upscale",
+        "Redneck Combat",
+        "Redneck Combat GPU",
+        "Yautja",
         "Yautja GPU",
         "Reaper Night GPU",
         "Reaper Day GPU",

@@ -91,7 +91,7 @@ def test_corrupt_main_window_preferences_fall_back_to_image_size(
     Ignore malformed window preferences and use the current image dimensions.
     """
     path = tmp_path / "config/based-thermals/main-window.json"
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("invalid json")
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0

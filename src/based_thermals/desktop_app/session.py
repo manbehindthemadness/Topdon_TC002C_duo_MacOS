@@ -105,9 +105,12 @@ class DesktopSession(
             self.renderer.set_view_setting(name, value)
         if self.args.image_source is not None:
             self.renderer.set_view_setting("image_source", self.args.image_source)
-        self.pipeline = self.saved_settings.get("pipeline") or self.api.migrate_pipeline(
-            self.saved_settings
-        )
+        if not self.saved_settings and self.camera_profile.id == "duo":
+            self.pipeline = self.api.predefined_presets()["Detail Enhanced CPU Upscale"]
+        else:
+            self.pipeline = self.saved_settings.get("pipeline") or self.api.migrate_pipeline(
+                self.saved_settings
+            )
         if self.args.image_source is not None:
             self.pipeline["software"][0]["params"]["source"] = (
                 "raw" if self.args.image_source == "analyze" else self.args.image_source

@@ -52,9 +52,11 @@ the hardware stack and every software tab, persist across restarts, and can
 still be exported as JSON.
 The bundled collection includes Detail Enhanced GPU Upscale, Detail Enhanced CPU
 Upscale, Redneck Combat, Redneck Combat GPU, Yautja, Yautja GPU, Reaper Night GPU,
-and Reaper Day GPU. The current saved Yautja GPU, Reaper Night/Day GPU, and Detail
-Enhanced CPU Upscale configurations are captured as individual exports in `presets/`
-and included in the package defaults, so they are available without local preferences.
+and Reaper Day GPU. All eight current saved configurations are captured as
+individual exports in `presets/` and included in the package defaults, so they are
+available without local preferences. Fresh Duo installations start with
+**Detail Enhanced CPU Upscale**; existing installations restore their last working
+pipeline. Other camera profiles retain their own capability-based startup behavior.
 **Create new** starts a blank, unsaved pipeline: the hardware stack is empty,
 tab A contains only Source and Output, with no auxiliary tabs. It returns
 the editor to tab A and leaves saved presets unchanged.
