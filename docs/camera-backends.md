@@ -28,6 +28,12 @@ The root `camera.py`, `queued_usb.py`, `hardware_controls.py` and old
 Application imports use the owning backend packages. Importing shared contracts
 or constructing the virtual backend does not load the Duo USB implementation.
 
+Duo assembly rejects payloads with an invalid frame header on both macOS and
+Linux, including trailing data delivered during shutdown. Rejections are counted
+as `magic_mismatch` in stream diagnostics and do not reach the renderer. macOS
+retains its supported frame-size tolerance; Linux still requires the exact
+negotiated size.
+
 On macOS, normal-user Duo factories select the private USB helper facade described
 in [macOS USB authorization](macos-usb.md). The original Duo USB protocol and queued
 capture run in the authorized helper; decoding, controls ownership, processing and
