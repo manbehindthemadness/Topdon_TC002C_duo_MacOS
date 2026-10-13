@@ -12,10 +12,10 @@ import pytest
 from support.frames import make_frame
 from support.pipeline import raw_pipeline
 
-from topdon_duo.custom_nodes.bundle import load_folder, package_files, read_json_object
-from topdon_duo.custom_nodes.runtime import CustomProcessor
-from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.processing.branch import BranchProcessor
+from based_thermals.custom_nodes.bundle import load_folder, package_files, read_json_object
+from based_thermals.custom_nodes.runtime import CustomProcessor
+from based_thermals.pipeline import node, validate_pipeline
+from based_thermals.processing.branch import BranchProcessor
 
 
 @pytest.mark.parametrize(

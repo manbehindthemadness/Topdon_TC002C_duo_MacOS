@@ -6,9 +6,9 @@ import pytest
 from test_camera import make_frame
 from test_render import frame_with_preview
 
-from topdon_duo.anime4k09 import upscale_anime4k09
-from topdon_duo.render import ThermalRenderer
-from topdon_duo.upsampling import VisionUpsampler
+from based_thermals.anime4k09 import upscale_anime4k09
+from based_thermals.render import ThermalRenderer
+from based_thermals.upsampling import VisionUpsampler
 
 
 @pytest.mark.parametrize("level", range(4))

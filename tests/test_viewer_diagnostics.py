@@ -1,7 +1,7 @@
 import json
 from unittest.mock import Mock
 
-from topdon_duo import viewer_diagnostics
+from based_thermals import viewer_diagnostics
 
 
 def records(path):

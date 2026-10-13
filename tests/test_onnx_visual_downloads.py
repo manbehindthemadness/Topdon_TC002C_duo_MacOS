@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from topdon_duo import onnx_models
+from based_thermals import onnx_models
 
 
 def test_denoiser_download_needs_export_and_no_network(

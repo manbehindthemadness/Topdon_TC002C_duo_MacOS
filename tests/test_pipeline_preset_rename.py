@@ -16,9 +16,9 @@ def test_rename_preserves_edits_handles_collisions_and_persists(tmp_path: Path) 
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
-import topdon_duo.pipeline_ui.presets as preset_ui
-from topdon_duo.pipeline_presets import load_presets, predefined_presets
-from topdon_duo.view_window import ViewWindow
+import based_thermals.pipeline_ui.presets as preset_ui
+from based_thermals.pipeline_presets import load_presets, predefined_presets
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

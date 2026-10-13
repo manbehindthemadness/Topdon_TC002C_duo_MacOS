@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from test_camera import make_frame
 
-from topdon_duo.desktop import (
+from based_thermals.desktop import (
     LinuxSaveDialog,
     MacSaveDialog,
     MousePicker,
@@ -23,11 +23,11 @@ from topdon_duo.desktop import (
     toolbar_action_at,
     toolbar_layout,
 )
-from topdon_duo.render import READOUT_HEIGHT, ThermalRenderer, draw_temperature_readout
+from based_thermals.render import READOUT_HEIGHT, ThermalRenderer, draw_temperature_readout
 
 
 def test_native_display_default_and_size_reset_option():
-    from topdon_duo import desktop
+    from based_thermals import desktop
 
     assert desktop.parse_args([]).scale == 4
     assert not desktop.parse_args([]).reset_window_size
@@ -37,7 +37,7 @@ def test_native_display_default_and_size_reset_option():
 
 @pytest.mark.parametrize("platform,expected", [("linux", 32), ("darwin", 32), ("win32", 0)])
 def test_usb_queue_default_and_synchronous_override(monkeypatch, platform, expected):
-    from topdon_duo import desktop
+    from based_thermals import desktop
 
     monkeypatch.setattr(desktop.sys, "platform", platform)
     assert desktop.parse_args([]).usb_queue_depth == expected
@@ -135,7 +135,7 @@ def test_native_save_dialog_returns_selected_path(monkeypatch, tmp_path):
             return f"{chosen_path}\n", ""
 
     monkeypatch.setattr(
-        "topdon_duo.desktop.subprocess.Popen", lambda *_args, **_kwargs: FinishedProcess()
+        "based_thermals.desktop.subprocess.Popen", lambda *_args, **_kwargs: FinishedProcess()
     )
     dialog = MacSaveDialog()
     assert dialog.open(tmp_path)
@@ -164,7 +164,7 @@ def test_linux_save_cancellation_and_nonblocking_poll(monkeypatch, caplog):
     process = Mock(returncode=1)
     process.poll.side_effect = [None, 1]
     process.communicate.return_value = ("", "")
-    monkeypatch.setattr("topdon_duo.desktop.subprocess.Popen", lambda *a, **kw: process)
+    monkeypatch.setattr("based_thermals.desktop.subprocess.Popen", lambda *a, **kw: process)
     dialog = LinuxSaveDialog()
     assert dialog.open()
     assert not dialog.open()
@@ -204,7 +204,7 @@ def test_mouse_picker_hides_on_window_exit_without_mouse_event_and_reappears(mon
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     picker = MousePicker(x=123, y=201)
     put_text = Mock(wraps=cv2.putText)
-    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    monkeypatch.setattr("based_thermals.desktop.cv2.putText", put_text)
     image, selected = draw_picker(rendered, picker, scale=3, pointer_over_image=False)
     assert selected is None
     assert np.array_equal(image, rendered.image)
@@ -244,7 +244,7 @@ def test_mouse_picker_hides_marker_and_reading_outside_image(
 def test_native_mouse_coordinates_are_already_image_pixels(
     monkeypatch, rotation, viewport_scale, platform
 ):
-    monkeypatch.setattr("topdon_duo.desktop.sys.platform", platform)
+    monkeypatch.setattr("based_thermals.desktop.sys.platform", platform)
     rendered = ThermalRenderer(scale=3, rotation=rotation).render_detailed(make_frame())
     layout = toolbar_layout(rendered.image.shape[1])
     canvas_height = rendered.image.shape[0] + layout.height
@@ -256,7 +256,7 @@ def test_native_mouse_coordinates_are_already_image_pixels(
             int(canvas_height * viewport_scale),
         )
     )
-    monkeypatch.setattr("topdon_duo.desktop.cv2.getWindowImageRect", get_rect)
+    monkeypatch.setattr("based_thermals.desktop.cv2.getWindowImageRect", get_rect)
     viewport = mouse_viewport_size()
     # Qt/GTK/Cocoa have mapped the physical pointer to these canvas pixels.
     picker = MousePicker()
@@ -291,9 +291,9 @@ def test_native_mouse_coordinates_are_already_image_pixels(
 
 
 def test_other_backends_keep_viewport_scaling(monkeypatch):
-    monkeypatch.setattr("topdon_duo.desktop.sys.platform", "win32")
+    monkeypatch.setattr("based_thermals.desktop.sys.platform", "win32")
     get_rect = Mock(return_value=(100, 200, 384, 288))
-    monkeypatch.setattr("topdon_duo.desktop.cv2.getWindowImageRect", get_rect)
+    monkeypatch.setattr("based_thermals.desktop.cv2.getWindowImageRect", get_rect)
     assert mouse_viewport_size() == (384, 288)
     get_rect.assert_called_once()
     get_rect.side_effect = cv2.error("Image rectangle unavailable")
@@ -350,7 +350,7 @@ def test_spot_placement_maps_viewport_and_rejects_toolbar_and_outside(viewport_s
 
 
 def test_spots_stay_on_same_sensor_pixels_through_four_rotations():
-    from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS
+    from based_thermals.camera import HEADER_U16, SENSOR_PIXELS
 
     values = np.frombuffer(make_frame(), dtype="<u2").copy()
     values[HEADER_U16 : HEADER_U16 + SENSOR_PIXELS] = np.arange(SENSOR_PIXELS) + 10000
@@ -383,7 +383,7 @@ def test_spots_draw_inverted_markers_and_live_readings(monkeypatch):
     spots = SampleSpots(placing=True, pixels=[(41, 67), (80, 90)])
     original = rendered.image.copy()
     put_text = Mock(wraps=cv2.putText)
-    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    monkeypatch.setattr("based_thermals.desktop.cv2.putText", put_text)
     for temperature, unit, expected in ((20, "C", "20.00 C"), (25, "F", "77.00 F")):
         frame = replace(rendered, temperatures_celsius=np.full((192, 256), temperature))
         result = draw_sample_spots(rendered.image, frame, spots, 3, unit)
@@ -409,7 +409,7 @@ def test_desktop_spot_control_places_multiple_spots_rotates_and_stops_placement(
     """
     Exercise spot placement independently of the host platform's native window server.
     """
-    from topdon_duo import desktop
+    from based_thermals import desktop
 
     startup = []
     monkeypatch.setattr(desktop.sys, "platform", "linux")
@@ -554,7 +554,7 @@ def test_spot_labels_avoid_each_other_markers_and_image_edges(monkeypatch, pixel
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     spots = SampleSpots(pixels=pixels)
     put_text = Mock(wraps=cv2.putText)
-    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    monkeypatch.setattr("based_thermals.desktop.cv2.putText", put_text)
     image = draw_sample_spots(rendered.image, rendered, spots, 3, unit)
     boxes = [label_bounds(call) for call in put_text.call_args_list]
     assert len(boxes) == len(pixels)
@@ -574,7 +574,7 @@ def test_mouse_reading_avoids_fixed_spot_labels(monkeypatch):
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     spots = SampleSpots(pixels=[(30, 41), (37, 41), (46, 41)])
     put_text = Mock(wraps=cv2.putText)
-    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
+    monkeypatch.setattr("based_thermals.desktop.cv2.putText", put_text)
     draw_sample_spots(rendered.image, rendered, spots, 3)
     fixed_boxes = [label_bounds(call) for call in put_text.call_args_list]
     put_text.reset_mock()
@@ -593,7 +593,7 @@ def test_all_labels_including_first_have_connecting_lines(monkeypatch: pytest.Mo
     # the crosshair, both within the old 16-pixel cutoff for connecting lines.
     spots = SampleSpots(pixels=[(41, 67)] * 3)
     line = Mock(wraps=cv2.line)
-    monkeypatch.setattr("topdon_duo.desktop.cv2.line", line)
+    monkeypatch.setattr("based_thermals.desktop.cv2.line", line)
     draw_sample_spots(rendered.image, rendered, spots, 3)
     assert line.call_count == 3
     for call in line.call_args_list:
@@ -607,7 +607,7 @@ def test_displaced_mouse_label_has_connecting_line(monkeypatch):
     rendered = ThermalRenderer(scale=3).render_detailed(make_frame())
     spots = SampleSpots(pixels=[(41, 67)])
     line = Mock(wraps=cv2.line)
-    monkeypatch.setattr("topdon_duo.desktop.cv2.line", line)
+    monkeypatch.setattr("based_thermals.desktop.cv2.line", line)
     _, selected = draw_picker(rendered, MousePicker(x=124, y=214), 3, spots=spots)
     assert selected == (41, 71)
     line.assert_called_once()
@@ -647,8 +647,8 @@ def test_cursor_label_hidden_over_enabled_spot_or_during_drag(
         x, y = image_x // 2 + offset, (image_y + toolbar_height) // 2
     put_text = Mock(wraps=cv2.putText)
     line = Mock(wraps=cv2.line)
-    monkeypatch.setattr("topdon_duo.desktop.cv2.putText", put_text)
-    monkeypatch.setattr("topdon_duo.desktop.cv2.line", line)
+    monkeypatch.setattr("based_thermals.desktop.cv2.putText", put_text)
+    monkeypatch.setattr("based_thermals.desktop.cv2.line", line)
     image, selected = draw_picker(
         rendered,
         MousePicker(x=x, y=y),

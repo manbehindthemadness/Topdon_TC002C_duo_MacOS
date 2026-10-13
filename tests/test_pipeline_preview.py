@@ -15,9 +15,9 @@ from support.pipeline import multi_tab_pipeline as default_pipeline
 from test_capture_panel import popup_environment
 from test_render import frame_with_preview
 
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_processing import PipelineProcessor, PipelineWorker
-from topdon_duo.processing.branch import BranchProcessor
+from based_thermals.pipeline import node
+from based_thermals.pipeline_processing import PipelineProcessor, PipelineWorker
+from based_thermals.processing.branch import BranchProcessor
 
 
 def preview_document():
@@ -65,7 +65,7 @@ def test_node_snapshots_are_at_their_position_and_preserve_final_image():
 
 
 def test_collapsed_bypassed_and_closed_window_previews_do_no_thumbnail_work(monkeypatch):
-    import topdon_duo.processing.branch as processing
+    import based_thermals.processing.branch as processing
 
     document, before, after = preview_document()
     frame, _ = frame_with_preview()
@@ -113,7 +113,7 @@ def test_expanded_preview_activates_disconnected_tab_and_stops_when_collapsed():
 
 
 def test_preview_flags_persist_in_pipeline_preferences(tmp_path, monkeypatch):
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     document, before, after = preview_document()
@@ -179,8 +179,8 @@ import base64, sys
 from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import default_pipeline, node
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import default_pipeline, node
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)
@@ -354,8 +354,8 @@ def test_preview_failure_propagates_to_preview_consumers_without_blocking_a(monk
 def test_camera_open_and_reopen_collapse_all_previews(monkeypatch):
     from unittest.mock import Mock
 
-    from topdon_duo import desktop
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals import desktop
+    from based_thermals.settings_preferences import save_settings
 
     document, *_ = preview_document()
     another = node("software", "preview")
@@ -404,7 +404,7 @@ from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QPoint, Qt
 from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPainter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
-from topdon_duo.pipeline_editor import PipelinePreview
+from based_thermals.pipeline_editor import PipelinePreview
 app = QApplication([])
 preview = PipelinePreview()
 preview.resize(640, 200)
@@ -476,7 +476,7 @@ def test_preview_timings_measure_prefix_work_and_exclude_all_thumbnail_encoding(
     """
     Attribute decoding and processing time to prefixes without counting thumbnail encoding.
     """
-    import topdon_duo.processing.branch as processing
+    import based_thermals.processing.branch as processing
 
     clock = [0.0]
     original_decode = processing.decode_frame

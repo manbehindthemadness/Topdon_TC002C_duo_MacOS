@@ -15,7 +15,7 @@ def test_chart_controls_relocate_without_losing_state_or_duplicating_events(tmp_
         '''
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
-from topdon_duo.viewer_window import ViewerWindow
+from based_thermals.viewer_window import ViewerWindow
 
 app = QApplication([])
 messages = []

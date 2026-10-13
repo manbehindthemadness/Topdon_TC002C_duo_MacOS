@@ -10,17 +10,17 @@ import pytest
 from support.pipeline import multi_tab_pipeline as default_pipeline
 from test_render import frame_with_preview
 
-from topdon_duo.camera import decode_duo_frame
-from topdon_duo.camera_backends import CameraFrame
-from topdon_duo.pipeline import (
+from based_thermals.camera import decode_duo_frame
+from based_thermals.camera_backends import CameraFrame
+from based_thermals.pipeline import (
     execution_dependencies,
     node,
     preview_required,
     validate_pipeline,
 )
-from topdon_duo.pipeline_hardware import desired_hardware
-from topdon_duo.pipeline_processing import PipelineProcessor, combine_images
-from topdon_duo.processing.branch import BranchProcessor
+from based_thermals.pipeline_hardware import desired_hardware
+from based_thermals.pipeline_processing import PipelineProcessor, combine_images
+from based_thermals.processing.branch import BranchProcessor
 
 
 def connect(
@@ -47,7 +47,7 @@ def raw_branches_document() -> dict[str, Any]:
 
 
 def test_migration_preserves_single_pipeline_and_all_tabs_persist(tmp_path, monkeypatch):
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     document = default_pipeline()

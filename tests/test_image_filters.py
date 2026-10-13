@@ -9,8 +9,8 @@ import cv2
 import numpy as np
 import pytest
 
-from topdon_duo.image_filters import FILTER_MODES, apply_filter, filter_fields
-from topdon_duo.pipeline import default_pipeline, migrate_pipeline, node, validate_pipeline
+from based_thermals.image_filters import FILTER_MODES, apply_filter, filter_fields
+from based_thermals.pipeline import default_pipeline, migrate_pipeline, node, validate_pipeline
 
 
 def image():
@@ -199,9 +199,9 @@ def test_editor_filter_rows_follow_mode_and_logging_lock():
 
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import default_pipeline, node
-from topdon_duo.image_filters import FILTER_MODES, filter_fields
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import default_pipeline, node
+from based_thermals.image_filters import FILTER_MODES, filter_fields
 app = QApplication([])
 window = ViewWindow(lambda message: None)
 window.show()
@@ -240,7 +240,7 @@ window.close()
 )
 @pytest.mark.parametrize("channels", ["color", "luminance"])
 def test_largest_supported_kernels_and_channel_options(mode, channels):
-    from topdon_duo.image_filters import allowed_kernels
+    from based_thermals.image_filters import allowed_kernels
 
     original = image()
     result = apply_filter(

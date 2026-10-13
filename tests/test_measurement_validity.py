@@ -9,10 +9,10 @@ import numpy as np
 import pytest
 from test_camera import make_frame
 
-from topdon_duo.desktop import save_capture
-from topdon_duo.graphs import GraphSnapshot, GraphWorker
-from topdon_duo.render import ThermalRenderer
-from topdon_duo.web import LiveStream, create_app
+from based_thermals.desktop import save_capture
+from based_thermals.graphs import GraphSnapshot, GraphWorker
+from based_thermals.render import ThermalRenderer
+from based_thermals.web import LiveStream, create_app
 
 
 def frozen_frame(value=20_000):

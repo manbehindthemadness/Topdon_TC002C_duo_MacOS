@@ -17,7 +17,7 @@ def test_deleted_bundled_presets_stay_deleted_and_can_be_saved_again(
     """
     Persist bundled deletions without modifying shipped resources or other presets.
     """
-    from topdon_duo.pipeline_presets import load_presets, predefined_presets, save_presets
+    from based_thermals.pipeline_presets import load_presets, predefined_presets, save_presets
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     presets = load_presets()
@@ -45,10 +45,10 @@ def test_create_new_delete_confirmation_locks_and_write_failure(tmp_path: Path) 
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
-import topdon_duo.pipeline_ui.editor as editor_module
-from topdon_duo.pipeline import validate_pipeline
-from topdon_duo.pipeline_presets import load_presets
-from topdon_duo.view_window import ViewWindow
+import based_thermals.pipeline_ui.editor as editor_module
+from based_thermals.pipeline import validate_pipeline
+from based_thermals.pipeline_presets import load_presets
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

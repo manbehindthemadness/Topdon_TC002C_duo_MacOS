@@ -14,12 +14,12 @@ from support.classless import package as package  # noqa: PLC0414 - pytest fixtu
 from support.pipeline import raw_pipeline
 from test_render import frame_with_preview
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.labels import DisplayLabel, collect_labels, defer_labels
-from topdon_duo.custom_nodes.runtime import CustomPackage
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_processing import PipelineProcessor
-from topdon_duo.processing.images import encode_thumbnail
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.labels import DisplayLabel, collect_labels, defer_labels
+from based_thermals.custom_nodes.runtime import CustomPackage
+from based_thermals.pipeline import node
+from based_thermals.pipeline_processing import PipelineProcessor
+from based_thermals.processing.images import encode_thumbnail
 
 
 def label_node(tmp_path: Path) -> dict[str, Any]:
@@ -28,7 +28,7 @@ def label_node(tmp_path: Path) -> dict[str, Any]:
     """
     (tmp_path / "__init__.py").write_text(
         'import numpy as np\n'
-        'from topdon_duo.custom_nodes.labels import defer_labels\n'
+        'from based_thermals.custom_nodes.labels import defer_labels\n'
         'def process(image, config):\n'
         '    height, width = image.shape[:2]\n'
         '    defer_labels([("0.87", (width // 4, height // 3))], (height, width))\n'

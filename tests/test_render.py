@@ -3,9 +3,9 @@ import numpy as np
 import pytest
 from support.frames import frame_with_preview, make_frame
 
-from topdon_duo.camera import IMAGE_OFFSET, SENSOR_HEIGHT, SENSOR_WIDTH, decode_duo_frame
-from topdon_duo.desktop import MousePicker, SampleSpots, draw_picker, draw_sample_spots
-from topdon_duo.render import ThermalRenderer
+from based_thermals.camera import IMAGE_OFFSET, SENSOR_HEIGHT, SENSOR_WIDTH, decode_duo_frame
+from based_thermals.desktop import MousePicker, SampleSpots, draw_picker, draw_sample_spots
+from based_thermals.render import ThermalRenderer
 
 
 @pytest.mark.parametrize("preview_scale", [1, 2])
@@ -86,7 +86,7 @@ def test_app_palette_is_independent_of_camera_colors_and_switching_preserves_tem
 
 
 def thermal_scene(temperature=30, hot_edge=False):
-    from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS
+    from based_thermals.camera import HEADER_U16, SENSOR_PIXELS
 
     words = np.frombuffer(make_frame(), dtype='<u2').copy()
     plane = words[HEADER_U16:HEADER_U16 + SENSOR_PIXELS].reshape(192, 256)
@@ -99,7 +99,7 @@ def thermal_scene(temperature=30, hot_edge=False):
 @pytest.mark.parametrize("image_source", ["raw", "analyze"])
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 def test_raw_visual_uses_latest_frame_while_temperature_measurements_stay_averaged(image_source, rotation):
-    from topdon_duo.camera import raw_temperatures
+    from based_thermals.camera import raw_temperatures
 
     renderer = ThermalRenderer(scale=1, smoothing=0.25, image_source=image_source, rotation=rotation)
     renderer.native_temperatures = True

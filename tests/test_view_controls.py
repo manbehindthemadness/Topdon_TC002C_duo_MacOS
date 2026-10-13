@@ -16,8 +16,8 @@ def test_control_rows_preserve_units_and_reject_invalid_calibration_estimates(
     result = run_popup(
         '''
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ControlRow, DistanceCalibrationControls
-from topdon_duo.view_controls import ControlRow as ExtractedControlRow
+from based_thermals.view_window import ControlRow, DistanceCalibrationControls
+from based_thermals.view_controls import ControlRow as ExtractedControlRow
 
 app = QApplication([])
 assert ControlRow is ExtractedControlRow
@@ -78,7 +78,7 @@ def test_imperial_distance_rounding_preserves_native_values(tmp_path: Path) -> N
     result = run_popup(
         '''
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_controls import ControlRow
+from based_thermals.view_controls import ControlRow
 
 app = QApplication([])
 sent = []
@@ -120,9 +120,9 @@ def test_generic_hardware_rows_retain_incompatible_saved_values(tmp_path: Path) 
     result = run_popup(
         '''
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node
-from topdon_duo.camera_backends.contracts import ControlSpec
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node
+from based_thermals.camera_backends.contracts import ControlSpec
 
 app = QApplication([])
 window = ViewWindow(lambda message: None)

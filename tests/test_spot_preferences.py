@@ -2,8 +2,8 @@ import copy
 
 import pytest
 
-from topdon_duo.desktop import SampleSpots
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals.desktop import SampleSpots
+from based_thermals.settings_preferences import load_settings, save_settings
 
 
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])

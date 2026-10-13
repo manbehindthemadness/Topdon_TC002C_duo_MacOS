@@ -11,10 +11,10 @@ from test_camera import make_frame
 from test_capture_panel import popup_environment
 from test_render import frame_with_preview
 
-from topdon_duo import desktop
-from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS
-from topdon_duo.render import ThermalRenderer
-from topdon_duo.view_settings import COLOR_PALETTES, IMAGE_FILTERS, VIEW_DEFAULTS
+from based_thermals import desktop
+from based_thermals.camera import HEADER_U16, SENSOR_PIXELS
+from based_thermals.render import ThermalRenderer
+from based_thermals.view_settings import COLOR_PALETTES, IMAGE_FILTERS, VIEW_DEFAULTS
 
 
 def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading(
@@ -23,12 +23,12 @@ def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading
     """
     Hide competing markers while fitting emissivity from native camera counts.
     """
-    from topdon_duo.emissivity_calibration import EmissivityCalibrator
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals.emissivity_calibration import EmissivityCalibrator
+    from based_thermals.settings_preferences import load_settings
 
     monkeypatch.setattr(EmissivityCalibrator, "SETTLE_SECONDS", 0.2)
     panel = Mock()
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     setting = {"value": 0.95, "enabled": False, "available": True}
     viewer.hardware.state.return_value["emissivity"] = setting
 
@@ -47,9 +47,9 @@ def test_emissivity_point_selection_hides_markers_and_fits_native_camera_reading
 
     viewer.camera.frames.return_value = frames()
     draw_spots = Mock(wraps=desktop.draw_sample_spots)
-    monkeypatch.setattr("topdon_duo.desktop.draw_sample_spots", draw_spots)
+    monkeypatch.setattr("based_thermals.desktop.draw_sample_spots", draw_spots)
     draw_reference = Mock(wraps=desktop.draw_emissivity_point)
-    monkeypatch.setattr("topdon_duo.desktop.draw_emissivity_point", draw_reference)
+    monkeypatch.setattr("based_thermals.desktop.draw_emissivity_point", draw_reference)
     step = 0
     applied = False
 
@@ -116,8 +116,8 @@ def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(
     """
     Preserve calibration references through reset and allow explicit reapplication.
     """
-    from topdon_duo.distance_calibration import DistanceReference
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.distance_calibration import DistanceReference
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     distance = DistanceReference(0.076, 0.5, 48).as_dict()
     emissivity = {"version": 1, "emissivity": 0.5, "known_celsius": 40}
@@ -138,7 +138,7 @@ def test_reset_and_restore_preserve_saved_calibrations_and_allow_reapply(
     )
     viewer.hardware.restore.side_effect = lambda: setting.update(value=0.95, enabled=False)
     panel = Mock()
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     step = 0
 
     def poll() -> list[dict[str, Any]]:
@@ -180,7 +180,7 @@ def test_distance_calibration_detects_native_pixels_and_only_applies_on_request(
     Detect distance in native sensor coordinates and require an explicit apply command.
     """
     panel = Mock()
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     viewer.hardware.state.return_value["distance"] = {"value": 1, "available": True}
     step = 0
 
@@ -192,7 +192,7 @@ def test_distance_calibration_detects_native_pixels_and_only_applies_on_request(
         edge = 48 if step < 10 else 24
         return np.array([(64, 48), (64 + edge, 48), (64 + edge, 48 + edge), (64, 48 + edge)], float)
 
-    monkeypatch.setattr("topdon_duo.distance_calibration.detect_hand_square", detect)
+    monkeypatch.setattr("based_thermals.distance_calibration.detect_hand_square", detect)
 
     def poll():
         nonlocal step
@@ -219,7 +219,7 @@ def test_distance_calibration_detects_native_pixels_and_only_applies_on_request(
     viewer.hardware.set.assert_called_once_with("distance", 1.0, True)
     assert panel.update.call_args.args[0]["distance_calibration"]["corners"] == 0
     assert panel.update.call_args.args[0]["distance_calibration"]["estimated_m"] == pytest.approx(1)
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals.settings_preferences import load_settings
 
     saved = load_settings()
     assert saved["distance_calibration"]["edge_pixels"] == 48
@@ -239,7 +239,7 @@ def test_distance_calibration_commands_are_rejected_while_logging(
         {"action": "distance_calibration", "operation": operation}
         for operation in ("select", "save", "measure", "apply", "clear")
     ]
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set.assert_not_called()
@@ -258,7 +258,7 @@ def test_emissivity_calibration_commands_are_rejected_while_logging(
         {"action": "emissivity_calibration", "operation": operation}
         for operation in ("select", "fit", "apply")
     ]
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set.assert_not_called()
@@ -273,9 +273,9 @@ from PySide6.QtCore import QPoint, QPointF, QSettings, QSize, Qt
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton, QScrollArea
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.view_settings import VIEW_DEFAULTS
-from topdon_duo.hardware_controls import HARDWARE_CONTROLS
+from based_thermals.view_window import ViewWindow
+from based_thermals.view_settings import VIEW_DEFAULTS
+from based_thermals.hardware_controls import HARDWARE_CONTROLS
 
 app = QApplication([])
 QSettings.setPath(QSettings.IniFormat, QSettings.UserScope,
@@ -503,7 +503,7 @@ def test_mirrored_spots_stay_on_physical_pixels_through_rotations(
         return events
 
     panel.poll.side_effect = poll
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     observed = []
     original_draw = desktop.draw_sample_spots
 
@@ -512,7 +512,7 @@ def test_mirrored_spots_stay_on_physical_pixels_through_rotations(
             observed.append(int(rendered.raw_counts[y, x]))
         return original_draw(image, rendered, spots, scale, unit)
 
-    monkeypatch.setattr("topdon_duo.desktop.draw_sample_spots", draw)
+    monkeypatch.setattr("based_thermals.desktop.draw_sample_spots", draw)
     step = 0
 
     def key(_delay):
@@ -576,10 +576,10 @@ def test_reflector_workflow_restores_then_applies_saved_native_reading(
     """
     Restore reflected-temperature trial settings before explicitly applying the result.
     """
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals.settings_preferences import load_settings
 
     panel = Mock()
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     settings = {
         "emissivity": {"value": 0.8, "enabled": True, "available": True},
         "transmission": {"value": 95, "enabled": False, "available": True},
@@ -597,7 +597,7 @@ def test_reflector_workflow_restores_then_applies_saved_native_reading(
     step = 0
     applied = False
     target = Mock(wraps=desktop.draw_reflector_target)
-    monkeypatch.setattr("topdon_duo.desktop.draw_reflector_target", target)
+    monkeypatch.setattr("based_thermals.desktop.draw_reflector_target", target)
 
     def poll():
         nonlocal step, applied
@@ -632,7 +632,7 @@ def test_reflector_workflow_restores_then_applies_saved_native_reading(
 def test_reflector_controls_units_and_measurement_lock():
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ReflectedCalibrationControls
+from based_thermals.view_window import ReflectedCalibrationControls
 app = QApplication([])
 commands = []
 controls = ReflectedCalibrationControls(commands.append)

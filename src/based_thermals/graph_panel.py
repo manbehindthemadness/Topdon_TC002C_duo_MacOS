@@ -4,5 +4,5 @@ from .capture_panel import CapturePanel
 
 
 class GraphPanel(CapturePanel):
-    window_module = "topdon_duo.graph_window"
+    window_module = "based_thermals.graph_window"
     window_label = "Graph configuration"

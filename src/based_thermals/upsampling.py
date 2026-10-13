@@ -28,7 +28,7 @@ class VisionUpsampler:
         self._net = None
         self.error = ""
         try:
-            data = files("topdon_duo").joinpath("models", f"{model}.onnx").read_bytes()
+            data = files("based_thermals").joinpath("models", f"{model}.onnx").read_bytes()
             net = cv2.dnn.readNetFromONNX(np.frombuffer(data, dtype=np.uint8))
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             # CPU is the default. OpenCV 5's graph engine warns on target setters.

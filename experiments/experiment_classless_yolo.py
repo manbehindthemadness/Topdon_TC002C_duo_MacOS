@@ -11,9 +11,9 @@ from pathlib import Path
 
 import cv2
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.runtime import CustomProcessor
-from topdon_duo.pipeline import node
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.runtime import CustomProcessor
+from based_thermals.pipeline import node
 
 
 def main() -> None:

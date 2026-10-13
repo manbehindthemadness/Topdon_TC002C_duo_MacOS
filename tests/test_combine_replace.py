@@ -9,11 +9,11 @@ import pytest
 from support.frames import make_frame
 from support.pipeline import raw_pipeline
 
-from topdon_duo.custom_nodes.labels import DisplayLabel
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_processing import PipelineProcessor, combine_images
-from topdon_duo.processing.coverage import combine_coverage, replace_labels, transform_coverage
-from topdon_duo.render import ThermalRenderer
+from based_thermals.custom_nodes.labels import DisplayLabel
+from based_thermals.pipeline import node
+from based_thermals.pipeline_processing import PipelineProcessor, combine_images
+from based_thermals.processing.coverage import combine_coverage, replace_labels, transform_coverage
+from based_thermals.render import ThermalRenderer
 
 
 def combine_params(**values: Any) -> dict[str, Any]:

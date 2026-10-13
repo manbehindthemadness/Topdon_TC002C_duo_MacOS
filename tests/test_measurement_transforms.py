@@ -12,11 +12,11 @@ from support.desktop_recording import viewer_fixture  # noqa: F401
 from support.frames import make_frame
 from support.pipeline import raw_pipeline
 
-from topdon_duo import desktop
-from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS
-from topdon_duo.measurements.schema import default_region
-from topdon_duo.pipeline import node
-from topdon_duo.render import ThermalRenderer
+from based_thermals import desktop
+from based_thermals.camera import HEADER_U16, SENSOR_PIXELS
+from based_thermals.measurements.schema import default_region
+from based_thermals.pipeline import node
+from based_thermals.render import ThermalRenderer
 
 
 def gradient_frame() -> bytes:
@@ -84,7 +84,7 @@ def test_pipeline_edits_keep_drawing_and_saved_regions_in_native_coordinates(
     """
     Draw through warps, keep geometry on mirror edits, and rotate only with the viewer control.
     """
-    monkeypatch.setattr("topdon_duo.desktop.SpotsPanel", Mock)
+    monkeypatch.setattr("based_thermals.desktop.SpotsPanel", Mock)
     session = desktop.DesktopSession(desktop, [])
     session.viewer = Mock()
     document = raw_pipeline(node("software", "transform", width=50, position_x=40, skew_x=20))

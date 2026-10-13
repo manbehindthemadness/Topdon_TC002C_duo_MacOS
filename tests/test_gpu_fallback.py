@@ -14,9 +14,9 @@ from test_capture_panel import popup_environment
 from test_pipeline import raw_pipeline
 from test_render import frame_with_preview
 
-from topdon_duo.acceleration import select_backend
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_processing import PipelineProcessor
+from based_thermals.acceleration import select_backend
+from based_thermals.pipeline import node
+from based_thermals.pipeline_processing import PipelineProcessor
 
 
 @pytest.mark.parametrize(
@@ -84,8 +84,8 @@ def test_alternate_gpu_dispatch_reuse_and_cleanup(
             """
             self.closed = True
 
-    monkeypatch.setattr("topdon_duo.processing.branch.ONNXUpsampler", Engine)
-    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", Engine)
+    monkeypatch.setattr("based_thermals.processing.branch.ONNXUpsampler", Engine)
+    monkeypatch.setattr("based_thermals.processing.branch.CoreMLUpsampler", Engine)
     item = (
         node("software", "onnx_style", model=model, backend=requested)
         if model.startswith("style-")
@@ -139,8 +139,8 @@ def test_ui_reports_alternate_gpu_and_restores_apple_compute_devices() -> None:
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor

@@ -64,7 +64,7 @@ cooldown; existing installed CPU inference remains available when optional setup
 To run setup without opening a camera or retry after an offline/failed attempt:
 
 ```bash
-.venv/bin/python -m topdon_duo.runtime_setup --retry
+.venv/bin/python -m based_thermals.runtime_setup --retry
 ```
 
 To explicitly disable startup checks/downloads (for offline or managed deployments):
@@ -76,7 +76,7 @@ BASED_THERMALS_RUNTIME_SETUP=0 .venv/bin/based-thermals-desktop
 This bypass also skips cache activation; the environment's installed runtime is used.
 Do not call setup after importing `onnxruntime` in an embedded application: native
 runtime replacement requires a new process. For integrations outside the viewer,
-call `topdon_duo.runtime_setup.ensure_runtime()` before importing ORT or starting workers.
+call `based_thermals.runtime_setup.ensure_runtime()` before importing ORT or starting workers.
 The explicit setup command verifies the selection in its own process; it does not
 alter a parent shell's environment. Cached runtimes are application packages and must
 not be manually edited while viewers are running. Old successful generations can be

@@ -1,7 +1,7 @@
 # Camera backend integration
 
 The viewer defaults to the existing TOPDON TC002C Duo implementation. Other cameras
-can be integrated through `src/topdon_duo/camera_backends/`; this foundation does
+can be integrated through `src/based_thermals/camera_backends/`; this foundation does
 not provide protocols or verified support for another physical camera.
 
 On macOS, normal-user Duo factories select the private USB helper facade described

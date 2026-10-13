@@ -34,7 +34,7 @@ def model_data(model: str) -> bytes:
     Load original bundled weights or verify a downloaded model's checksum.
     """
     if model in BUNDLED_ACNET:
-        return files("topdon_duo").joinpath("models", f"{model}.onnx").read_bytes()
+        return files("based_thermals").joinpath("models", f"{model}.onnx").read_bytes()
     return verified_model(model)
 
 

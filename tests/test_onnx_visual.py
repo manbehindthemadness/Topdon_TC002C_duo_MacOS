@@ -8,10 +8,10 @@ import numpy as np
 import pytest
 from support.onnx_visual import fake_runtime
 
-from topdon_duo import onnx_models
-from topdon_duo.onnx_upsampling import ONNXRuntime, ONNXUpsampler
-from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.pipeline_titles import node_title
+from based_thermals import onnx_models
+from based_thermals.onnx_upsampling import ONNXRuntime, ONNXUpsampler
+from based_thermals.pipeline import node, validate_pipeline
+from based_thermals.pipeline_titles import node_title
 
 
 @pytest.mark.parametrize(
@@ -194,8 +194,8 @@ def test_regular_ai_dispatch_single_pass_fallback_measurements_and_cleanup(
     from test_pipeline import raw_pipeline
     from test_render import frame_with_preview
 
-    from topdon_duo.camera import decode_duo_frame
-    from topdon_duo.pipeline_processing import PipelineProcessor
+    from based_thermals.camera import decode_duo_frame
+    from based_thermals.pipeline_processing import PipelineProcessor
 
     calls, engines = [], []
     factor = onnx_models.MODELS[model]["factor"]
@@ -229,7 +229,7 @@ def test_regular_ai_dispatch_single_pass_fallback_measurements_and_cleanup(
             """
             self.closed = True
 
-    monkeypatch.setattr("topdon_duo.processing.branch.ONNXUpsampler", Engine)
+    monkeypatch.setattr("based_thermals.processing.branch.ONNXUpsampler", Engine)
     ai = node(
         "software",
         "enhance",
@@ -308,7 +308,7 @@ def test_v1_cpu_keeps_dynamic_shapes_and_no_apple_overrides(
 
 def test_zero_amount_and_pixel_budget_do_not_load_models(monkeypatch: pytest.MonkeyPatch) -> None:
     load = Mock(side_effect=AssertionError("must not load"))
-    monkeypatch.setattr("topdon_duo.onnx_upsampling.verified_model", load)
+    monkeypatch.setattr("based_thermals.onnx_upsampling.verified_model", load)
     image = np.zeros((768, 1024), np.uint8)
     assert ONNXRuntime().apply(image, "mewzoom", amount=0) is image
     assert ONNXUpsampler().apply(image, "mewzoom", amount=0) is image
@@ -321,7 +321,7 @@ def test_helper_crash_is_contained_and_configuration_change_clears_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "topdon_duo.onnx_upsampling.MODEL_DOWNLOADS.request", lambda *args, **kwargs: True
+        "based_thermals.onnx_upsampling.MODEL_DOWNLOADS.request", lambda *args, **kwargs: True
     )
     process = Mock()
     process.is_alive.return_value = False

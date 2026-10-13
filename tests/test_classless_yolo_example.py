@@ -14,10 +14,10 @@ import numpy as np
 import pytest
 from support.pipeline import raw_pipeline
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.runtime import CustomPackage, CustomProcessor
-from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.runtime import CustomPackage, CustomProcessor
+from based_thermals.pipeline import node, validate_pipeline
+from based_thermals.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
 
 ROOT = Path(__file__).resolve().parents[1]
 FOLDER = ROOT / "examples/custom_nodes/Classless YOLO"
@@ -97,7 +97,7 @@ def test_example_full_inference_preprocessing_overlay_and_cached_config(
     assert factory.call_count == 2
     downloader = Mock(return_value=replacement)
     # noinspection PyUnresolvedReferences
-    monkeypatch.setattr("topdon_duo.custom_nodes.models.ModelResolver.resolve", downloader)
+    monkeypatch.setattr("based_thermals.custom_nodes.models.ModelResolver.resolve", downloader)
     config["model_path"] = ""
     assert package.process(image, config).shape == image.shape
     assert factory.call_count == 2
@@ -219,7 +219,7 @@ def test_example_exports_without_model_weights_and_loads_with_display_name(
     processor = CustomProcessor()
     requests = Mock(return_value=False)
     # noinspection PyUnresolvedReferences
-    monkeypatch.setattr("topdon_duo.custom_nodes.models.MODEL_DOWNLOADS.request", requests)
+    monkeypatch.setattr("based_thermals.custom_nodes.models.MODEL_DOWNLOADS.request", requests)
     try:
         image = np.zeros((2, 2, 3))
         assert np.array_equal(processor.apply(image, imported["software"][2]), image)

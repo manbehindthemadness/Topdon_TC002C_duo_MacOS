@@ -21,7 +21,7 @@ class ViewerPanel(CapturePanel):
     Send display-only frames without queuing images or importing Qt in acquisition.
     """
 
-    window_module = "topdon_duo.viewer_window"
+    window_module = "based_thermals.viewer_window"
     window_label = "Viewer"
 
     def __init__(self) -> None:

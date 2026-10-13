@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
-from topdon_duo.recording import VideoRecorder
+from based_thermals.recording import VideoRecorder
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def writer(monkeypatch):
     writer.isOpened.return_value = True
     writer.frames = []
     writer.write.side_effect = lambda image: writer.frames.append(image.copy())
-    monkeypatch.setattr("topdon_duo.recording.cv2.VideoWriter", Mock(return_value=writer))
+    monkeypatch.setattr("based_thermals.recording.cv2.VideoWriter", Mock(return_value=writer))
     return writer
 
 

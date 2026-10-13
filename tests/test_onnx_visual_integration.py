@@ -7,10 +7,10 @@ import cv2
 import numpy as np
 import pytest
 
-from topdon_duo import onnx_models
-from topdon_duo.enhancement_limits import enhancement_pass_limits
-from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.pipeline_titles import node_title
+from based_thermals import onnx_models
+from based_thermals.enhancement_limits import enhancement_pass_limits
+from based_thermals.pipeline import node, validate_pipeline
+from based_thermals.pipeline_titles import node_title
 
 
 def assert_scaled_call(output: np.ndarray, call: tuple, backend: str) -> None:
@@ -29,8 +29,8 @@ def test_style_pipeline_preserves_size_radiometry_settings_and_releases_helper(
     from test_pipeline import raw_pipeline
     from test_render import frame_with_preview
 
-    from topdon_duo.camera import decode_duo_frame
-    from topdon_duo.pipeline_processing import PipelineProcessor
+    from based_thermals.camera import decode_duo_frame
+    from based_thermals.pipeline_processing import PipelineProcessor
 
     calls, engines = [], []
 
@@ -56,7 +56,7 @@ def test_style_pipeline_preserves_size_radiometry_settings_and_releases_helper(
             """
             self.closed = True
 
-    monkeypatch.setattr("topdon_duo.processing.branch.ONNXUpsampler", Engine)
+    monkeypatch.setattr("based_thermals.processing.branch.ONNXUpsampler", Engine)
     style = node("software", "onnx_style", model="style-candy", backend="coreml", amount=0.35)
     document = raw_pipeline(style)
     original = deepcopy(document)
@@ -108,8 +108,8 @@ def test_denoiser_pipeline_retains_size_preferences_measurements_and_closes(
     from test_pipeline import raw_pipeline
     from test_render import frame_with_preview
 
-    from topdon_duo.camera import decode_duo_frame
-    from topdon_duo.pipeline_processing import PipelineProcessor
+    from based_thermals.camera import decode_duo_frame
+    from based_thermals.pipeline_processing import PipelineProcessor
 
     calls, engines = [], []
 
@@ -137,7 +137,7 @@ def test_denoiser_pipeline_retains_size_preferences_measurements_and_closes(
             """
             self.closed = True
 
-    monkeypatch.setattr("topdon_duo.processing.branch.ONNXUpsampler", Engine)
+    monkeypatch.setattr("based_thermals.processing.branch.ONNXUpsampler", Engine)
     denoiser = node("software", "onnx_denoise", backend="coreml", noise=32)
     document = raw_pipeline(denoiser)
     original = deepcopy(document)
@@ -206,8 +206,8 @@ def test_pipeline_cpu_fallback_retains_preferences_and_measurements(
     from test_pipeline import raw_pipeline
     from test_render import frame_with_preview
 
-    from topdon_duo.camera import decode_duo_frame
-    from topdon_duo.pipeline_processing import PipelineProcessor
+    from based_thermals.camera import decode_duo_frame
+    from based_thermals.pipeline_processing import PipelineProcessor
 
     calls = []
     engines = []
@@ -235,7 +235,7 @@ def test_pipeline_cpu_fallback_retains_preferences_and_measurements(
             """
             self.closed = True
 
-    monkeypatch.setattr("topdon_duo.processing.branch.ONNXUpsampler", Engine)
+    monkeypatch.setattr("based_thermals.processing.branch.ONNXUpsampler", Engine)
     sr = node("software", "onnx_superresolution", model="mewzoom", backend="coreml")
     document = raw_pipeline(sr)
     original = deepcopy(document)
@@ -264,8 +264,8 @@ def test_popup_apple_controls_and_cpu_preference_retention(tmp_path: Path) -> No
 
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node
 app = QApplication([])
 window = ViewWindow(lambda message: None)
 editor = window.pipeline_editor

@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 from support.desktop_recording import viewer_fixture
 
-from topdon_duo import desktop
+from based_thermals import desktop
 
 
 def test_startup_loads_all_calibration_references_and_applied_camera_values(
@@ -18,8 +18,8 @@ def test_startup_loads_all_calibration_references_and_applied_camera_values(
     """
     Restore saved calibration references and hardware corrections during startup.
     """
-    from topdon_duo.distance_calibration import DistanceReference
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.distance_calibration import DistanceReference
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     references = {
         "distance_calibration": DistanceReference(0.076, 0.5, 48).as_dict(),
@@ -36,7 +36,7 @@ def test_startup_loads_all_calibration_references_and_applied_camera_values(
     ].update(value=control_value, enabled=enabled)
     panel = Mock()
     panel.poll.return_value = []
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
     state = panel.update.call_args.args[0]
@@ -57,12 +57,12 @@ def test_processing_preset_is_saved_and_reloaded_after_hardware_settings(
     """
     Persist a processing preset and restore it after loading the hardware baseline.
     """
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     save_settings({"hardware": {"contrast": 70}, "processing_preset": "shadow"})
     panel = Mock()
     panel.poll.return_value = [{"action": "processing_preset", "value": "soft"}]
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     viewer.hardware.set_processing_preset.side_effect = lambda value: setattr(
         viewer.hardware, "processing_preset", value
@@ -89,7 +89,7 @@ def test_processing_preset_command_is_locked_during_logging(
     viewer.graphs.logging = True
     panel = Mock()
     panel.poll.return_value = [{"action": "processing_preset", "value": "shadow"}]
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set_processing_preset.assert_not_called()
@@ -102,7 +102,7 @@ def test_tone_selection_reloads_after_hardware_and_presets_and_persists(
     """
     Restore tone selection after hardware and preset initialization and retain edits.
     """
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     save_settings(
         {
@@ -114,7 +114,7 @@ def test_tone_selection_reloads_after_hardware_and_presets_and_persists(
     )
     panel = Mock()
     panel.poll.return_value = [{"action": "tone", "gamma": 75}]
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
 
     def apply(gamma: int, boost: int) -> None:
@@ -143,7 +143,7 @@ def test_tone_commands_are_locked_during_logging(
     viewer.graphs.logging = True
     panel = Mock()
     panel.poll.return_value = [{"action": "tone", "gamma": 25}, {"action": "cancel_tone"}]
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _: ord("q"))
     assert desktop.main([]) == 0
     viewer.hardware.set_tone.assert_not_called()
@@ -159,13 +159,13 @@ def test_camera_operation_notifies_before_usb_work_and_reports_outcome(
     """
     Publish operation progress before hardware writes and report success or rejection.
     """
-    from topdon_duo.camera import CameraError
+    from based_thermals.camera import CameraError
 
     panel = Mock()
     panel.poll.return_value = [
         {"action": "hardware", "name": "detail_enabled", "value": 0, "enabled": True}
     ]
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     viewer.hardware.state.return_value = {
         "ambient": {"value": 30, "available": True},
         "detail_enabled": {"value": 0, "available": True},

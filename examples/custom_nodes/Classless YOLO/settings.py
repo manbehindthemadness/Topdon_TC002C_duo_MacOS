@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from topdon_duo.custom_nodes.colors import color_value
-from topdon_duo.custom_nodes.devices import validate_device
+from based_thermals.custom_nodes.colors import color_value
+from based_thermals.custom_nodes.devices import validate_device
 
 
 def fraction(config: dict[str, Any], name: str, default: float, minimum: float = 0.0) -> float:

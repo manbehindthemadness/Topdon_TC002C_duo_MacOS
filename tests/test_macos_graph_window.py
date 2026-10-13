@@ -8,8 +8,8 @@ from unittest.mock import Mock
 import pytest
 from support.desktop_recording import viewer_fixture
 
-from topdon_duo import desktop, window_style
-from topdon_duo.pointer import PointerMonitor
+from based_thermals import desktop, window_style
+from based_thermals.pointer import PointerMonitor
 
 
 def test_cocoa_bitmap_dimensions_are_not_used_as_window_dimensions(
@@ -44,7 +44,7 @@ def test_native_content_size_waits_for_resize_then_preserves_chrome(
     """
     Calibrate measured chrome once, then track manual resizing without height drift.
     """
-    monkeypatch.setattr("topdon_duo.pointer.C.CDLL", Mock(side_effect=OSError))
+    monkeypatch.setattr("based_thermals.pointer.C.CDLL", Mock(side_effect=OSError))
     monitor = PointerMonitor("viewer")
     monitor._coregraphics = Mock()
     bounds = Mock(return_value=(50, 50, 768, 660))
@@ -69,7 +69,7 @@ def test_macos_chart_toggle_uses_native_size_after_manual_resize(
     """
     Show, manually resize, hide and show charts without stale canvas sizes or height drift.
     """
-    from topdon_duo.window_preferences import load_main_window_size, save_main_window_size
+    from based_thermals.window_preferences import load_main_window_size, save_main_window_size
 
     save_main_window_size((930, 710))
     monkeypatch.setattr(desktop.sys, "platform", "darwin")
@@ -78,7 +78,7 @@ def test_macos_chart_toggle_uses_native_size_after_manual_resize(
     monkeypatch.setattr(desktop, "window_resize_size", window_style.window_resize_size)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_: 1)
     window = [930, 710]
-    monkeypatch.setattr("topdon_duo.pointer.C.CDLL", Mock(side_effect=OSError))
+    monkeypatch.setattr("based_thermals.pointer.C.CDLL", Mock(side_effect=OSError))
 
     class NativeMonitor(PointerMonitor):
         """

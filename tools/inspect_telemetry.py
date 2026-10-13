@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from topdon_duo.camera import HEADER_U16, decode_duo_frame
+from based_thermals.camera import HEADER_U16, decode_duo_frame
 
 HEADER_BYTES = HEADER_U16 * 2
 

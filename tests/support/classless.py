@@ -9,8 +9,8 @@ from types import ModuleType
 
 import pytest
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.runtime import CustomPackage
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.runtime import CustomPackage
 
 FOLDER = Path(__file__).resolve().parents[2] / "examples/custom_nodes/Classless YOLO"
 

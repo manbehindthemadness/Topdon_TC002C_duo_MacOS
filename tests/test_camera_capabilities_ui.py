@@ -13,10 +13,10 @@ def test_partial_capabilities_new_controls_and_spot_scope(tmp_path: Path) -> Non
     """
     script = '''
 from PySide6.QtWidgets import QApplication
-from topdon_duo.camera_backends import CameraProfile, ControlSpec
-from topdon_duo.camera_backends.controls import capability_state
-from topdon_duo.pipeline import default_pipeline, node
-from topdon_duo.view_window import ViewWindow
+from based_thermals.camera_backends import CameraProfile, ControlSpec
+from based_thermals.camera_backends.controls import capability_state
+from based_thermals.pipeline import default_pipeline, node
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

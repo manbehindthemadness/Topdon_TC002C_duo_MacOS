@@ -8,10 +8,10 @@ import pytest
 from support.frames import make_frame
 from support.pipeline import raw_pipeline
 
-from topdon_duo.camera import HEADER_U16, SENSOR_PIXELS
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_processing import PipelineProcessor
-from topdon_duo.processing.branch import BranchProcessor
+from based_thermals.camera import HEADER_U16, SENSOR_PIXELS
+from based_thermals.pipeline import node
+from based_thermals.pipeline_processing import PipelineProcessor
+from based_thermals.processing.branch import BranchProcessor
 
 
 def striped_frame() -> bytes:

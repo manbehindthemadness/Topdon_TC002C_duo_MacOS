@@ -3,13 +3,13 @@ from unittest.mock import Mock
 import cv2
 import pytest
 
-from topdon_duo.pointer import Point, PointerMonitor
+from based_thermals.pointer import Point, PointerMonitor
 
 
 @pytest.fixture
 def monitor(monkeypatch):
     # Unit tests need neither a display connection nor macOS native libraries.
-    monkeypatch.setattr("topdon_duo.pointer.C.CDLL", Mock(side_effect=OSError))
+    monkeypatch.setattr("based_thermals.pointer.C.CDLL", Mock(side_effect=OSError))
     return PointerMonitor("test viewer")
 
 
@@ -18,7 +18,7 @@ def test_native_pointer_detects_image_exit_toolbar_and_reentry(monitor, monkeypa
     left, top = 100, 200
     width, height = int(768 * scale), int(630 * scale)
     monkeypatch.setattr(
-        "topdon_duo.pointer.cv2.getWindowImageRect",
+        "based_thermals.pointer.cv2.getWindowImageRect",
         lambda _name: (left, top, width, height),
     )
     # Native screen position changes even without any OpenCV mouse callback.
@@ -38,7 +38,7 @@ def test_native_pointer_unavailable_preserves_event_bounds_checks(monitor, monke
     assert monitor.over_image(576, 54) is None
     monkeypatch.setattr(monitor, "_screen_position", lambda: (200, 300))
     get_rect = Mock(side_effect=cv2.error("window not displayed yet"))
-    monkeypatch.setattr("topdon_duo.pointer.cv2.getWindowImageRect", get_rect)
+    monkeypatch.setattr("based_thermals.pointer.cv2.getWindowImageRect", get_rect)
     assert monitor.over_image(576, 54) is None
     get_rect.side_effect = None
     get_rect.return_value = (0, 0, -1, -1)
@@ -53,7 +53,7 @@ def test_macos_coregraphics_pointer_uses_safe_c_api(monitor, monkeypatch):
     monitor._coregraphics = coregraphics
     monkeypatch.setattr(monitor, "_mac_window_rect", lambda: (100, 200, 384, 315))
     monkeypatch.setattr(
-        "topdon_duo.pointer.cv2.getWindowImageRect",
+        "based_thermals.pointer.cv2.getWindowImageRect",
         lambda _name: (100, 200, 384, 315),
     )
     assert monitor.over_image(576, 54) is True
@@ -66,7 +66,7 @@ def test_macos_pointer_containment_ignores_cocoa_image_rectangle(monitor, monkey
     monitor._coregraphics = Mock()
     # This rectangle is deliberately in an incompatible coordinate space.
     get_rect = Mock(return_value=(200, 900, 768, 576))
-    monkeypatch.setattr("topdon_duo.pointer.cv2.getWindowImageRect", get_rect)
+    monkeypatch.setattr("based_thermals.pointer.cv2.getWindowImageRect", get_rect)
     bounds = Mock(return_value=(100, 200, 384, 315))
     monkeypatch.setattr(monitor, "_mac_window_rect", bounds)
     for position, expected in (((200, 350), True), ((90, 350), False), ((200, 350), True)):

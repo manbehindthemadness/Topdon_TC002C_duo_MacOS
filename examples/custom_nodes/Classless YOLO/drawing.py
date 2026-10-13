@@ -5,9 +5,9 @@ Draw classless detections while preserving the original display geometry.
 import cv2
 import numpy as np
 
-from topdon_duo.custom_nodes.colors import color_bgr
-from topdon_duo.custom_nodes.labels import defer_labels
-from topdon_duo.desktop_app.overlays import draw_contrasting_overlay
+from based_thermals.custom_nodes.colors import color_bgr
+from based_thermals.custom_nodes.labels import defer_labels
+from based_thermals.desktop_app.overlays import draw_contrasting_overlay
 
 from .detector import Detection
 from .labels import confidence_mask

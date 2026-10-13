@@ -13,9 +13,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from topdon_duo import model_downloads, onnx_models
-from topdon_duo.custom_nodes import models
-from topdon_duo.custom_nodes.models import ModelResolver, model_source
+from based_thermals import model_downloads, onnx_models
+from based_thermals.custom_nodes import models
+from based_thermals.custom_nodes.models import ModelResolver, model_source
 
 
 def source(data: bytes) -> dict[str, Any]:

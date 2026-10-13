@@ -15,8 +15,8 @@ def test_cpu_execution_locks_devices_and_restores_apple_preferences() -> None:
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication
-from topdon_duo.pipeline import default_pipeline, node, validate_pipeline
-from topdon_duo.view_window import ViewWindow
+from based_thermals.pipeline import default_pipeline, node, validate_pipeline
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

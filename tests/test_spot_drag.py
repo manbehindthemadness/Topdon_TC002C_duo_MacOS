@@ -7,8 +7,8 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from test_camera import make_frame
 
-from topdon_duo import desktop
-from topdon_duo.camera import HEADER_U16, SENSOR_HEIGHT, SENSOR_WIDTH
+from based_thermals import desktop
+from based_thermals.camera import HEADER_U16, SENSOR_HEIGHT, SENSOR_WIDTH
 
 
 def mouse(picker, event, x, y, flags=0):
@@ -131,7 +131,7 @@ def test_empty_space_clicks_still_place_and_nearest_marker_is_selected():
 
 
 def test_main_drag_updates_temperature_and_keeps_named_graph_identity(viewer, monkeypatch):
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
@@ -187,7 +187,7 @@ def test_logging_locks_spot_controls_from_file_dialog_until_stopped(
     """
     Keep geometry and placement intact while the logging lock rejects UI edits.
     """
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)

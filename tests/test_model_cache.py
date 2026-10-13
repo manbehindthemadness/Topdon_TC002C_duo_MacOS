@@ -12,9 +12,9 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from support.qt_process import run_popup
 
-from topdon_duo import desktop, onnx_models
-from topdon_duo.desktop_app.session import DesktopSession
-from topdon_duo.model_downloads import ModelDownloads
+from based_thermals import desktop, onnx_models
+from based_thermals.desktop_app.session import DesktopSession
+from based_thermals.model_downloads import ModelDownloads
 
 viewer = viewer_fixture
 
@@ -119,7 +119,7 @@ def test_preset_selector_requests_cache_clear_without_pipeline_edits(tmp_path: P
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QMessageBox
-from topdon_duo.view_window import ViewWindow
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

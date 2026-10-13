@@ -13,9 +13,9 @@ from typing import Any
 import cv2
 import numpy as np
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.runtime import CustomProcessor
-from topdon_duo.pipeline import default_pipeline, node, validate_pipeline
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.runtime import CustomProcessor
+from based_thermals.pipeline import default_pipeline, node, validate_pipeline
 
 
 def main() -> None:

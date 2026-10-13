@@ -5,9 +5,9 @@ from unittest.mock import Mock
 import pytest
 from test_capture_panel import popup_environment
 
-from topdon_duo import graphs
-from topdon_duo.graph_settings import GRAPH_DEFAULTS, validate_graph_settings
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals import graphs
+from based_thermals.graph_settings import GRAPH_DEFAULTS, validate_graph_settings
+from based_thermals.settings_preferences import load_settings, save_settings
 
 
 @pytest.mark.parametrize(
@@ -77,8 +77,8 @@ def test_graph_preferences_round_trip(monkeypatch, tmp_path):
 def test_graph_configuration_popup_controls_and_logging_lock():
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.graph_window import GraphWindow
-from topdon_duo.graph_settings import GRAPH_DEFAULTS
+from based_thermals.graph_window import GraphWindow
+from based_thermals.graph_settings import GRAPH_DEFAULTS
 app = QApplication([])
 messages = []
 window = GraphWindow(messages.append)

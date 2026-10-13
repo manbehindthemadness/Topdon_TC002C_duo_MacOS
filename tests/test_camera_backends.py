@@ -11,18 +11,18 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from support.frames import frame_with_preview
 
-from topdon_duo import camera_backends, desktop
-from topdon_duo.camera import CameraError, decode_duo_frame
-from topdon_duo.camera_backends import CameraFrame, CameraProfile, ControlSpec, ReportedReading
-from topdon_duo.camera_backends.controls import DeviceControls
-from topdon_duo.desktop_app.session import DesktopSession
-from topdon_duo.frame_pump import CameraFramePump
-from topdon_duo.pipeline import default_pipeline, node, validate_pipeline
-from topdon_duo.pipeline_hardware import PipelineHardware
-from topdon_duo.pipeline_processing import PipelineProcessor
-from topdon_duo.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
-from topdon_duo.render import ThermalRenderer
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals import camera_backends, desktop
+from based_thermals.camera import CameraError, decode_duo_frame
+from based_thermals.camera_backends import CameraFrame, CameraProfile, ControlSpec, ReportedReading
+from based_thermals.camera_backends.controls import DeviceControls
+from based_thermals.desktop_app.session import DesktopSession
+from based_thermals.frame_pump import CameraFramePump
+from based_thermals.pipeline import default_pipeline, node, validate_pipeline
+from based_thermals.pipeline_hardware import PipelineHardware
+from based_thermals.pipeline_processing import PipelineProcessor
+from based_thermals.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
+from based_thermals.render import ThermalRenderer
+from based_thermals.settings_preferences import load_settings, save_settings
 
 viewer = viewer_fixture
 PROFILE = CameraProfile("test-sensor", "Test camera", (6, 4), 9, calibration_key="lens-A")

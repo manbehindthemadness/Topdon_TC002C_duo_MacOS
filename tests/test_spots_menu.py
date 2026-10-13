@@ -8,7 +8,7 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from test_capture_panel import popup_environment
 
-from topdon_duo import desktop
+from based_thermals import desktop
 
 
 def test_spots_disable_and_clear_keep_other_numbers_and_toggle_preserves_positions():
@@ -52,7 +52,7 @@ def test_missing_spot_cannot_modify_existing_spots(number: Any) -> None:
 def test_context_menu_widgets_send_spot_ids_and_respect_locks():
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.spots_window import SpotsMenu
+from based_thermals.spots_window import SpotsMenu
 app = QApplication([])
 commands = []
 menu = SpotsMenu(commands.append)
@@ -102,7 +102,7 @@ def test_main_context_menu_preserves_spots_and_graph_ids(
     """
     Preserve point identities and include editable geometry in popup state.
     """
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
@@ -288,7 +288,7 @@ def test_name_field_saves_and_preserves_pending_edits():
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
-from topdon_duo.spots_window import SpotsMenu
+from based_thermals.spots_window import SpotsMenu
 app = QApplication([])
 commands = []
 menu = SpotsMenu(commands.append)
@@ -330,7 +330,7 @@ assert commands[-1] == {"action": "rename", "spot": 1, "name": "Motor"}
 def test_calibration_menu_and_setting_persist_and_obey_logging_lock(viewer, monkeypatch):
     from unittest.mock import call
 
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals.settings_preferences import load_settings
 
     panel = Mock()
     settings = Mock()

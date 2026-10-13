@@ -15,6 +15,11 @@ The package's `__init__.py` must expose `process(image, config)`. Helpers and ne
 packages work through relative imports, such as `from .contrast import adjust_contrast`.
 Installed dependencies can be imported normally; the node does not install them.
 
+Application helpers now use the `based_thermals` namespace. Older packages using
+`topdon_duo` imports must update those imports. For packages embedded in saved
+pipelines, reopen the updated module folder and save the pipeline to replace its
+embedded source; existing saved packages are not rewritten automatically.
+
 ```python
 import numpy as np
 
@@ -37,7 +42,7 @@ It processes display pixels; it receives no native radiometric or measurement ar
 An unloaded Custom node passes its input through.
 
 For text that should match measurement labels, use
-`topdon_duo.custom_nodes.labels.defer_labels(labels, image.shape[:2])`, where
+`based_thermals.custom_nodes.labels.defer_labels(labels, image.shape[:2])`, where
 `labels` is a list of `(text, (x, y))` pixel anchors inside the current image.
 It returns `True` when the worker queues the labels, or `False` outside the worker
 so standalone code can draw its own text. Queued text is drawn after viewer rotation
@@ -152,7 +157,7 @@ the built-in nodes:
 
 ```python
 import onnxruntime as ort
-from topdon_duo.custom_nodes.devices import onnx_providers
+from based_thermals.custom_nodes.devices import onnx_providers
 
 # Inside process, after obtaining a verified model path:
 device = config["inference"]
@@ -207,7 +212,7 @@ frame; the README records timings, cold compilation cost and source attribution.
 Custom packages can use the viewer's background downloader:
 
 ```python
-from topdon_duo.custom_nodes.models import ModelResolver
+from based_thermals.custom_nodes.models import ModelResolver
 
 models = ModelResolver()
 

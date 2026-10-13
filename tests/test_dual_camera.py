@@ -12,16 +12,20 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from support.qt_process import run_popup
 
-from topdon_duo.camera import CameraError
-from topdon_duo.camera_backends import create_camera
-from topdon_duo.camera_backends.virtual import VirtualDualCamera
-from topdon_duo.camera_backends.visible import VisibleFrame, visible_image, visible_mapping_valid
-from topdon_duo.desktop_app.dual_camera import apply_camera_hardware
-from topdon_duo.pipeline import default_pipeline, node, validate_pipeline
-from topdon_duo.pipeline_hardware import PipelineHardware
-from topdon_duo.pipeline_model.sources import source_required
-from topdon_duo.pipeline_processing import PipelineProcessor
-from topdon_duo.render import ThermalRenderer
+from based_thermals.camera import CameraError
+from based_thermals.camera_backends import create_camera
+from based_thermals.camera_backends.virtual import VirtualDualCamera
+from based_thermals.camera_backends.visible import (
+    VisibleFrame,
+    visible_image,
+    visible_mapping_valid,
+)
+from based_thermals.desktop_app.dual_camera import apply_camera_hardware
+from based_thermals.pipeline import default_pipeline, node, validate_pipeline
+from based_thermals.pipeline_hardware import PipelineHardware
+from based_thermals.pipeline_model.sources import source_required
+from based_thermals.pipeline_processing import PipelineProcessor
+from based_thermals.render import ThermalRenderer
 
 
 def dual_document() -> dict:
@@ -183,9 +187,9 @@ def test_dual_camera_editor_hides_secondary_stack_and_uses_own_metadata(tmp_path
     result = run_popup(
         """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.pipeline_ui.editor import PipelineEditor
-from topdon_duo.view_window import ControlRow
-from topdon_duo.camera_backends.virtual import VirtualDualCamera
+from based_thermals.pipeline_ui.editor import PipelineEditor
+from based_thermals.view_window import ControlRow
+from based_thermals.camera_backends.virtual import VirtualDualCamera
 app = QApplication([])
 editor = PipelineEditor(lambda value: None, ControlRow)
 assert editor.stacks["visible_hardware"].isHidden()
@@ -237,7 +241,7 @@ def test_optional_optical_stack_round_trips_and_rejects_duplicate_controls(tmp_p
     """
     Preserve camera identities in exported bundles and reject duplicates within an owner.
     """
-    from topdon_duo.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
+    from based_thermals.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
 
     document = dual_document()
     path = tmp_path / "dual.pipeline.json"
@@ -282,8 +286,8 @@ def test_virtual_desktop_initializes_both_hardware_owners(viewer: object) -> Non
     Exercise the public desktop constructor and startup settings path with the virtual backend.
     """
     del viewer
-    from topdon_duo import desktop
-    from topdon_duo.desktop_app.session import DesktopSession
+    from based_thermals import desktop
+    from based_thermals.desktop_app.session import DesktopSession
 
     session = DesktopSession(desktop, ["--camera", "virtual-dual", "--image-source", "visible"])
     try:

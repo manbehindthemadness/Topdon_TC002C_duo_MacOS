@@ -9,10 +9,10 @@ from unittest.mock import Mock
 import pytest
 from support.desktop_recording import viewer_fixture
 
-from topdon_duo import desktop, macos_window
-from topdon_duo.desktop_app.session import DesktopSession
-from topdon_duo.desktop_app.settings import SettingsController
-from topdon_duo.pointer import PointerMonitor
+from based_thermals import desktop, macos_window
+from based_thermals.desktop_app.session import DesktopSession
+from based_thermals.desktop_app.settings import SettingsController
+from based_thermals.pointer import PointerMonitor
 
 
 @pytest.mark.parametrize("fullscreen", [True, False])

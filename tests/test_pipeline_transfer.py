@@ -9,8 +9,8 @@ import pytest
 from support.pipeline import multi_tab_pipeline as default_pipeline
 from support.qt_process import run_popup
 
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_ui.transfer.documents import (
+from based_thermals.pipeline import node
+from based_thermals.pipeline_ui.transfer.documents import (
     BUNDLE_FORMAT,
     read_pipelines,
     unique_name,
@@ -96,12 +96,12 @@ from copy import deepcopy
 from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QFileDialog, QMessageBox
-from topdon_duo.pipeline import default_pipeline, node
-from topdon_duo.pipeline_presets import load_presets, save_presets
-from topdon_duo.pipeline_ui.transfer import actions
-from topdon_duo.pipeline_ui.transfer.dialogs import ExportDialog, ImportDialog
-from topdon_duo.pipeline_ui.transfer.documents import IncomingPipeline, read_pipelines, write_pipelines
-from topdon_duo.view_window import ViewWindow
+from based_thermals.pipeline import default_pipeline, node
+from based_thermals.pipeline_presets import load_presets, save_presets
+from based_thermals.pipeline_ui.transfer import actions
+from based_thermals.pipeline_ui.transfer.dialogs import ExportDialog, ImportDialog
+from based_thermals.pipeline_ui.transfer.documents import IncomingPipeline, read_pipelines, write_pipelines
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

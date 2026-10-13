@@ -7,7 +7,7 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from test_camera import make_frame
 
-from topdon_duo import desktop
+from based_thermals import desktop
 
 
 def test_hardware_ambient_changes_and_restore_drive_measurements(
@@ -15,7 +15,7 @@ def test_hardware_ambient_changes_and_restore_drive_measurements(
 ) -> None:
     from test_hardware_controls import CalibrationDevice as Device
 
-    from topdon_duo.hardware_controls import HardwareControls
+    from based_thermals.hardware_controls import HardwareControls
 
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     viewer.camera.device = Device()
@@ -72,7 +72,7 @@ def test_startup_calibration_waits_for_valid_frame_and_runs_once(
 def test_missing_frames_keep_ui_active_and_exclude_stale_measurements(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     viewer.camera.frames.return_value = [make_frame(), None, None, make_frame(24000)]
@@ -110,7 +110,7 @@ def test_viewer_can_quit_while_waiting_for_first_frame(
 def test_hardware_settings_retry_after_frames_arrive_before_applying_values(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"hardware": {"ambient": 22.2}})
     viewer.hardware.load.side_effect = [
@@ -213,7 +213,7 @@ def test_startup_calibration_is_not_requested_without_valid_camera_data(
 def test_ambient_input_keeps_requested_value_but_sends_quantized_temperature(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals.settings_preferences import load_settings
 
     panel = Mock()
     panel.poll.side_effect = [

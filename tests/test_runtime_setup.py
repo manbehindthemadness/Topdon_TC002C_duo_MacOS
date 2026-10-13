@@ -14,9 +14,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from topdon_duo import runtime_setup as setup
-from topdon_duo.runtime_setup import install as installer
-from topdon_duo.runtime_setup import probes
+from based_thermals import runtime_setup as setup
+from based_thermals.runtime_setup import install as installer
+from based_thermals.runtime_setup import probes
 
 
 @pytest.fixture
@@ -358,7 +358,7 @@ import ctypes
 import os
 import sys
 from pathlib import Path
-from topdon_duo.runtime_setup import probes
+from based_thermals.runtime_setup import probes
 os.write(1, b'native startup chatter\\n')
 ctypes.CDLL(None).printf(b'buffered native stdout\\n')
 atexit.register(lambda: os.write(1, b'native teardown chatter\\n'))
@@ -460,10 +460,10 @@ def test_desktop_prepares_runtime_before_creating_camera(monkeypatch: pytest.Mon
     """
     Keep package setup ahead of any camera backend constructor or acquisition.
     """
-    from topdon_duo import desktop
+    from based_thermals import desktop
 
     actions = []
-    monkeypatch.setattr("topdon_duo.desktop.ensure_runtime", lambda: actions.append("runtime"))
+    monkeypatch.setattr("based_thermals.desktop.ensure_runtime", lambda: actions.append("runtime"))
 
     def stop_at_camera(*_args: object, **_kwargs: object) -> None:
         """
@@ -472,7 +472,7 @@ def test_desktop_prepares_runtime_before_creating_camera(monkeypatch: pytest.Mon
         actions.append("camera")
         raise RuntimeError("camera boundary")
 
-    monkeypatch.setattr("topdon_duo.desktop.create_camera", stop_at_camera)
+    monkeypatch.setattr("based_thermals.desktop.create_camera", stop_at_camera)
     with pytest.raises(RuntimeError, match="camera boundary"):
         desktop.main([])
     assert actions == ["runtime", "camera"]
@@ -482,10 +482,10 @@ def test_web_prepares_runtime_before_creating_camera(monkeypatch: pytest.MonkeyP
     """
     Apply the same pre-acquisition setup to the web entry point.
     """
-    from topdon_duo import web
+    from based_thermals import web
 
     actions = []
-    monkeypatch.setattr("topdon_duo.web.ensure_runtime", lambda: actions.append("runtime"))
+    monkeypatch.setattr("based_thermals.web.ensure_runtime", lambda: actions.append("runtime"))
 
     def stop_at_camera(*_args: object, **_kwargs: object) -> None:
         """
@@ -494,7 +494,7 @@ def test_web_prepares_runtime_before_creating_camera(monkeypatch: pytest.MonkeyP
         actions.append("camera")
         raise RuntimeError("camera boundary")
 
-    monkeypatch.setattr("topdon_duo.web.create_camera", stop_at_camera)
+    monkeypatch.setattr("based_thermals.web.create_camera", stop_at_camera)
     with pytest.raises(RuntimeError, match="camera boundary"):
         web.main([])
     assert actions == ["runtime", "camera"]
@@ -505,13 +505,13 @@ def test_help_never_installs_runtime(monkeypatch: pytest.MonkeyPatch, viewer: st
     """
     Read-only CLI requests must exit before driver discovery or downloading packages.
     """
-    from topdon_duo import desktop, web
+    from based_thermals import desktop, web
 
     module = desktop if viewer == "desktop" else web
     prepare = Mock(side_effect=AssertionError("installation during help"))
     target = (
-        "topdon_duo.desktop.ensure_runtime" if viewer == "desktop"
-        else "topdon_duo.web.ensure_runtime"
+        "based_thermals.desktop.ensure_runtime" if viewer == "desktop"
+        else "based_thermals.web.ensure_runtime"
     )
     monkeypatch.setattr(target, prepare)
     with pytest.raises(SystemExit) as result:

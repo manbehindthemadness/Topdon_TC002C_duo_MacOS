@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 from support.pipeline import multi_tab_pipeline as default_pipeline
 
-from topdon_duo.feature_processing import apply_features
-from topdon_duo.pipeline import node, validate_pipeline
+from based_thermals.feature_processing import apply_features
+from based_thermals.pipeline import node, validate_pipeline
 
 
 def scene():
@@ -229,7 +229,7 @@ def test_invalid_configuration_rejected_atomically(kind, values):
 
 
 def test_feature_nodes_repeat_export_and_persist(tmp_path, monkeypatch):
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     saved = default_pipeline()
@@ -246,8 +246,8 @@ def test_feature_nodes_repeat_export_and_persist(tmp_path, monkeypatch):
 def test_real_pipeline_feature_mask_can_drive_combine_and_preserves_radiometry():
     from test_render import frame_with_preview
 
-    from topdon_duo.camera import decode_duo_frame
-    from topdon_duo.pipeline_processing import PipelineProcessor
+    from based_thermals.camera import decode_duo_frame
+    from based_thermals.pipeline_processing import PipelineProcessor
 
     frame, _ = frame_with_preview()
     _, raw, _ = decode_duo_frame(frame)
@@ -290,9 +290,9 @@ def test_editor_hides_irrelevant_feature_fields_and_locks_inputs():
 
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import default_pipeline, node
-from topdon_duo.feature_processing import feature_fields
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import default_pipeline, node
+from based_thermals.feature_processing import feature_fields
 app = QApplication([])
 window = ViewWindow(lambda message: None)
 window.show()

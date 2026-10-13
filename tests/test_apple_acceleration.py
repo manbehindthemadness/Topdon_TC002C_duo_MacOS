@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from topdon_duo import apple_acceleration as module
+from based_thermals import apple_acceleration as module
 
 
 @pytest.fixture(autouse=True)
@@ -105,8 +105,8 @@ def test_editor_enables_apple_node_without_rewriting_pipeline():
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication
-from topdon_duo.pipeline import node
-from topdon_duo.view_window import ViewWindow
+from based_thermals.pipeline import node
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor

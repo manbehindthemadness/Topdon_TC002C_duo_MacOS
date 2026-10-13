@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from topdon_duo import onnx_models
+from based_thermals import onnx_models
 
 
 def fake_runtime(
@@ -18,10 +18,10 @@ def fake_runtime(
     Fake runtime.
     """
     calls = []
-    monkeypatch.setattr("topdon_duo.onnx_upsampling.verified_model", lambda model: model.encode())
-    monkeypatch.setattr("topdon_duo.onnx_upsampling.explicit_coreml_padding", lambda data: data)
+    monkeypatch.setattr("based_thermals.onnx_upsampling.verified_model", lambda model: model.encode())
+    monkeypatch.setattr("based_thermals.onnx_upsampling.explicit_coreml_padding", lambda data: data)
     monkeypatch.setattr(
-        "topdon_duo.onnx_upsampling.coreml_input_shape_overrides",
+        "based_thermals.onnx_upsampling.coreml_input_shape_overrides",
         lambda data, shape, **kwargs: {
             "batch": shape[0],
             "height": shape[2],

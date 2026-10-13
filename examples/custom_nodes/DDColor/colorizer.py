@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
-from topdon_duo.custom_nodes.devices import onnx_providers, validate_device
+from based_thermals.custom_nodes.devices import onnx_providers, validate_device
 
 
 class Colorizer:

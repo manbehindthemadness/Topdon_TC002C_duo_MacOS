@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from topdon_duo import pointer
+from based_thermals import pointer
 
 
 @pytest.mark.parametrize("toolbar_first", [True, False])

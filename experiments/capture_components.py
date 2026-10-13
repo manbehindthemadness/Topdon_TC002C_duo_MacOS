@@ -9,8 +9,8 @@ from typing import Any
 import cv2
 import numpy as np
 
-from topdon_duo.camera import decode_duo_frame
-from topdon_duo.pipeline import node, validate_pipeline
+from based_thermals.camera import decode_duo_frame
+from based_thermals.pipeline import node, validate_pipeline
 
 
 class CaptureComponents:
@@ -31,13 +31,13 @@ class CaptureComponents:
             "branches": {tab: [node("software", "source")] for tab in "BCD"},
         })
         if mode in ("renderer", "both"):
-            from topdon_duo.render import ThermalRenderer
+            from based_thermals.render import ThermalRenderer
 
             self.renderer = ThermalRenderer(scale=4, rotation=270, ambient_celsius=None)
             self.renderer.native_temperatures = True
             self.renderer.set_pipeline(self.document)
         if mode in ("worker", "both"):
-            from topdon_duo.processing.worker import PipelineWorker
+            from based_thermals.processing.worker import PipelineWorker
 
             self.worker = PipelineWorker(apple_available=False)
 

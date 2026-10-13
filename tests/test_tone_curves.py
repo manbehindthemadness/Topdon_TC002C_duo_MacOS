@@ -1,6 +1,6 @@
 import pytest
 
-from topdon_duo.tone_curves import composite_curve
+from based_thermals.tone_curves import composite_curve
 
 
 @pytest.mark.parametrize('gamma,boost,contrast,preset,expected', [

@@ -13,7 +13,7 @@ import pytest
 from support.desktop_recording import viewer_fixture  # noqa: F401
 from support.qt_process import run_popup
 
-from topdon_duo import desktop, graphs
+from based_thermals import desktop, graphs
 
 
 def test_measurements_popup_editing_and_locks(tmp_path: Path) -> None:
@@ -25,9 +25,9 @@ from copy import deepcopy
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
-from topdon_duo.measurements_window import MeasurementsWindow
-from topdon_duo.measurements.paths import initial_region
-from topdon_duo.measurements.schema import KINDS
+from based_thermals.measurements_window import MeasurementsWindow
+from based_thermals.measurements.paths import initial_region
+from based_thermals.measurements.schema import KINDS
 
 app = QApplication([])
 messages = []
@@ -172,7 +172,7 @@ def test_parent_measurement_commands_reject_locks_and_stale_geometry(
     """
     Apply popup commands through the real session without accessing a camera or Qt process.
     """
-    from topdon_duo.measurements.paths import initial_region
+    from based_thermals.measurements.paths import initial_region
 
     panel = Mock()
     panel.state = {}

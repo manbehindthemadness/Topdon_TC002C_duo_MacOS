@@ -9,13 +9,13 @@ import cv2
 import numpy as np
 import pytest
 
-from topdon_duo.desktop import SampleSpots, draw_sample_spots, spot_label_layout
-from topdon_duo.desktop_app.overlays import place_temperature_label
-from topdon_duo.measurements.overlays import label_layout
-from topdon_duo.measurements.paths import initial_region
-from topdon_duo.measurements.schema import default_region, validate_region
-from topdon_duo.render import RenderedThermalFrame, TemperatureStats
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals.desktop import SampleSpots, draw_sample_spots, spot_label_layout
+from based_thermals.desktop_app.overlays import place_temperature_label
+from based_thermals.measurements.overlays import label_layout
+from based_thermals.measurements.paths import initial_region
+from based_thermals.measurements.schema import default_region, validate_region
+from based_thermals.render import RenderedThermalFrame, TemperatureStats
+from based_thermals.settings_preferences import load_settings, save_settings
 
 
 def region(kind: str, points: list, **values: object) -> dict:
@@ -231,7 +231,7 @@ def test_dragging_area_body_consumes_release_without_placing_a_point() -> None:
     """
     Grab away from the center and translate every vertex using the existing drag path.
     """
-    from topdon_duo.desktop import MousePicker, SpotDrag
+    from based_thermals.desktop import MousePicker, SpotDrag
 
     spots = SampleSpots(placing=True, native_size=(40, 30))
     number = spots.create_region((20, 15), region("rectangle", [[5, 5], [25, 20]]), (40, 30))
@@ -252,7 +252,7 @@ def test_area_editor_changes_leave_no_invisible_center_hit_target() -> None:
     """
     Select an area's visible body after vertex edits, keeping empty space clickable.
     """
-    from topdon_duo.desktop import spot_hit
+    from based_thermals.desktop import spot_hit
 
     spots = SampleSpots(native_size=(40, 30))
     number = spots.create_region((20, 15), region("rectangle", [[1, 1], [3, 3]]), (40, 30))

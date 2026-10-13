@@ -8,9 +8,9 @@ from test_capture_panel import popup_environment
 from test_pipeline import raw_pipeline
 from test_render import frame_with_preview
 
-from topdon_duo.camera import decode_duo_frame
-from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.pipeline_processing import PipelineProcessor
+from based_thermals.camera import decode_duo_frame
+from based_thermals.pipeline import node, validate_pipeline
+from based_thermals.pipeline_processing import PipelineProcessor
 
 
 def test_old_enhancement_presets_gain_cpu_defaults_without_mutation():
@@ -30,7 +30,7 @@ def test_cpu_system_ignores_but_retains_saved_apple_preferences(monkeypatch):
     def no_apple():
         raise AssertionError("Apple helper must not load on CPU-only system")
 
-    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", no_apple)
+    monkeypatch.setattr("based_thermals.processing.branch.CoreMLUpsampler", no_apple)
     document = raw_pipeline(
         node(
             "software",
@@ -69,7 +69,7 @@ def test_gpu_node_uses_isolated_engine_and_preserves_passes(monkeypatch):
         def close(self):
             calls.append("closed")
 
-    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", Engine)
+    monkeypatch.setattr("based_thermals.processing.branch.CoreMLUpsampler", Engine)
     document = raw_pipeline(
         node(
             "software",
@@ -97,7 +97,7 @@ def test_anime_ignores_saved_apple_backend_even_on_gpu_system(monkeypatch):
     def no_apple():
         raise AssertionError("Anime4K09 must not use Core ML")
 
-    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", no_apple)
+    monkeypatch.setattr("based_thermals.processing.branch.CoreMLUpsampler", no_apple)
     document = raw_pipeline(
         node(
             "software",
@@ -124,9 +124,9 @@ def test_gpu_controls_hidden_on_cpu_but_saved_settings_survive(tmp_path):
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_presets import save_presets, load_presets
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node
+from based_thermals.pipeline_presets import save_presets, load_presets
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor
@@ -160,8 +160,8 @@ window.close()
 def test_anime_is_cpu_only_and_backend_never_changes_selected_model():
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor

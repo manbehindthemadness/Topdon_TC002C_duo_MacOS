@@ -4,13 +4,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from topdon_duo.distance_calibration import (
+from based_thermals.distance_calibration import (
     DistanceCalibrator,
     DistanceReference,
     detect_hand_square,
     square_edge_pixels,
 )
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals.settings_preferences import load_settings, save_settings
 
 SIZE = (256, 192)
 

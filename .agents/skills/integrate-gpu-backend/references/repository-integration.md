@@ -2,20 +2,20 @@
 
 Paths below are relative to the project root. Inspect the current implementations
 before editing; this map is an entry point, not a replacement for source discovery.
-The Python namespace remains `topdon_duo` despite the based-thermals project name.
+The Python namespace is `based_thermals`, matching the based-thermals project name.
 
 ## Runtime provisioning and capabilities
 
 | Boundary             | Entry points                                      | What must stay consistent                                                                               |
 | -------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Startup setup        | `src/topdon_duo/runtime_setup/__init__.py`        | Host candidates, fallback order, isolated cache families, activation and retry/locking policy           |
+| Startup setup        | `src/based_thermals/runtime_setup/__init__.py`        | Host candidates, fallback order, isolated cache families, activation and retry/locking policy           |
 | Package selection    | `runtime_setup/install.py`                        | Version/build/index provenance, wheel tags, declared dependency requirements and system-library choices |
 | Native probes        | `runtime_setup/probes.py`                         | Driver/runtime distinction, disposable process, strict result schema, result file and real inference    |
 | Viewer startup       | `desktop_app/session.py`, `web.py`                | Setup after argument parsing, before camera construction; help/version/USB diagnostics remain read-only |
 | Capability reporting | `apple_acceleration.py`, `nvidia_acceleration.py` | Native isolation, unavailable reasons and cached startup results                                        |
 | Effective selection  | `acceleration.py`                                 | Requested preference retained, explicit CPU honored, deterministic fallback                             |
 
-Paths in shorter table entries share the `src/topdon_duo/` prefix. Also read
+Paths in shorter table entries share the `src/based_thermals/` prefix. Also read
 [the runtime setup guide](../../../../docs/onnx-runtime-setup.md) and applicable
 NVIDIA notes in `docs/nvidia-linux.md`, `docs/nvidia-jetpack.md` and
 `docs/nvidia-spark.md`. Their verified scope is specific to the recorded host/build.

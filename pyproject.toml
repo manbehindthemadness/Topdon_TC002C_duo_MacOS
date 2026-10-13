@@ -19,12 +19,12 @@ dependencies = [
 Repository = "https://github.com/manbehindthemadness/based-thermals"
 
 [project.scripts]
-based-thermals = "topdon_duo.web:main"
-based-thermals-desktop = "topdon_duo.desktop:main"
-based-thermals-models = "topdon_duo.onnx_models:main"
-topdon-duo = "topdon_duo.web:main"
-topdon-duo-desktop = "topdon_duo.desktop:main"
-topdon-duo-models = "topdon_duo.onnx_models:main"
+based-thermals = "based_thermals.web:main"
+based-thermals-desktop = "based_thermals.desktop:main"
+based-thermals-models = "based_thermals.onnx_models:main"
+topdon-duo = "based_thermals.web:main"
+topdon-duo-desktop = "based_thermals.desktop:main"
+topdon-duo-models = "based_thermals.onnx_models:main"
 
 [project.optional-dependencies]
 apple = ["onnxruntime>=1.23; sys_platform == 'darwin'"]
@@ -40,7 +40,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/topdon_duo"]
+packages = ["src/based_thermals"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

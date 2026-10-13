@@ -1,7 +1,7 @@
 import pytest
 
-from topdon_duo.enhancement_limits import acnet_pass_limit, enhancement_pass_limits
-from topdon_duo.pipeline import default_pipeline, node
+from based_thermals.enhancement_limits import acnet_pass_limit, enhancement_pass_limits
+from based_thermals.pipeline import default_pipeline, node
 
 
 @pytest.mark.parametrize(
@@ -53,7 +53,7 @@ def test_bypassed_upstream_scales_and_thermal_range_are_accounted_for():
     ("dncnn-25", 1), ("ffdnet-gray", 1),
 ])
 def test_regular_ai_onnx_limits_account_fixed_scale_and_ignore_hidden_passes(model, factor):
-    from topdon_duo.onnx_models import MODELS
+    from based_thermals.onnx_models import MODELS
 
     document = default_pipeline()
     ai = node("software", "enhance", model=model, input="native", passes=5)
@@ -76,8 +76,8 @@ def test_preview_control_pass_bounds_update_and_save_clamped_value(tmp_path):
 
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

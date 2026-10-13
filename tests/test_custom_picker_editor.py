@@ -16,7 +16,7 @@ import json, os, sys
 from pathlib import Path
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QFileDialog, QColorDialog, QMessageBox
-from topdon_duo.view_window import ViewWindow
+from based_thermals.view_window import ViewWindow
 root = Path(sys.argv[1])
 cache = root / "models"
 cache.mkdir()

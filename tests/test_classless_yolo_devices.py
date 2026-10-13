@@ -14,9 +14,9 @@ from support.classless import FOLDER, helper
 from support.classless import package as package  # noqa: PLC0414 - pytest fixture re-export
 from support.qt_process import run_popup
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.runtime import CustomPackage, CustomProcessor
-from topdon_duo.pipeline import node
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.runtime import CustomPackage, CustomProcessor
+from based_thermals.pipeline import node
 
 
 def fake_session(providers: list[Any]) -> Mock:
@@ -71,7 +71,7 @@ def test_yolo_device_sessions_rebuild_for_execution_and_reuse_for_display_edits(
         "CPUExecutionProvider", "CoreMLExecutionProvider", "CUDAExecutionProvider",
     ])
     cuda = Mock(return_value=[("CUDAExecutionProvider", {"device_id": "0"}), "CPUExecutionProvider"])
-    monkeypatch.setattr("topdon_duo.nvidia_acceleration.cuda_providers", cuda)
+    monkeypatch.setattr("based_thermals.nvidia_acceleration.cuda_providers", cuda)
     processor = CustomProcessor(apple_available=True, nvidia_available=True)
     image = np.full((12, 20, 3), 25, np.float32)
 
@@ -171,7 +171,7 @@ def test_real_yolo_editor_exposes_device_and_persists_selection(tmp_path: Path) 
 import json
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QFileDialog
-from topdon_duo.view_window import ViewWindow
+from based_thermals.view_window import ViewWindow
 
 app = QApplication([])
 messages = []

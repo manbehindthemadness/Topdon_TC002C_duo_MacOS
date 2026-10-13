@@ -9,7 +9,7 @@ import sys
 
 
 class CapturePanel:
-    window_module = "topdon_duo.capture_window"
+    window_module = "based_thermals.capture_window"
     window_label = "Capture"
 
     def __init__(self) -> None:

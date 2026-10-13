@@ -46,7 +46,7 @@ class _CoreMLRuntime:
             if "CoreMLExecutionProvider" not in ort.get_available_providers():
                 raise ValueError("installed ONNX Runtime does not provide CoreMLExecutionProvider")
             data = (
-                files("topdon_duo")
+                files("based_thermals")
                 .joinpath("models", f"acnet-legacy-hdn{denoise}.onnx")
                 .read_bytes()
             )

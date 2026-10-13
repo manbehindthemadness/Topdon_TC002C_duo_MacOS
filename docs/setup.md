@@ -100,7 +100,7 @@ Exact versions, tested hosts and managed-install details are in
 To retry setup without opening the camera:
 
 ```sh
-.venv/bin/python -m topdon_duo.runtime_setup --retry
+.venv/bin/python -m based_thermals.runtime_setup --retry
 ```
 
 For an explicitly offline or managed launch that uses only the environment's runtime:

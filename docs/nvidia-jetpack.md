@@ -36,7 +36,7 @@ missing GPU kernels. Other NVIDIA hosts retain their existing automatic selectio
 Run setup directly without opening a camera:
 
 ```bash
-.venv/bin/python -m topdon_duo.runtime_setup --retry
+.venv/bin/python -m based_thermals.runtime_setup --retry
 ```
 
 This automatic path was verified on the AGX Orin configuration listed below.
@@ -58,8 +58,8 @@ with pip NVIDIA library packages:
 
 ```bash
 uv sync --dev
-.venv/bin/python -m topdon_duo.cuda_setup --cuda 13 --system-libraries --dry-run
-.venv/bin/python -m topdon_duo.cuda_setup --cuda 13 --system-libraries
+.venv/bin/python -m based_thermals.cuda_setup --cuda 13 --system-libraries --dry-run
+.venv/bin/python -m based_thermals.cuda_setup --cuda 13 --system-libraries
 .venv/bin/based-thermals-desktop --rotate 90
 ```
 
@@ -86,7 +86,7 @@ distribution with the tested ARM64 GPU wheel from Microsoft's CUDA 13 feed:
 .venv/bin/uv sync --dev
 .venv/bin/uv pip uninstall onnxruntime
 .venv/bin/uv pip install --no-deps --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/ 'onnxruntime-gpu==1.28.0.dev20260722004'
-.venv/bin/python -m topdon_duo.nvidia_acceleration
+.venv/bin/python -m based_thermals.nvidia_acceleration
 .venv/bin/based-thermals-desktop --rotate 90
 ```
 

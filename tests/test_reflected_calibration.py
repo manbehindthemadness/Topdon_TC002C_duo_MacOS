@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from topdon_duo.camera import CameraError
-from topdon_duo.reflected_calibration import ReflectedCalibrator, validate_reference
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals.camera import CameraError
+from based_thermals.reflected_calibration import ReflectedCalibrator, validate_reference
+from based_thermals.settings_preferences import load_settings, save_settings
 
 
 class Hardware:

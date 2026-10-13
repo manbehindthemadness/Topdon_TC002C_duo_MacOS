@@ -4,5 +4,5 @@ from .capture_panel import CapturePanel
 
 
 class ViewPanel(CapturePanel):
-    window_module = "topdon_duo.view_window"
+    window_module = "based_thermals.view_window"
     window_label = "Imaging"

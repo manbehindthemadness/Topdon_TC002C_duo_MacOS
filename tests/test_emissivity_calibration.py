@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from topdon_duo.camera import CameraError
-from topdon_duo.emissivity_calibration import EmissivityCalibrator
+from based_thermals.camera import CameraError
+from based_thermals.emissivity_calibration import EmissivityCalibrator
 
 
 class Hardware:
@@ -136,7 +136,7 @@ def test_selection_copies_pixel_temperature_once_and_each_reselection_has_an_id(
 
 
 def test_reference_marker_is_visible_and_clears_when_fit_is_saved():
-    from topdon_duo.desktop import draw_emissivity_point
+    from based_thermals.desktop import draw_emissivity_point
 
     cal, hardware = prepared()
     image = np.full((30, 30, 3), 100, np.uint8)

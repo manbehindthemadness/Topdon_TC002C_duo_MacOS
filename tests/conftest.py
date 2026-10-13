@@ -22,7 +22,7 @@ def no_live_viewer_window(monkeypatch: pytest.MonkeyPatch) -> None:
 
     Qt viewer integration tests explicitly install their bridge or use a subprocess.
     """
-    monkeypatch.setattr("topdon_duo.desktop.ViewerPanel", lambda: None)
+    monkeypatch.setattr("based_thermals.desktop.ViewerPanel", lambda: None)
 
 
 @pytest.fixture(autouse=True)
@@ -38,8 +38,8 @@ def no_live_nvidia_probe(monkeypatch: pytest.MonkeyPatch) -> None:
         return {"available": False, "cuda": False, "reason": "NVIDIA probe disabled in tests"}
 
     for target in (
-        "topdon_duo.desktop.nvidia_acceleration",
-        "topdon_duo.processing.branch.nvidia_acceleration",
-        "topdon_duo.processing.scheduler.nvidia_acceleration",
+        "based_thermals.desktop.nvidia_acceleration",
+        "based_thermals.processing.branch.nvidia_acceleration",
+        "based_thermals.processing.scheduler.nvidia_acceleration",
     ):
         monkeypatch.setattr(target, unavailable)

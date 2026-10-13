@@ -4,8 +4,8 @@ from time import monotonic, sleep
 import numpy as np
 import pytest
 
-from topdon_duo import model_downloads, onnx_models
-from topdon_duo.onnx_upsampling import ONNXUpsampler
+from based_thermals import model_downloads, onnx_models
+from based_thermals.onnx_upsampling import ONNXUpsampler
 
 
 def wait_finished(manager, model):
@@ -83,7 +83,7 @@ def test_pending_download_keeps_feed_live_without_starting_native_helper(monkeyp
         requests.append((model, retry))
         return False
 
-    monkeypatch.setattr("topdon_duo.onnx_upsampling.MODEL_DOWNLOADS.request", request)
+    monkeypatch.setattr("based_thermals.onnx_upsampling.MODEL_DOWNLOADS.request", request)
     engine = ONNXUpsampler()
     image = np.full((12, 16, 3), 70, np.uint8)
     assert engine.apply(image, model, amount=0) is image

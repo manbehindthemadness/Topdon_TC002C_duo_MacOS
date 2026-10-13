@@ -16,8 +16,8 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
-from topdon_duo.measurements_window import MeasurementsWindow
-from topdon_duo.viewer_window import ViewerWindow
+from based_thermals.measurements_window import MeasurementsWindow
+from based_thermals.viewer_window import ViewerWindow
 
 app = QApplication([])
 commands = []

@@ -16,7 +16,7 @@ names may contain spaces; runtime module names are generated independently.
 
 Resolve the repository root from `AGENTS.md` and read its instructions. Consult
 [`docs/custom-nodes.md`](../../../docs/custom-nodes.md) and the current
-`src/topdon_duo/custom_nodes/bundle.py` and `runtime.py`; their implemented
+`src/based_thermals/custom_nodes/bundle.py` and `runtime.py`; their implemented
 contract takes precedence over stale examples. Before Python toolchain commands,
 resolve the module interpreter through the available `python-tools` skill/IDE
 `get_python_environment` workflow required by this repository.

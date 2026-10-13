@@ -9,8 +9,8 @@ import pytest
 from support.classless import helper
 from support.classless import package as package  # noqa: PLC0414 - pytest fixture re-export
 
-from topdon_duo.custom_nodes.runtime import CustomPackage
-from topdon_duo.desktop_app.overlays import draw_contrasting_overlay
+from based_thermals.custom_nodes.runtime import CustomPackage
+from based_thermals.desktop_app.overlays import draw_contrasting_overlay
 
 
 def test_inside_out_keeps_leaves_before_confidence_limit(package: CustomPackage) -> None:

@@ -8,8 +8,8 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from support.qt_process import run_popup
 
-from topdon_duo import desktop
-from topdon_duo.desktop_app.session import DesktopSession
+from based_thermals import desktop
+from based_thermals.desktop_app.session import DesktopSession
 
 viewer = viewer_fixture
 
@@ -38,7 +38,7 @@ def test_camera_error_status_flashes_and_clears_without_commands(tmp_path: Path)
     """
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

@@ -5,7 +5,7 @@ artifacts. They are scoped to that device/firmware and to the recorded experimen
 Do not send these requests to another model simply because it is thermal, USB/UVC,
 TOPDON-branded, or manufactured by a related module supplier.
 
-Read current `src/topdon_duo/` for product behavior. Consult
+Read current `src/based_thermals/` for product behavior. Consult
 [the discovery index](../../../../docs/hardware-discoveries.txt) and
 [the chronological research log](../../../../docs/hardware-research.txt)
 for packet examples, source artifacts and later corrections. Do not copy the old

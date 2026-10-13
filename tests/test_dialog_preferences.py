@@ -3,8 +3,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from topdon_duo.desktop import LinuxSaveDialog, MacSaveDialog
-from topdon_duo.dialog_preferences import load_dialog_directory, remember_dialog_directory
+from based_thermals.desktop import LinuxSaveDialog, MacSaveDialog
+from based_thermals.dialog_preferences import load_dialog_directory, remember_dialog_directory
 
 
 @pytest.mark.parametrize("dialog_class", [MacSaveDialog, LinuxSaveDialog])
@@ -22,7 +22,7 @@ def test_save_dialog_remembers_accepted_directory_on_next_launch(
     process.poll.return_value = 0
     process.communicate.return_value = (str(directory / ("capture" + suffix)) + "\n", "")
     popen = Mock(return_value=process)
-    monkeypatch.setattr("topdon_duo.desktop.subprocess.Popen", popen)
+    monkeypatch.setattr("based_thermals.desktop.subprocess.Popen", popen)
     first = dialog_class()
     assert first.open(suffix=suffix, kind=kind)
     assert first.poll() == (True, directory / ("capture" + suffix))
@@ -44,7 +44,7 @@ def test_each_directory_is_independent_and_cancel_does_not_replace_it(monkeypatc
     process = Mock(returncode=1)
     process.poll.return_value = 1
     process.communicate.return_value = ("", "")
-    monkeypatch.setattr("topdon_duo.desktop.subprocess.Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr("based_thermals.desktop.subprocess.Popen", lambda *args, **kwargs: process)
     dialog = LinuxSaveDialog()
     dialog.open()
     assert dialog.poll() == (True, None)

@@ -10,7 +10,7 @@ for the implemented contract; another physical camera still needs protocol evide
 | Files | Responsibility and relevant invariants |
 | --- | --- |
 | `camera_backends/` | Explicit factories, compatible profiles, immutable decoded planes, reported readings, control metadata and reversible device/spot ownership |
-| `src/topdon_duo/camera.py` | `TC002CDuoCamera`, UVC negotiation, frame assembly, queued/synchronous reads, Duo decode, temperature conversion and validity detection |
+| `src/based_thermals/camera.py` | `TC002CDuoCamera`, UVC negotiation, frame assembly, queued/synchronous reads, Duo decode, temperature conversion and validity detection |
 | `queued_usb.py`, `frame_pump.py` | Continuous acquisition; queued bulk transfers, cancellation and latest-complete-frame consumption independent of UI |
 | `hardware_controls.py`, `tone_curves.py` | Target-specific blocks, SDK initialization, saved originals, status polling, presets, shutter and incremental LUT upload/restore |
 | `pipeline_hardware.py` | Applies owned fields in audited order, preserves calibration/correction fields, skips USB for software/reorder/collapse edits |

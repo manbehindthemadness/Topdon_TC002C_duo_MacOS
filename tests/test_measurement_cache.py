@@ -5,7 +5,7 @@ Public measurement-cache operations retain sensor data across calibration pauses
 import numpy as np
 from test_camera import make_frame
 
-from topdon_duo.render import ThermalRenderer
+from based_thermals.render import ThermalRenderer
 
 
 def test_restart_keeps_held_counts_and_replaces_average_on_next_frame() -> None:

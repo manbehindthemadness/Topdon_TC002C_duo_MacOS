@@ -1,7 +1,7 @@
 # Pipeline exports
 
 These individual pipeline files can be imported from Camera settings. The same
-settings are included in `src/topdon_duo/predefined_pipeline_presets.json`, which
+settings are included in `src/based_thermals/predefined_pipeline_presets.json`, which
 ships with the package and populates the preset dropdown on a fresh installation.
 
 The following exports capture the saved macOS pipelines on 2026-10-09, preserving

@@ -9,7 +9,7 @@ from support.desktop_recording import viewer_fixture
 from support.pipeline import raw_pipeline
 from support.qt_process import run_popup
 
-from topdon_duo.pipeline import (
+from based_thermals.pipeline import (
     default_pipeline,
     node,
 )
@@ -25,9 +25,9 @@ from copy import deepcopy
 from pathlib import Path
 from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QMenu
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node, default_pipeline
-from topdon_duo.pipeline_ui.transfer.dialogs import ExportDialog, ImportDialog
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node, default_pipeline
+from based_thermals.pipeline_ui.transfer.dialogs import ExportDialog, ImportDialog
 ExportDialog.exec = lambda _: ExportDialog.DialogCode.Accepted
 ImportDialog.exec = lambda _: ImportDialog.DialogCode.Accepted
 app = QApplication([])
@@ -220,8 +220,8 @@ window.close()
 def test_desktop_pipeline_command_persists_and_is_locked_while_logging(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo import desktop
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals import desktop
+    from based_thermals.settings_preferences import load_settings
 
     document = raw_pipeline(node("software", "mirror", horizontal=True))
     document["software"][1]["expanded"] = True

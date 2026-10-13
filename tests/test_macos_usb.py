@@ -13,8 +13,8 @@ from unittest.mock import Mock
 import pytest
 import usb.core
 
-from topdon_duo.camera import FRAME_BYTES, CameraError, NegotiatedMode, TC002CDuoCamera
-from topdon_duo.macos_usb import client, protocol, service
+from based_thermals.camera import FRAME_BYTES, CameraError, NegotiatedMode, TC002CDuoCamera
+from based_thermals.macos_usb import client, protocol, service
 
 
 class FakeCamera:

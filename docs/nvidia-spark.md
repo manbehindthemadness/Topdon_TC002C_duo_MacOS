@@ -26,7 +26,7 @@ uv sync --dev
 uv pip uninstall --python .venv/bin/python onnxruntime
 uv pip install --python .venv/bin/python --no-deps \
   'onnxruntime-gpu==1.30.0' 'nvidia-cudnn-cu13==9.20.0.48'
-.venv/bin/python -m topdon_duo.nvidia_acceleration
+.venv/bin/python -m based_thermals.nvidia_acceleration
 .venv/bin/based-thermals --diagnose
 .venv/bin/based-thermals-desktop --rotate 90
 ```

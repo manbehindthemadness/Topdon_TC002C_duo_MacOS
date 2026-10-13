@@ -12,14 +12,14 @@ import pytest
 from support.frames import make_frame
 from support.pipeline import raw_pipeline
 
-from topdon_duo import apple_acceleration, nvidia_acceleration
-from topdon_duo.custom_nodes import devices
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.configuration import configuration
-from topdon_duo.custom_nodes.runtime import CustomProcessor
-from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.pipeline_model.catalog import SOFTWARE_NODES
-from topdon_duo.processing.branch import BranchProcessor
+from based_thermals import apple_acceleration, nvidia_acceleration
+from based_thermals.custom_nodes import devices
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.configuration import configuration
+from based_thermals.custom_nodes.runtime import CustomProcessor
+from based_thermals.pipeline import node, validate_pipeline
+from based_thermals.pipeline_model.catalog import SOFTWARE_NODES
+from based_thermals.processing.branch import BranchProcessor
 
 
 def device_document(value: object) -> dict[str, Any]:

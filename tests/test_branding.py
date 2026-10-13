@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 from support.qt_process import run_popup
 
-from topdon_duo import APP_NAME, onnx_models
-from topdon_duo.desktop_app.constants import WINDOW_NAME
-from topdon_duo.pipeline import default_pipeline
-from topdon_duo.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
-from topdon_duo.web import LiveStream, create_app
+from based_thermals import APP_NAME, onnx_models
+from based_thermals.desktop_app.constants import WINDOW_NAME
+from based_thermals.pipeline import default_pipeline
+from based_thermals.pipeline_ui.transfer.documents import read_pipelines, write_pipelines
+from based_thermals.web import LiveStream, create_app
 
 
 @pytest.mark.parametrize("suffix", ["", "-desktop", "-models"])
@@ -98,7 +98,7 @@ def test_qt_viewer_uses_generic_application_title(tmp_path: Path) -> None:
     result = run_popup(
         '''
 from PySide6.QtWidgets import QApplication
-from topdon_duo.viewer_window import ViewerWindow
+from based_thermals.viewer_window import ViewerWindow
 app = QApplication([])
 window = ViewerWindow(lambda message: None)
 assert window.windowTitle() == "based-thermals"

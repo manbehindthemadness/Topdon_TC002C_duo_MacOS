@@ -20,7 +20,7 @@ def demo_pipeline() -> dict[str, Any]:
     """
     Build a CPU-only thermal composition with a grayscale upper-left inset.
     """
-    from topdon_duo.pipeline import default_pipeline, node, validate_pipeline
+    from based_thermals.pipeline import default_pipeline, node, validate_pipeline
 
     document = default_pipeline()
     document["hardware"] = []
@@ -52,16 +52,16 @@ def render_frames(directory: Path) -> None:
 
     import cv2
 
-    from topdon_duo.camera_backends.virtual import VirtualDualCamera
-    from topdon_duo.desktop_app.captures import save_capture
-    from topdon_duo.desktop_app.layout import GraphWindowLayout
-    from topdon_duo.desktop_app.overlays import draw_sample_spots
-    from topdon_duo.desktop_app.spots import SampleSpots
-    from topdon_duo.graphs import GraphSnapshot, render_graphs
-    from topdon_duo.measurements.schema import default_region
-    from topdon_duo.pipeline import node
-    from topdon_duo.pipeline_processing import PipelineProcessor
-    from topdon_duo.render import ThermalRenderer, draw_temperature_readout
+    from based_thermals.camera_backends.virtual import VirtualDualCamera
+    from based_thermals.desktop_app.captures import save_capture
+    from based_thermals.desktop_app.layout import GraphWindowLayout
+    from based_thermals.desktop_app.overlays import draw_sample_spots
+    from based_thermals.desktop_app.spots import SampleSpots
+    from based_thermals.graphs import GraphSnapshot, render_graphs
+    from based_thermals.measurements.schema import default_region
+    from based_thermals.pipeline import node
+    from based_thermals.pipeline_processing import PipelineProcessor
+    from based_thermals.render import ThermalRenderer, draw_temperature_readout
 
     camera = VirtualDualCamera()
     size = camera.profile.native_size
@@ -83,7 +83,7 @@ def render_frames(directory: Path) -> None:
     ], "branches": {}}
     # Avoid discovery of physical accelerators: this documentation exercise uses
     # ordinary CPU pixel operations and never loads a model or runtime installer.
-    with patch("topdon_duo.render.PipelineProcessor", lambda: PipelineProcessor(False, False)):
+    with patch("based_thermals.render.PipelineProcessor", lambda: PipelineProcessor(False, False)):
         renderer = ThermalRenderer(scale=6, smoothing=1.0, ambient_celsius=None, image_source="raw")
     renderer.pipeline = plain
     master = []
@@ -138,10 +138,10 @@ def capture_widgets(directory: Path, output: Path) -> None:
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QWidget
 
-    from topdon_duo.capture_window import CaptureWindow
-    from topdon_duo.measurements_window import MeasurementsWindow
-    from topdon_duo.view_window import ViewWindow
-    from topdon_duo.viewer_window import ViewerWindow
+    from based_thermals.capture_window import CaptureWindow
+    from based_thermals.measurements_window import MeasurementsWindow
+    from based_thermals.view_window import ViewWindow
+    from based_thermals.viewer_window import ViewerWindow
 
     app = QApplication([])
     app.setStyle("Fusion")

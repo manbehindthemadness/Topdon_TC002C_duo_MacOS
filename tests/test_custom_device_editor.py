@@ -16,9 +16,9 @@ def test_custom_device_editor_capabilities_persistence_and_locks(tmp_path: Path)
 import json, sys
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QFileDialog
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.custom_nodes import devices
-from topdon_duo.pipeline import validate_pipeline
+from based_thermals.view_window import ViewWindow
+from based_thermals.custom_nodes import devices
+from based_thermals.pipeline import validate_pipeline
 
 def forbidden():
     raise AssertionError("UI must not probe devices")

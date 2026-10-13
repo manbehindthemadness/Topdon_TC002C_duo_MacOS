@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 from support.desktop_recording import viewer_fixture  # noqa: F401
 
-from topdon_duo import desktop
+from based_thermals import desktop
 
 
 def test_measurements_control_opens_popup_and_retains_parent_lock(
@@ -19,7 +19,7 @@ def test_measurements_control_opens_popup_and_retains_parent_lock(
     Open editable geometry from the Qt control, including read-only logging access.
     """
     panel = Mock()
-    monkeypatch.setattr("topdon_duo.desktop.SpotsPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.SpotsPanel", lambda: panel)
     session = desktop.DesktopSession(desktop, [])
     viewer_panel = Mock(closed=False)
     session.viewer = viewer_panel

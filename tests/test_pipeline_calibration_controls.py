@@ -12,18 +12,18 @@ from support.pipeline import fake_hardware
 from support.qt_process import run_popup
 from test_render import frame_with_preview
 
-from topdon_duo.pipeline import (
+from based_thermals.pipeline import (
     HARDWARE_NODES,
     default_pipeline,
     migrate_pipeline,
     node,
     validate_pipeline,
 )
-from topdon_duo.pipeline_hardware import PIPELINE_FIELDS, PipelineHardware
-from topdon_duo.pipeline_processing import PipelineProcessor
-from topdon_duo.processing.images import invert_colors
-from topdon_duo.render import ThermalRenderer
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals.pipeline_hardware import PIPELINE_FIELDS, PipelineHardware
+from based_thermals.pipeline_processing import PipelineProcessor
+from based_thermals.processing.images import invert_colors
+from based_thermals.render import ThermalRenderer
+from based_thermals.settings_preferences import load_settings, save_settings
 
 
 def legacy_humidity(value: float = 45.5, bypass: bool = False) -> dict[str, Any]:
@@ -156,9 +156,9 @@ def test_humidity_calibration_row_and_invert_node_in_offscreen_ui(tmp_path: Path
     """
     script = '''
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import default_pipeline, HARDWARE_NODES
-from topdon_duo.view_settings import VIEW_DEFAULTS
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import default_pipeline, HARDWARE_NODES
+from based_thermals.view_settings import VIEW_DEFAULTS
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

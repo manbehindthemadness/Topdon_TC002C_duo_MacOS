@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from topdon_duo import cuda_setup as setup
+from based_thermals import cuda_setup as setup
 
 
 @pytest.fixture

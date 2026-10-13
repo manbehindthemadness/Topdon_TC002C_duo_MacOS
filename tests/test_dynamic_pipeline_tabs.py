@@ -10,9 +10,9 @@ import pytest
 from support.frames import frame_with_preview
 from support.qt_process import run_popup
 
-from topdon_duo.pipeline import default_pipeline, node, validate_pipeline
-from topdon_duo.pipeline_model.tabs import add_pipeline_tab, remove_pipeline_tab, tab_names
-from topdon_duo.pipeline_processing import PipelineProcessor
+from based_thermals.pipeline import default_pipeline, node, validate_pipeline
+from based_thermals.pipeline_model.tabs import add_pipeline_tab, remove_pipeline_tab, tab_names
+from based_thermals.pipeline_processing import PipelineProcessor
 
 
 def test_new_pipeline_and_dynamic_labels_round_trip(
@@ -21,7 +21,7 @@ def test_new_pipeline_and_dynamic_labels_round_trip(
     """
     Start with A and retain branches beyond D/Z through preferences and validation.
     """
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     document = default_pipeline()
@@ -117,8 +117,8 @@ def test_dynamic_tab_controls_connections_import_and_locks(tmp_path: Path) -> No
     script = '''
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QMessageBox
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import default_pipeline, node
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import default_pipeline, node
 app = QApplication([])
 messages = []
 warnings = []

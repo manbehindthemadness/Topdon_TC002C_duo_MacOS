@@ -12,8 +12,8 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from topdon_duo import nvidia_acceleration as module
-from topdon_duo.onnx_upsampling import ONNXRuntime
+from based_thermals import nvidia_acceleration as module
+from based_thermals.onnx_upsampling import ONNXRuntime
 
 
 @pytest.fixture(autouse=True)

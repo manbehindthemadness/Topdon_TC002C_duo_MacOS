@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 from support.desktop_recording import viewer_fixture
 
-from topdon_duo import desktop
-from topdon_duo.desktop_app.session import DesktopSession
+from based_thermals import desktop
+from based_thermals.desktop_app.session import DesktopSession
 
 
 @pytest.mark.usefixtures("viewer")

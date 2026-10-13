@@ -11,8 +11,8 @@ import pytest
 from support.desktop_recording import viewer_fixture  # noqa: F401
 from support.qt_process import run_popup
 
-from topdon_duo import desktop
-from topdon_duo.graphs import graph_interval_rect
+from based_thermals import desktop
+from based_thermals.graphs import graph_interval_rect
 
 
 @pytest.mark.parametrize("window", [(600, 1000), (1200, 500), (1, 2)])
@@ -119,8 +119,8 @@ def test_portrait_session_draws_on_camera_and_never_samples_graphs(
     panel = Mock()
     panel.poll.side_effect = [[{"action": "draw", "kind": "rectangle",
                                "orientation": [0, False, False]}], [], [], []]
-    monkeypatch.setattr("topdon_duo.desktop.ViewerPanel", lambda: native)
-    monkeypatch.setattr("topdon_duo.desktop.SpotsPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewerPanel", lambda: native)
+    monkeypatch.setattr("based_thermals.desktop.SpotsPanel", lambda: panel)
     viewer.graphs.image.side_effect = lambda size, **_kw: np.full(
         (size[1], size[0], 3), (10, 20, 30), np.uint8
     )
@@ -139,7 +139,7 @@ def test_rotation_popup_edits_locks_and_authoritative_reopen(tmp_path: Path) -> 
     """
     script = r'''
 from PySide6.QtWidgets import QApplication
-from topdon_duo.viewer_window import ViewerWindow
+from based_thermals.viewer_window import ViewerWindow
 app = QApplication([])
 messages = []
 window = ViewerWindow(messages.append)

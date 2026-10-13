@@ -10,11 +10,11 @@ import numpy as np
 import pytest
 from support.pipeline import raw_pipeline
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.configuration import configuration
-from topdon_duo.custom_nodes.metadata import embedded_metadata
-from topdon_duo.custom_nodes.runtime import CustomProcessor
-from topdon_duo.pipeline import node, validate_pipeline
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.configuration import configuration
+from based_thermals.custom_nodes.metadata import embedded_metadata
+from based_thermals.custom_nodes.runtime import CustomProcessor
+from based_thermals.pipeline import node, validate_pipeline
 
 
 def document() -> dict[str, Any]:

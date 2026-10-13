@@ -29,10 +29,10 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from topdon_duo import desktop
-from topdon_duo import graphs as graph_module
-from topdon_duo.camera import CameraError, NegotiatedMode, TC002CDuoCamera
-from topdon_duo.desktop_app.session import DesktopSession
+from based_thermals import desktop
+from based_thermals import graphs as graph_module
+from based_thermals.camera import CameraError, NegotiatedMode, TC002CDuoCamera
+from based_thermals.desktop_app.session import DesktopSession
 
 
 class ChartsWithoutMarkers:

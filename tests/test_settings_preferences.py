@@ -1,6 +1,6 @@
 import json
 
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals.settings_preferences import load_settings, save_settings
 
 
 def test_fixed_mode_persists_and_retired_bounds_are_ignored(monkeypatch, tmp_path):
@@ -40,7 +40,7 @@ def test_invalid_preferences_preserve_independent_valid_fields(monkeypatch, tmp_
 
 
 def test_retired_enhancements_fall_back_without_losing_other_settings(monkeypatch, tmp_path):
-    from topdon_duo.render import ThermalRenderer
+    from based_thermals.render import ThermalRenderer
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     for model in ("tidy", "dncnn-gray-blind"):

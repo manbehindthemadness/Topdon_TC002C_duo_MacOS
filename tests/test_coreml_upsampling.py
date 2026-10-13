@@ -8,9 +8,9 @@ import cv2
 import numpy as np
 import pytest
 
-from topdon_duo.coreml_upsampling import CoreMLUpsampler, _CoreMLRuntime
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_titles import node_title
+from based_thermals.coreml_upsampling import CoreMLUpsampler, _CoreMLRuntime
+from based_thermals.pipeline import node
+from based_thermals.pipeline_titles import node_title
 
 
 def fake_runtime(monkeypatch, providers=None, tensor=None):
@@ -106,7 +106,7 @@ def test_pipeline_node_executes_independently_and_can_be_bypassed(monkeypatch):
     from test_pipeline import process, raw_pipeline
 
     fake_runtime(monkeypatch)
-    monkeypatch.setattr("topdon_duo.processing.branch.CoreMLUpsampler", _CoreMLRuntime)
+    monkeypatch.setattr("based_thermals.processing.branch.CoreMLUpsampler", _CoreMLRuntime)
     item = node("software", "coreml_acnet")
     document = raw_pipeline(item)
     assert process(document).shape == (192, 256, 3)
@@ -159,7 +159,7 @@ def _echo_worker(connection, denoise, compute):
 
 def test_native_helper_death_does_not_kill_or_retry_viewer(monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr("topdon_duo.coreml_upsampling._coreml_worker", _exiting_worker)
+    monkeypatch.setattr("based_thermals.coreml_upsampling._coreml_worker", _exiting_worker)
     engine = CoreMLUpsampler()
     image = np.zeros((4, 4), dtype=np.uint8)
     with pytest.raises(ValueError, match="exited unexpectedly.*17"):
@@ -171,7 +171,7 @@ def test_native_helper_death_does_not_kill_or_retry_viewer(monkeypatch):
 
 def test_helper_reused_and_closed_without_changing_image(monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr("topdon_duo.coreml_upsampling._coreml_worker", _echo_worker)
+    monkeypatch.setattr("based_thermals.coreml_upsampling._coreml_worker", _echo_worker)
     engine = CoreMLUpsampler()
     image = np.zeros((4, 4), dtype=np.uint8)
     try:

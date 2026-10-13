@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from topdon_duo.custom_nodes.models import ModelResolver
+from based_thermals.custom_nodes.models import ModelResolver
 
 from .detector import Detector
 from .drawing import draw_detections

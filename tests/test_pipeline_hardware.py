@@ -9,15 +9,15 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from support.pipeline import fake_hardware, raw_pipeline
 
-from topdon_duo.camera import (
+from based_thermals.camera import (
     CameraError,
 )
-from topdon_duo.pipeline import (
+from based_thermals.pipeline import (
     default_pipeline,
     node,
     validate_pipeline,
 )
-from topdon_duo.pipeline_hardware import PipelineHardware
+from based_thermals.pipeline_hardware import PipelineHardware
 
 
 def test_hardware_reorder_makes_no_usb_writes_and_bypass_restores_only_owned_fields() -> None:
@@ -75,7 +75,7 @@ def test_pipeline_fields_preserve_sdk_calibration_bytes_and_restore_original(
 ) -> None:
     from test_hardware_controls import Device
 
-    from topdon_duo.hardware_controls import HardwareControls
+    from based_thermals.hardware_controls import HardwareControls
 
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     device = Device()
@@ -144,8 +144,8 @@ def test_source_toggle_preserves_unavailable_hardware_without_retrying_sdk() -> 
 def test_old_transmission_node_moves_to_standalone_preferences(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bypass: Any
 ) -> None:
-    from topdon_duo.pipeline import HARDWARE_NODES
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.pipeline import HARDWARE_NODES
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     document = default_pipeline()

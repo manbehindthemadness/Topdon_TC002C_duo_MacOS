@@ -19,8 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from topdon_duo.camera import CameraError, TC002CDuoCamera, decode_duo_frame
-from topdon_duo.frame_pump import CameraFramePump
+from based_thermals.camera import CameraError, TC002CDuoCamera, decode_duo_frame
+from based_thermals.frame_pump import CameraFramePump
 
 
 class CaptureFinished(Exception):

@@ -9,7 +9,7 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from test_camera import make_frame
 
-from topdon_duo import desktop
+from based_thermals import desktop
 
 
 def opencv_mock(name: str) -> Mock:
@@ -27,9 +27,9 @@ def test_main_window_size_is_saved_and_restored_on_next_run(
     """
     Restore the last window size through the desktop facade's injectable boundary.
     """
-    from topdon_duo.window_preferences import load_main_window_size
+    from based_thermals.window_preferences import load_main_window_size
 
-    monkeypatch.setattr("topdon_duo.desktop.window_resize_size", lambda _name: (930, 710))
+    monkeypatch.setattr("based_thermals.desktop.window_resize_size", lambda _name: (930, 710))
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
@@ -46,7 +46,7 @@ def test_native_close_keeps_last_size_when_window_has_already_disappeared(
     """
     Preserve the last valid size when native window inspection becomes unavailable.
     """
-    from topdon_duo.window_preferences import load_main_window_size
+    from based_thermals.window_preferences import load_main_window_size
 
     calls = []
 
@@ -59,7 +59,7 @@ def test_native_close_keeps_last_size_when_window_has_already_disappeared(
             return 870, 660
         return None
 
-    monkeypatch.setattr("topdon_duo.desktop.window_resize_size", size)
+    monkeypatch.setattr("based_thermals.desktop.window_resize_size", size)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: int(len(calls) == 1))
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: -1)
     assert desktop.main([]) == 0
@@ -73,7 +73,7 @@ def test_native_1024_canvas_and_size_reset_preserve_aspect(
     """
     Reset persisted sizing to the explicitly requested native preview canvas.
     """
-    from topdon_duo.window_preferences import save_main_window_size
+    from based_thermals.window_preferences import save_main_window_size
 
     save_main_window_size((930, 710))
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
@@ -365,15 +365,15 @@ def test_camera_preferences_survive_restart_and_restore_clears_overrides(
     """
     from test_hardware_controls import CalibrationDevice as Device
 
-    from topdon_duo.hardware_controls import HardwareControls
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals.hardware_controls import HardwareControls
+    from based_thermals.settings_preferences import load_settings
 
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     device = Device()
     viewer.camera.device = device
-    monkeypatch.setattr("topdon_duo.desktop.HardwareControls", HardwareControls)
+    monkeypatch.setattr("based_thermals.desktop.HardwareControls", HardwareControls)
     panel = Mock()
-    monkeypatch.setattr("topdon_duo.desktop.ViewPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     panel.poll.return_value = [
@@ -417,14 +417,14 @@ def test_spots_save_immediately_and_restore_on_restart(
     """
     Restore measurement identities, names, coordinates and enable states after restart.
     """
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals.settings_preferences import load_settings
 
     spots = desktop.SampleSpots(pixels=[(80, 60), (120, 90)])
     spots.rename(2, "Motor")
     spots.set_enabled(2, False)
     spots.clear(1)
     spots.placing = True
-    monkeypatch.setattr("topdon_duo.desktop.SampleSpots", lambda: spots)
+    monkeypatch.setattr("based_thermals.desktop.SampleSpots", lambda: spots)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     step = 0
 
@@ -445,7 +445,7 @@ def test_spots_save_immediately_and_restore_on_restart(
     saved = load_settings()["spots"]
     assert saved["items"] == [{"number": 2, "x": 125, "y": 95, "name": "Motor", "enabled": False}]
     restored = type(spots)()
-    monkeypatch.setattr("topdon_duo.desktop.SampleSpots", lambda: restored)
+    monkeypatch.setattr("based_thermals.desktop.SampleSpots", lambda: restored)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
     assert restored.saved_state() == saved
@@ -458,7 +458,7 @@ def test_spots_save_immediately_and_restore_on_restart(
 def test_capture_checkboxes_save_immediately_and_restore_on_restart(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, cursor: Any, graphs: Any
 ) -> None:
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     save_settings({"capture_cursor": not cursor, "capture_graphs": not graphs})
     viewer.panel.events = [
@@ -490,7 +490,7 @@ def test_capture_checkboxes_save_immediately_and_restore_on_restart(
 def test_timelapse_rate_saves_immediately_reloads_and_respects_cli_override(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import load_settings
+    from based_thermals.settings_preferences import load_settings
 
     viewer.panel.events = [{"action": "rate", "value": 120}]
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)

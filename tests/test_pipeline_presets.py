@@ -26,8 +26,8 @@ def test_predefined_redneck_combat_matches_original_export() -> None:
     """
     Preserve the original reference's settings with collapsed default nodes.
     """
-    from topdon_duo.pipeline import validate_pipeline
-    from topdon_duo.pipeline_presets import predefined_presets
+    from based_thermals.pipeline import validate_pipeline
+    from based_thermals.pipeline_presets import predefined_presets
 
     exported = json.loads(
         (
@@ -41,7 +41,7 @@ def test_predefined_redneck_gpu_retains_current_enhancement_and_branch_settings(
     """
     Retain the tuned GPU enhancement and threshold-mask edge branch.
     """
-    from topdon_duo.pipeline_presets import predefined_presets
+    from based_thermals.pipeline_presets import predefined_presets
 
     document = predefined_presets()["Redneck Combat GPU"]
     enhance = next(n for n in document["software"] if n["type"] == "enhance")
@@ -62,7 +62,7 @@ def test_predefined_redneck_gpu_retains_current_enhancement_and_branch_settings(
 
 
 def test_predefined_yautja_preserves_all_branches_and_apple_acnet():
-    from topdon_duo.pipeline_presets import predefined_presets
+    from based_thermals.pipeline_presets import predefined_presets
 
     document = predefined_presets()["Yautja"]
     colors = next(n for n in document["software"] if n["type"] == "colors")
@@ -86,7 +86,7 @@ def test_predefined_yautja_gpu_preserves_compositing_and_realesr_settings() -> N
     """
     Preserve the current saved GPU composition, including its tuned thermal branch.
     """
-    from topdon_duo.pipeline_presets import predefined_presets
+    from based_thermals.pipeline_presets import predefined_presets
 
     presets = predefined_presets()
     document = presets["Yautja GPU"]
@@ -120,7 +120,7 @@ def test_current_saved_presets_are_bundled_and_available_on_fresh_install(
     """
     Preserve captured processing settings with collapsed nodes on a fresh installation.
     """
-    from topdon_duo.pipeline_presets import load_presets, predefined_presets
+    from based_thermals.pipeline_presets import load_presets, predefined_presets
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     export = Path(__file__).resolve().parents[1] / "presets" / f"{name}.pipeline.json"
@@ -136,7 +136,7 @@ def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
     """
     Keep the captured current enhancement node and edge branch in the bundled preset.
     """
-    from topdon_duo.pipeline_presets import load_presets, predefined_presets, save_presets
+    from based_thermals.pipeline_presets import load_presets, predefined_presets, save_presets
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     name = "Detail Enhanced GPU Upscale"
@@ -170,7 +170,7 @@ def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
 
 
 def test_corrupt_user_presets_do_not_hide_predefined_pipeline(monkeypatch, tmp_path):
-    from topdon_duo.pipeline_presets import load_presets
+    from based_thermals.pipeline_presets import load_presets
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     directory = tmp_path / "topdon-duo"
@@ -186,9 +186,9 @@ def test_user_presets_save_reload_apply_and_obey_lock(tmp_path: Path) -> None:
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QInputDialog
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_presets import load_presets
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node
+from based_thermals.pipeline_presets import load_presets
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)
@@ -287,9 +287,9 @@ def test_save_update_button_tracks_loaded_preset_and_commits_pending_edits(tmp_p
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
-import topdon_duo.pipeline_ui.editor as editor_module
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline_presets import load_presets, predefined_presets
+import based_thermals.pipeline_ui.editor as editor_module
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline_presets import load_presets, predefined_presets
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor

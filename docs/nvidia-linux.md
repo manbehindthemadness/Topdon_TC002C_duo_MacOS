@@ -27,8 +27,8 @@ For a Linux x86-64 or ARM64 host with existing CUDA 13.0 (or newer) and cuDNN 9.
 use the general installer with system libraries:
 
 ```bash
-.venv/bin/python -m topdon_duo.cuda_setup --cuda 13 --system-libraries --dry-run
-.venv/bin/python -m topdon_duo.cuda_setup --cuda 13 --system-libraries
+.venv/bin/python -m based_thermals.cuda_setup --cuda 13 --system-libraries --dry-run
+.venv/bin/python -m based_thermals.cuda_setup --cuda 13 --system-libraries
 .venv/bin/based-thermals-desktop
 ```
 
@@ -51,10 +51,10 @@ first. Confirm `nvidia-smi` works. Run setup inside the project environment:
 ```bash
 uv sync --dev
 # Choose one runtime family supported by your driver/GPU:
-.venv/bin/python -m topdon_duo.cuda_setup --cuda 12 --dry-run
-.venv/bin/python -m topdon_duo.cuda_setup --cuda 12
+.venv/bin/python -m based_thermals.cuda_setup --cuda 12 --dry-run
+.venv/bin/python -m based_thermals.cuda_setup --cuda 12
 # Or, for CUDA 13:
-.venv/bin/python -m topdon_duo.cuda_setup --cuda 13
+.venv/bin/python -m based_thermals.cuda_setup --cuda 13
 ```
 
 The dry run checks Python, architecture, and native wheel compatibility without
@@ -93,7 +93,7 @@ the failure. Use `uv sync` to return to the locked CPU environment.
 ## Run and verify
 
 ```bash
-.venv/bin/python -m topdon_duo.nvidia_acceleration
+.venv/bin/python -m based_thermals.nvidia_acceleration
 .venv/bin/python experiments/experiment_nvidia_inference.py \
   --output diagnostics/linux-cuda
 .venv/bin/based-thermals-desktop --rotate 90

@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 from support.desktop_recording import viewer_fixture  # noqa: F401
 
-from topdon_duo import desktop
-from topdon_duo.measurements.drawing import MeasurementDrawing
+from based_thermals import desktop
+from based_thermals.measurements.drawing import MeasurementDrawing
 
 
 @pytest.mark.parametrize("kind", ["spot", "rectangle", "oval"])
@@ -137,7 +137,7 @@ def test_parent_drawing_maps_resized_camera_pane_and_suppresses_placement(
     Create the same native region with graphs visible at a different bitmap size.
     """
     panel = Mock()
-    monkeypatch.setattr("topdon_duo.desktop.SpotsPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.SpotsPanel", lambda: panel)
     session = desktop.DesktopSession(desktop, [])
     session.viewer = Mock()
     session.spots.placing = True
@@ -215,7 +215,7 @@ def test_polygon_finish_and_cancel_use_viewer_commands_without_context_menu(
     Commit an exclusion on right-click and keep incomplete/cancelled drafts unsaved.
     """
     panel = Mock()
-    monkeypatch.setattr("topdon_duo.desktop.SpotsPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.SpotsPanel", lambda: panel)
     session = desktop.DesktopSession(desktop, [])
     native_viewer = Mock(closed=False)
     session.viewer = native_viewer
@@ -317,8 +317,8 @@ def test_full_session_popup_tool_draws_on_video_and_persists_completed_shape(
         [],
         [],
     ]
-    monkeypatch.setattr("topdon_duo.desktop.ViewerPanel", lambda: native_viewer)
-    monkeypatch.setattr("topdon_duo.desktop.SpotsPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewerPanel", lambda: native_viewer)
+    monkeypatch.setattr("based_thermals.desktop.SpotsPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "waitKey", Mock(side_effect=AssertionError("No HighGUI")))
     assert desktop.main([]) == 0
     saved = desktop.load_settings()["spots"]

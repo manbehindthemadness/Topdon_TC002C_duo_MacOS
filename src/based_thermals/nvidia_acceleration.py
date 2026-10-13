@@ -76,7 +76,7 @@ def nvidia_acceleration() -> dict[str, Any]:
         return {**unavailable, "reason": "NVIDIA acceleration requires Linux"}
     try:
         completed = subprocess.run(
-            [sys.executable, "-m", "topdon_duo.nvidia_acceleration"],
+            [sys.executable, "-m", "based_thermals.nvidia_acceleration"],
             capture_output=True,
             text=True,
             timeout=20,

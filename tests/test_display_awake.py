@@ -3,8 +3,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from topdon_duo import display_awake
-from topdon_duo.display_awake import DisplayAwake
+from based_thermals import display_awake
+from based_thermals.display_awake import DisplayAwake
 
 
 @pytest.mark.parametrize(
@@ -33,7 +33,7 @@ def test_display_inhibitor_commands_and_cleanup(monkeypatch, platform, desktop, 
     elif gnome:
         assert command[-2:] == ["--gnome", gnome]
     else:
-        assert command[-2:] == ["-m", "topdon_duo.display_awake_helper"]
+        assert command[-2:] == ["-m", "based_thermals.display_awake_helper"]
     assert awake.check() is None
     awake.close()
     awake.close()

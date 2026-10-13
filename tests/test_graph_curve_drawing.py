@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from topdon_duo import graphs
+from based_thermals import graphs
 
 
 def test_curves_keep_gaps_and_isolated_measurements(monkeypatch: pytest.MonkeyPatch) -> None:

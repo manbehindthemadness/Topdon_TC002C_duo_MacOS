@@ -12,9 +12,9 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from support.qt_process import run_popup
 
-from topdon_duo import desktop
-from topdon_duo.capture_panel import CapturePanel
-from topdon_duo.viewer_panel import ViewerPanel
+from based_thermals import desktop
+from based_thermals.capture_panel import CapturePanel
+from based_thermals.viewer_panel import ViewerPanel
 
 
 def test_frame_acknowledgement_prevents_overwrite_and_cleans_storage(
@@ -100,7 +100,7 @@ def test_qt_session_has_no_bitmap_controls_and_samples_top_row(
         [{"action": "unit"}],
         [{"action": "quit"}],
     ]
-    monkeypatch.setattr("topdon_duo.desktop.ViewerPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewerPanel", lambda: panel)
     named_window = Mock()
     resize_window = Mock()
     monkeypatch.setattr(desktop.cv2, "namedWindow", named_window)
@@ -160,7 +160,7 @@ def test_qt_graph_display_has_no_header_hotspots(
         [{"action": "pointer", "kind": "release", "button": "left", "x": 1400, "y": 10}],
         [{"action": "quit"}],
     ]
-    monkeypatch.setattr("topdon_duo.desktop.ViewerPanel", lambda: panel)
+    monkeypatch.setattr("based_thermals.desktop.ViewerPanel", lambda: panel)
     cached = np.full((576, 768, 3), (10, 20, 30), np.uint8)
     cached[:34] = (80, 90, 100)
     viewer.graphs.image.side_effect = lambda _size, **_kwargs: cached
@@ -186,8 +186,8 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
-from topdon_duo.viewer_panel import FRAME_CAPACITY
-from topdon_duo.viewer_window import ViewerWindow
+from based_thermals.viewer_panel import FRAME_CAPACITY
+from based_thermals.viewer_window import ViewerWindow
 app = QApplication([])
 messages = []
 window = ViewerWindow(messages.append)

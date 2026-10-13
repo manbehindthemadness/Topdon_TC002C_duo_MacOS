@@ -38,7 +38,7 @@ def query(mode: str, path: Path | None = None) -> dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix="based-thermals-probe-") as directory:
             response = Path(directory) / "result.json"
             completed = subprocess.run(
-                [sys.executable, "-m", "topdon_duo.runtime_setup.probes", mode, str(response)],
+                [sys.executable, "-m", "based_thermals.runtime_setup.probes", mode, str(response)],
                 env=environment(path), capture_output=True, text=True, check=False, timeout=45,
             )
             if completed.returncode:

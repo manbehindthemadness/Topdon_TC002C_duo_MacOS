@@ -15,7 +15,7 @@ def test_custom_editor_folder_json_publish_lock_and_cancel(tmp_path: Path) -> No
 import json, sys
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
-from topdon_duo.view_window import ViewWindow
+from based_thermals.view_window import ViewWindow
 root = Path(sys.argv[1])
 folder = root / "module"
 folder.mkdir()
@@ -77,7 +77,7 @@ def test_embedded_controls_loader_visibility_updates_and_persistence(tmp_path: P
 import json, sys
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QFileDialog
-from topdon_duo.view_window import ViewWindow
+from based_thermals.view_window import ViewWindow
 root = Path(sys.argv[1])
 folder = root / "module"
 folder.mkdir()

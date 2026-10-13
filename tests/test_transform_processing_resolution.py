@@ -11,12 +11,12 @@ import pytest
 from support.pipeline import raw_pipeline
 from test_transform_resampling import striped_frame
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.enhancement_limits import MAX_PIXELS
-from topdon_duo.pipeline import node
-from topdon_duo.pipeline_processing import PipelineProcessor
-from topdon_duo.processing.branch import BranchProcessor
-from topdon_duo.processing.resolution import bounded_promotion
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.enhancement_limits import MAX_PIXELS
+from based_thermals.pipeline import node
+from based_thermals.pipeline_processing import PipelineProcessor
+from based_thermals.processing.branch import BranchProcessor
+from based_thermals.processing.resolution import bounded_promotion
 
 
 def test_custom_after_transform_receives_detail_and_runs_once(tmp_path: Path) -> None:
@@ -58,7 +58,7 @@ def test_second_transform_keeps_positions_and_labels_in_declared_units(
     processor = BranchProcessor(apple_available=False, nvidia_available=False)
 
     (tmp_path / "__init__.py").write_text(
-        'from topdon_duo.custom_nodes.labels import defer_labels\n'
+        'from based_thermals.custom_nodes.labels import defer_labels\n'
         'def process(image, config):\n'
         '    defer_labels([("Origin", (0, 0))], image.shape[:2])\n'
         '    return image\n', encoding="utf-8",
@@ -125,7 +125,7 @@ def test_native_model_input_resets_density_without_changing_its_requested_size(
             Match the model cache's cleanup contract.
             """
 
-    monkeypatch.setattr("topdon_duo.processing.branch.ONNXUpsampler", FakeUpsampler)
+    monkeypatch.setattr("based_thermals.processing.branch.ONNXUpsampler", FakeUpsampler)
     processor = BranchProcessor(apple_available=False, nvidia_available=False)
     document = raw_pipeline(node("software", "transform", width=50, height=50),
         node("software", "onnx_superresolution", model="espcn", input="native"),

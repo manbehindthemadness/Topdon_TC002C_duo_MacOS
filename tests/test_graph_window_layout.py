@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from topdon_duo.desktop import GraphWindowLayout, image_position_at
-from topdon_duo.graphs import graph_interval_rect, graph_log_button_rect
+from based_thermals.desktop import GraphWindowLayout, image_position_at
+from based_thermals.graphs import graph_interval_rect, graph_log_button_rect
 
 
 @pytest.mark.parametrize("window", [(2400, 1200), (2400, 700), (1000, 1400), (600, 400)])

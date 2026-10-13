@@ -7,7 +7,7 @@ import pytest
 import usb.core
 from usb.backend import libusb1
 
-from topdon_duo.queued_usb import QueuedBulkReader
+from based_thermals.queued_usb import QueuedBulkReader
 
 
 class FakeLibrary:

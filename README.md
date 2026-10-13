@@ -129,7 +129,8 @@ uv run pytest
 uv run ruff check .
 ```
 
-The Python package remains `topdon_duo`. Legacy `topdon-duo*` commands are aliases,
+Application source lives in `src/based_thermals`; Python imports use `based_thermals`.
+Legacy `topdon-duo*` commands are aliases,
 and existing preference/cache locations retain the `topdon-duo` name. Updating
 does not require renaming an existing checkout or moving its IDE configuration.
 Optional example packages live in `examples/custom_nodes/`; the based-gan example

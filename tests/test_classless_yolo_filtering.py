@@ -12,7 +12,7 @@ import pytest
 from support.classless import helper
 from support.classless import package as package  # noqa: PLC0414 - pytest fixture re-export
 
-from topdon_duo.custom_nodes.runtime import CustomPackage
+from based_thermals.custom_nodes.runtime import CustomPackage
 
 
 def test_inside_out_accepts_edge_crossing_children_with_adjustable_coverage(

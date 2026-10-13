@@ -6,8 +6,8 @@ import pytest
 import usb.core
 from support.frames import make_frame
 
-import topdon_duo.camera as camera_module
-from topdon_duo.camera import (
+import based_thermals.camera as camera_module
+from based_thermals.camera import (
     FRAME_BYTES,
     HEADER_U16,
     SENSOR_HEIGHT,

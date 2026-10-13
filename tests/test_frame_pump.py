@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from topdon_duo.camera import CameraError
-from topdon_duo.frame_pump import CameraFramePump
+from based_thermals.camera import CameraError
+from based_thermals.frame_pump import CameraFramePump
 
 
 def camera(frames):

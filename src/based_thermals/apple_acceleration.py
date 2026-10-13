@@ -49,7 +49,7 @@ def apple_acceleration():
         return {**unavailable, "reason": "Apple acceleration requires macOS"}
     try:
         completed = subprocess.run(
-            [sys.executable, "-m", "topdon_duo.apple_acceleration"],
+            [sys.executable, "-m", "based_thermals.apple_acceleration"],
             capture_output=True,
             text=True,
             timeout=8,

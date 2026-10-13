@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from topdon_duo.custom_nodes.model_library import add_model, existing_models, library_path
+from based_thermals.custom_nodes.model_library import add_model, existing_models, library_path
 
 
 def test_cached_registered_and_current_models_are_discovered(

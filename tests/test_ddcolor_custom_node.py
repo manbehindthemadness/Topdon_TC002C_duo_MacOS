@@ -12,9 +12,9 @@ import cv2
 import numpy as np
 import pytest
 
-from topdon_duo.custom_nodes.bundle import load_folder
-from topdon_duo.custom_nodes.runtime import CustomProcessor
-from topdon_duo.pipeline import default_pipeline, node, validate_pipeline
+from based_thermals.custom_nodes.bundle import load_folder
+from based_thermals.custom_nodes.runtime import CustomProcessor
+from based_thermals.pipeline import default_pipeline, node, validate_pipeline
 
 FOLDER = Path(__file__).parents[1] / "examples" / "custom_nodes" / "DDColor"
 
@@ -213,7 +213,7 @@ def test_pending_default_download_passes_through(
         assert source == config["model"]
         assert source["max_bytes"] == 150_000_000
 
-    monkeypatch.setattr("topdon_duo.custom_nodes.models.ModelResolver.resolve", pending)
+    monkeypatch.setattr("based_thermals.custom_nodes.models.ModelResolver.resolve", pending)
     image = np.full((8, 8, 3), 100, dtype=np.float32)
     assert np.array_equal(processor.apply(image, item), image)
     assert not FakeSession.instances

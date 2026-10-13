@@ -16,9 +16,9 @@ from typing import Any
 import numpy as np
 import onnxruntime as ort
 
-from topdon_duo.nvidia_acceleration import cuda_providers, nvidia_acceleration
-from topdon_duo.onnx_upsampling import ONNXUpsampler, model_data
-from topdon_duo.upsampling import VisionUpsampler
+from based_thermals.nvidia_acceleration import cuda_providers, nvidia_acceleration
+from based_thermals.onnx_upsampling import ONNXUpsampler, model_data
+from based_thermals.upsampling import VisionUpsampler
 
 
 def check_model(model: str, output: Path) -> dict[str, Any]:

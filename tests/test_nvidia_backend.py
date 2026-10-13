@@ -16,10 +16,10 @@ from test_capture_panel import popup_environment
 from test_pipeline import raw_pipeline
 from test_render import frame_with_preview
 
-from topdon_duo.camera import decode_duo_frame
-from topdon_duo.onnx_upsampling import ONNXRuntime, ONNXUpsampler
-from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.pipeline_processing import PipelineProcessor
+from based_thermals.camera import decode_duo_frame
+from based_thermals.onnx_upsampling import ONNXRuntime, ONNXUpsampler
+from based_thermals.pipeline import node, validate_pipeline
+from based_thermals.pipeline_processing import PipelineProcessor
 
 
 def test_cuda_provider_order_reuse_and_unchanged_weights(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -107,7 +107,7 @@ def test_cuda_dispatch_preserves_measurements_preferences_and_releases_workers(
             """
             self.closed = True
 
-    monkeypatch.setattr("topdon_duo.processing.branch.ONNXUpsampler", Engine)
+    monkeypatch.setattr("based_thermals.processing.branch.ONNXUpsampler", Engine)
     item = (
         node("software", "onnx_style", model=model, backend="cuda")
         if model.startswith("style-")
@@ -156,7 +156,7 @@ def test_bundled_acnet_never_requests_a_download(monkeypatch: pytest.MonkeyPatch
         """
         raise AssertionError("bundled weights must not download")
 
-    monkeypatch.setattr("topdon_duo.onnx_upsampling.MODEL_DOWNLOADS.request", unexpected)
+    monkeypatch.setattr("based_thermals.onnx_upsampling.MODEL_DOWNLOADS.request", unexpected)
     with pytest.raises(ValueError, match="4 megapixels"):
         ONNXUpsampler().apply(np.zeros((1024, 1024), np.uint8), "acnet-legacy-hdn0", "cuda")
 
@@ -166,7 +166,7 @@ def test_bundled_acnet_reuses_worker_without_network(monkeypatch: pytest.MonkeyP
     Send bundled ACNet directly to the worker without any model installation job.
     """
     request = Mock(side_effect=AssertionError("bundled model download"))
-    monkeypatch.setattr("topdon_duo.onnx_upsampling.MODEL_DOWNLOADS.request", request)
+    monkeypatch.setattr("based_thermals.onnx_upsampling.MODEL_DOWNLOADS.request", request)
     image = np.zeros((8, 8), np.uint8)
     output = np.zeros((16, 16), np.uint8)
     engine = ONNXUpsampler()
@@ -191,8 +191,8 @@ def test_cuda_controls_and_saved_preferences_in_offscreen_ui() -> None:
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
-from topdon_duo.pipeline import node
+from based_thermals.view_window import ViewWindow
+from based_thermals.pipeline import node
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor

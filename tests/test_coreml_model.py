@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from topdon_duo.coreml_model import _bytes_field, _fields, explicit_coreml_padding
+from based_thermals.coreml_model import _bytes_field, _fields, explicit_coreml_padding
 
 
 @pytest.mark.parametrize("mode", [b"SAME_UPPER", b"SAME_LOWER", b"VALID"])
@@ -17,7 +17,7 @@ def test_automatic_padding_is_not_overridden(mode):
 
 @pytest.mark.parametrize("level", range(4))
 def test_only_convolution_nodes_change_and_padding_is_idempotent(level):
-    data = files("topdon_duo").joinpath("models", f"acnet-legacy-hdn{level}.onnx").read_bytes()
+    data = files("based_thermals").joinpath("models", f"acnet-legacy-hdn{level}.onnx").read_bytes()
     result = explicit_coreml_padding(data)
     assert len(result) == len(data) + 19 * 10
     assert explicit_coreml_padding(result) == result
@@ -41,7 +41,7 @@ def test_only_convolution_nodes_change_and_padding_is_idempotent(level):
 @pytest.mark.parametrize("level", range(4))
 def test_padded_model_matches_unmodified_model_and_upstream_reference(level):
     ort = pytest.importorskip("onnxruntime")
-    data = files("topdon_duo").joinpath("models", f"acnet-legacy-hdn{level}.onnx").read_bytes()
+    data = files("based_thermals").joinpath("models", f"acnet-legacy-hdn{level}.onnx").read_bytes()
     with np.load(Path(__file__).parent / "fixtures/acnet-native-reference.npz") as reference:
         blob = reference["input"][None, None].astype(np.float32) / 255
         original = ort.InferenceSession(data, providers=["CPUExecutionProvider"])

@@ -4,7 +4,7 @@ import time
 
 from support.qt_process import popup_environment
 
-from topdon_duo.capture_panel import CapturePanel
+from based_thermals.capture_panel import CapturePanel
 
 __all__ = ["popup_environment"]
 
@@ -16,7 +16,7 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QAbstractSpinBox, QSlider
-from topdon_duo.capture_window import CaptureWindow
+from based_thermals.capture_window import CaptureWindow
 
 app = QApplication([])
 messages = []
@@ -98,7 +98,7 @@ for line in sys.stdin:
         calls.append((command, options["env"]))
         return real_popen([sys.executable, "-c", script], **options)
 
-    monkeypatch.setattr("topdon_duo.capture_panel.subprocess.Popen", popen)
+    monkeypatch.setattr("based_thermals.capture_panel.subprocess.Popen", popen)
     monkeypatch.setenv("QT_QPA_PLATFORM_PLUGIN_PATH", "/opencv/qt5/plugins")
     monkeypatch.setenv("QT_QPA_FONTDIR", "/opencv/qt5/fonts")
     panel = CapturePanel()
@@ -141,7 +141,7 @@ def test_popup_bridge_reports_startup_failure(monkeypatch):
             **options,
         )
 
-    monkeypatch.setattr("topdon_duo.capture_panel.subprocess.Popen", popen)
+    monkeypatch.setattr("based_thermals.capture_panel.subprocess.Popen", popen)
     panel = CapturePanel()
     try:
         panel.open({"frames_per_minute": 60})

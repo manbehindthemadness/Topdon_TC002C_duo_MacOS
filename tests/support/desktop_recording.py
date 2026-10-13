@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import pytest
 
-from topdon_duo import desktop
+from based_thermals import desktop
 
 from .frames import make_frame
 
@@ -22,7 +22,7 @@ def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     Viewer.
     """
     parse_args = desktop.parse_args
-    monkeypatch.setattr("topdon_duo.macos_window.fullscreen_state", lambda _name: None)
+    monkeypatch.setattr("based_thermals.macos_window.fullscreen_state", lambda _name: None)
     monkeypatch.setattr(desktop, "parse_args", lambda argv: parse_args(["--scale", "3", *argv]))
     monkeypatch.setattr(desktop.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -33,7 +33,7 @@ def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     hardware.tone_busy = False
     hardware._tone_sent = 0
     hardware.fixed_range = False
-    from topdon_duo.hardware_controls import HARDWARE_CONTROLS
+    from based_thermals.hardware_controls import HARDWARE_CONTROLS
 
     hardware.state.return_value = {
         name: {"value": spec.minimum, "enabled": False, "available": True}

@@ -7,10 +7,10 @@ from unittest.mock import Mock, call
 import pytest
 from test_hardware_controls import controls as controls_fixture
 
-from topdon_duo.camera import CameraError
-from topdon_duo.hardware_controls import HardwareControls
-from topdon_duo.pipeline import default_pipeline, node
-from topdon_duo.pipeline_hardware import PipelineHardware
+from based_thermals.camera import CameraError
+from based_thermals.hardware_controls import HardwareControls
+from based_thermals.pipeline import default_pipeline, node
+from based_thermals.pipeline_hardware import PipelineHardware
 
 controls = controls_fixture
 

@@ -1,4 +1,4 @@
-from topdon_duo.web import LiveStream, create_app
+from based_thermals.web import LiveStream, create_app
 
 
 def test_index_and_status_routes():

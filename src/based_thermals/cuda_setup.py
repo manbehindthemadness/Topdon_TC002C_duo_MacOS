@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         probe = subprocess.run(
             [sys.executable, "-c",
-             ("import json; from topdon_duo.nvidia_acceleration import nvidia_acceleration; "
+             ("import json; from based_thermals.nvidia_acceleration import nvidia_acceleration; "
               "print(json.dumps(nvidia_acceleration()))")],
             capture_output=True, text=True, check=False, timeout=30,
         )
@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(reason, str) and reason:
             print(reason, file=sys.stderr)
         print("GPU inference unavailable; viewer CPU fallback remains enabled. "
-              "Run .venv/bin/python -m topdon_duo.nvidia_acceleration for details.",
+              "Run .venv/bin/python -m based_thermals.nvidia_acceleration for details.",
               file=sys.stderr)
         return 1
     print("CUDA inference verified. Use .venv/bin/ executables or uv run --no-sync; "

@@ -7,14 +7,14 @@ import pytest
 from support.desktop_recording import viewer_fixture
 from test_camera import make_frame
 
-from topdon_duo import desktop
+from based_thermals import desktop
 
 
 def test_show_graph_doubles_window_width_and_hides_back_to_original(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import load_settings
-    from topdon_duo.window_preferences import save_main_window_size
+    from based_thermals.settings_preferences import load_settings
+    from based_thermals.window_preferences import save_main_window_size
 
     save_main_window_size((930, 710))
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
@@ -61,8 +61,8 @@ def test_show_graph_doubles_window_width_and_hides_back_to_original(
 def test_show_graph_survives_restart_without_doubling_again(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import load_settings
-    from topdon_duo.window_preferences import load_main_window_size
+    from based_thermals.settings_preferences import load_settings
+    from based_thermals.window_preferences import load_main_window_size
 
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("g"))
@@ -82,7 +82,7 @@ def test_show_graph_survives_restart_without_doubling_again(
 def test_graph_area_does_not_sample_thermal_pixels(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     height = 576 + desktop.toolbar_layout(768).height
@@ -125,7 +125,7 @@ def test_graph_area_does_not_sample_thermal_pixels(
 def test_graph_submission_uses_frame_orientation_and_pauses_when_hidden(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
@@ -166,8 +166,8 @@ def test_graph_submission_uses_frame_orientation_and_pauses_when_hidden(
 def test_graph_logging_button_locks_hiding_until_logging_stops(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.graphs import graph_log_button_rect
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.graphs import graph_log_button_rect
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
@@ -217,7 +217,7 @@ def test_graph_logging_button_locks_hiding_until_logging_stops(
 def test_cancel_graph_log_dialog_unlocks_graphs(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
@@ -229,7 +229,7 @@ def test_cancel_graph_log_dialog_unlocks_graphs(
 
 
 def test_graph_logging_button_maps_resized_viewport() -> None:
-    from topdon_duo.graphs import graph_log_button_rect
+    from based_thermals.graphs import graph_log_button_rect
 
     x0, y0, x1, y1 = graph_log_button_rect(768)
     for scale in (0.5, 1, 1.5):
@@ -243,7 +243,7 @@ def test_graph_logging_button_maps_resized_viewport() -> None:
 def test_logging_blocks_camera_settings_toolbar_and_shortcuts_then_unlocks(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     save_settings({"show_graph": True})
     viewer.graphs.logging = True
@@ -317,7 +317,7 @@ def test_optional_graph_recording_uses_visible_pane_and_keeps_dimensions(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, mode: Any, include: Any, visible: Any
 ) -> None:
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
-    from topdon_duo.graphs import GraphWorker
+    from based_thermals.graphs import GraphWorker
 
     cache = GraphWorker()
     cache.close()
@@ -377,7 +377,7 @@ def test_image_graph_capture_preserves_native_radiometric_data(
     import json
 
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
-    from topdon_duo.graphs import GraphWorker
+    from based_thermals.graphs import GraphWorker
 
     cache = GraphWorker()
     cache.close()
@@ -418,8 +418,8 @@ def test_image_graph_capture_preserves_native_radiometric_data(
 def test_graph_interval_field_applies_and_remembers_value(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.graphs import graph_interval_rect
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.graphs import graph_interval_rect
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     save_settings({"show_graph": True, "graph_interval": 2})
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
@@ -447,8 +447,8 @@ def test_graph_interval_field_applies_and_remembers_value(
 def test_graph_interval_field_is_locked_during_logging(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.graphs import graph_interval_rect
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.graphs import graph_interval_rect
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     save_settings({"show_graph": True})
     viewer.graphs.logging = True
@@ -475,7 +475,7 @@ def test_graph_interval_field_is_locked_during_logging(
 
 
 def test_graph_interval_field_maps_resized_viewport() -> None:
-    from topdon_duo.graphs import graph_interval_rect
+    from based_thermals.graphs import graph_interval_rect
 
     x0, y0, x1, y1 = graph_interval_rect(768)
     for scale in (0.5, 1, 1.5):
@@ -492,8 +492,8 @@ def test_graph_interval_field_maps_resized_viewport() -> None:
 def test_popup_covering_window_center_preserves_graph_layout(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import save_settings
-    from topdon_duo.window_preferences import load_main_window_size
+    from based_thermals.settings_preferences import save_settings
+    from based_thermals.window_preferences import load_main_window_size
 
     save_settings({"show_graph": True})
     window_size = (2400, 1200)
@@ -534,8 +534,8 @@ def test_popup_covering_window_center_preserves_graph_layout(
 def test_resized_graph_window_keeps_spots_and_controls_aligned(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, event_scale: Any
 ) -> None:
-    from topdon_duo.graphs import graph_interval_rect
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.graphs import graph_interval_rect
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     save_settings({"show_graph": True})
     native_height = 576 + desktop.toolbar_layout(768).height
@@ -614,9 +614,9 @@ def test_resized_graph_window_keeps_spots_and_controls_aligned(
 def test_graph_configuration_button_settings_persist_and_lock(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.graph_settings import GRAPH_DEFAULTS
-    from topdon_duo.graphs import graph_config_rect
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.graph_settings import GRAPH_DEFAULTS
+    from based_thermals.graphs import graph_config_rect
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     save_settings({"show_graph": True})
     panel = Mock()
@@ -666,8 +666,8 @@ def test_graph_configuration_button_settings_persist_and_lock(
 def test_graph_reset_button_only_clears_chart_history_and_obeys_logging_lock(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, logging: Any
 ) -> None:
-    from topdon_duo.graphs import graph_reset_rect
-    from topdon_duo.settings_preferences import save_settings
+    from based_thermals.graphs import graph_reset_rect
+    from based_thermals.settings_preferences import save_settings
 
     save_settings({"show_graph": True})
     spots = desktop.SampleSpots(pixels=[(80, 60)])

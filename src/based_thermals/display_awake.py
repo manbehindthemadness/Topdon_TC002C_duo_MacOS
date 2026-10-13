@@ -24,7 +24,7 @@ class DisplayAwake:
         elif sys.platform.startswith("linux"):
             self._waits_for_eof = True
             gnome = shutil.which("gnome-session-inhibit")
-            command = [sys.executable, "-m", "topdon_duo.display_awake_helper"]
+            command = [sys.executable, "-m", "based_thermals.display_awake_helper"]
             if gnome and "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
                 command.extend(["--gnome", gnome])
         else:

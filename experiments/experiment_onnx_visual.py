@@ -8,9 +8,9 @@ import sys
 import numpy as np
 import onnxruntime as ort
 
-from topdon_duo import onnx_models
-from topdon_duo.coreml_model import coreml_input_shape_overrides
-from topdon_duo.onnx_upsampling import ONNXUpsampler
+from based_thermals import onnx_models
+from based_thermals.coreml_model import coreml_input_shape_overrides
+from based_thermals.onnx_upsampling import ONNXUpsampler
 
 V1_MODELS = ("mewzoom-v1-2x", "mewzoom-v1-4x")
 

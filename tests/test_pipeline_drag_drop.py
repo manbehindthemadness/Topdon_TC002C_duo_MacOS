@@ -16,8 +16,8 @@ def test_placement_bar_matches_drop_and_respects_endpoints_and_locks() -> None:
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QDragLeaveEvent
 from PySide6.QtWidgets import QApplication
-from topdon_duo.pipeline import node
-from topdon_duo.view_window import ViewWindow
+from based_thermals.pipeline import node
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)

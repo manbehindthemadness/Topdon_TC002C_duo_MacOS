@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from topdon_duo.custom_nodes.models import ModelResolver
+from based_thermals.custom_nodes.models import ModelResolver
 
 from .colorizer import Colorizer
 

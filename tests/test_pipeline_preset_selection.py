@@ -15,8 +15,8 @@ def test_loaded_edited_preset_survives_a_fresh_process(tmp_path: Path) -> None:
     setup = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QInputDialog
-from topdon_duo.settings_preferences import save_settings
-from topdon_duo.view_window import ViewWindow
+from based_thermals.settings_preferences import save_settings
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor
@@ -36,10 +36,10 @@ window.close()
     reopen = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication
-import topdon_duo.pipeline_ui.selection as selection
-from topdon_duo.settings_preferences import load_settings
-from topdon_duo.pipeline_presets import load_presets
-from topdon_duo.view_window import ViewWindow
+import based_thermals.pipeline_ui.selection as selection
+from based_thermals.settings_preferences import load_settings
+from based_thermals.pipeline_presets import load_presets
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor
@@ -82,7 +82,7 @@ def test_new_deleted_renamed_and_unrelated_pipeline_selections(tmp_path: Path) -
     script = """
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
-from topdon_duo.view_window import ViewWindow
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)
@@ -132,8 +132,8 @@ def test_selection_write_failure_keeps_editing_and_preserves_previous_file(tmp_p
     """
     script = """
 from PySide6.QtWidgets import QApplication
-import topdon_duo.pipeline_ui.selection as selection
-from topdon_duo.view_window import ViewWindow
+import based_thermals.pipeline_ui.selection as selection
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor
@@ -172,7 +172,7 @@ def test_malformed_selection_metadata_falls_back_safely(tmp_path: Path, data: st
     path.write_text(data)
     script = """
 from PySide6.QtWidgets import QApplication
-from topdon_duo.view_window import ViewWindow
+from based_thermals.view_window import ViewWindow
 app = QApplication([])
 window = ViewWindow(lambda _: None)
 editor = window.pipeline_editor

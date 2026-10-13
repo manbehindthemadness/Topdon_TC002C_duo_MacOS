@@ -10,7 +10,7 @@ def test_native_placement_on_mac_and_snapping_on_linux(platform):
     script = """
 from types import SimpleNamespace
 from PySide6.QtWidgets import QApplication
-import topdon_duo.view_window as module
+import based_thermals.view_window as module
 module.sys = SimpleNamespace(platform=PLATFORM)
 app = QApplication([])
 class Window(module.ViewWindow):

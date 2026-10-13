@@ -4,7 +4,7 @@ Deterministic camera frame builders shared by application tests.
 
 import numpy as np
 
-from topdon_duo.camera import (
+from based_thermals.camera import (
     FRAME_MAGIC,
     FRAME_U16,
     HEADER_U16,

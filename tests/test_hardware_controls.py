@@ -7,14 +7,14 @@ import numpy as np
 import pytest
 from test_render import frame_with_preview
 
-from topdon_duo import hardware_controls as module
-from topdon_duo.camera import IMAGE_OFFSET, CameraError
-from topdon_duo.hardware_controls import (
+from based_thermals import hardware_controls as module
+from based_thermals.camera import IMAGE_OFFSET, CameraError
+from based_thermals.hardware_controls import (
     BLOCK_LENGTHS,
     HardwareControls,
     validate_fixed_range_bounds,
 )
-from topdon_duo.render import ThermalRenderer
+from based_thermals.render import ThermalRenderer
 
 
 def test_processing_preset_wire_modes_and_bank_getter(controls):

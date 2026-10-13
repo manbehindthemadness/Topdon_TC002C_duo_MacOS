@@ -11,11 +11,11 @@ import pytest
 from support.frames import frame_with_preview
 from support.pipeline import raw_pipeline
 
-from topdon_duo.custom_nodes.labels import DisplayLabel
-from topdon_duo.image_transform import apply_transform
-from topdon_duo.pipeline import node, validate_pipeline
-from topdon_duo.processing.branch import BranchProcessor
-from topdon_duo.render import ThermalRenderer
+from based_thermals.custom_nodes.labels import DisplayLabel
+from based_thermals.image_transform import apply_transform
+from based_thermals.pipeline import node, validate_pipeline
+from based_thermals.processing.branch import BranchProcessor
+from based_thermals.render import ThermalRenderer
 
 
 def params(**values: Any) -> dict[str, Any]:

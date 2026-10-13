@@ -9,8 +9,8 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from topdon_duo import graphs
-from topdon_duo.graph_plotting import HistorySample, pixel_curve_samples, visible_history
+from based_thermals import graphs
+from based_thermals.graph_plotting import HistorySample, pixel_curve_samples, visible_history
 
 
 class WatchedHistory(deque):

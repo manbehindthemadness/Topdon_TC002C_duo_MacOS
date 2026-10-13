@@ -5,17 +5,17 @@ from unittest.mock import Mock
 
 import numpy as np
 
-from topdon_duo.camera import (
+from based_thermals.camera import (
     HEADER_U16,
     SENSOR_PIXELS,
     decode_duo_frame,
 )
-from topdon_duo.hardware_controls import HARDWARE_CONTROLS
-from topdon_duo.pipeline import (
+from based_thermals.hardware_controls import HARDWARE_CONTROLS
+from based_thermals.pipeline import (
     default_pipeline,
     node,
 )
-from topdon_duo.pipeline_processing import PipelineProcessor
+from based_thermals.pipeline_processing import PipelineProcessor
 
 from .frames import frame_with_preview
 

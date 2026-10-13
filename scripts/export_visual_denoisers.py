@@ -27,7 +27,7 @@ from torch import nn
 from torch.nn import functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from topdon_duo.onnx_models import download_ssl_context, model_path, verified_model
+from based_thermals.onnx_models import download_ssl_context, model_path, verified_model
 
 CHECKPOINTS = {"dncnn-25": "dncnn_25.pth", "ffdnet-gray": "ffdnet_gray.pth"}
 

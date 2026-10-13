@@ -12,14 +12,14 @@ import pytest
 from support.pipeline import fake_hardware, process, raw_pipeline
 from test_render import frame_with_preview
 
-from topdon_duo.camera import (
+from based_thermals.camera import (
     HEADER_U16,
     IMAGE_OFFSET,
     SENSOR_PIXELS,
     FrameAssembler,
     decode_duo_frame,
 )
-from topdon_duo.pipeline import (
+from based_thermals.pipeline import (
     default_pipeline,
     geometry,
     migrate_pipeline,
@@ -27,9 +27,9 @@ from topdon_duo.pipeline import (
     thermal_source,
     validate_pipeline,
 )
-from topdon_duo.pipeline_hardware import PipelineHardware, desired_hardware
-from topdon_duo.pipeline_processing import PipelineProcessor, PipelineWorker
-from topdon_duo.render import ThermalRenderer
+from based_thermals.pipeline_hardware import PipelineHardware, desired_hardware
+from based_thermals.pipeline_processing import PipelineProcessor, PipelineWorker
+from based_thermals.render import ThermalRenderer
 
 
 @pytest.mark.parametrize("input_kind", ["source", "blend", "mask", "branch"])
@@ -99,7 +99,7 @@ def test_reject_invalid_pipeline_atomically(mutation: Any) -> None:
 def test_repeat_nodes_and_portable_preferences(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     document = raw_pipeline(node("software", "gamma"), node("software", "gamma", amount=2.0))
@@ -277,7 +277,7 @@ def test_acnet_excess_passes_are_clamped_before_inference(monkeypatch: pytest.Mo
         calls.append(input_image.shape[:2])
         return cv2.resize(input_image, None, fx=2, fy=2)
 
-    monkeypatch.setattr("topdon_duo.processing.branch.VisionUpsampler.apply", upscale)
+    monkeypatch.setattr("based_thermals.processing.branch.VisionUpsampler.apply", upscale)
     processor = PipelineProcessor()
     try:
         image, _ = processor.process(frame, None, document)
@@ -419,7 +419,7 @@ def test_preview_unknown_baseline_palette_reports_error_without_killing_worker()
 def test_version_one_source_migrates_to_first_software_node_with_identity_and_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from topdon_duo.settings_preferences import load_settings, save_settings
+    from based_thermals.settings_preferences import load_settings, save_settings
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     current = raw_pipeline(node("software", "gamma", amount=2.0))
@@ -443,8 +443,8 @@ def test_version_one_source_migrates_to_first_software_node_with_identity_and_se
 
 @pytest.mark.parametrize("legacy,canonical", [("camera_1", "white_hot"), ("camera_2", "black_hot")])
 def test_app_palette_cleanup_keeps_saved_choices_and_pixels(legacy: Any, canonical: Any) -> None:
-    from topdon_duo.pipeline import CAMERA_GRADIENTS, PALETTES
-    from topdon_duo.pipeline_processing import colorize
+    from based_thermals.pipeline import CAMERA_GRADIENTS, PALETTES
+    from based_thermals.pipeline_processing import colorize
 
     selected = node("software", "colors", palette=legacy)
     saved = raw_pipeline(selected)

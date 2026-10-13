@@ -9,8 +9,8 @@ from typing import cast
 
 import pytest
 
-from topdon_duo.preference_io import save_json
-from topdon_duo.settings_preferences import load_settings, save_settings
+from based_thermals.preference_io import save_json
+from based_thermals.settings_preferences import load_settings, save_settings
 
 
 def test_overlapping_saves_use_independent_temporary_files(
