@@ -15,6 +15,9 @@ from onnx import TensorProto, helper, numpy_helper
 
 
 def export(source: Path, destination: Path) -> None:
+    """
+    Convert upstream legacy weights while retaining their model provenance.
+    """
     text = source.read_text()
     destination.mkdir(parents=True, exist_ok=True)
     for level in range(4):
@@ -83,7 +86,7 @@ def export(source: Path, destination: Path) -> None:
         model = helper.make_model(
             graph,
             opset_imports=[helper.make_opsetid("", 11)],
-            producer_name="topdon-duo ACNet export",
+            producer_name="based-thermals ACNet export",
             ir_version=7,
         )
         model.doc_string = "Anime4KCPP v3.2.0 ACNet legacy; MIT license; see NOTICE.txt."

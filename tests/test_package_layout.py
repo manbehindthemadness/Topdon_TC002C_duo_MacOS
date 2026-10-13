@@ -28,9 +28,6 @@ def test_application_package_and_resources() -> None:
         "based-thermals",
         "based-thermals-desktop",
         "based-thermals-models",
-        "topdon-duo",
-        "topdon-duo-desktop",
-        "topdon-duo-models",
     ),
 )
 def test_installed_commands_launch_renamed_package(command: str, tmp_path: Path) -> None:

@@ -165,12 +165,12 @@ def test_import_errors_are_reported_and_modules_released(source: str) -> None:
     """
     User imports cannot leak temporary namespaces or terminate the viewer through SystemExit.
     """
-    before = {name for name in sys.modules if name.startswith("_topdon_custom_")}
+    before = {name for name in sys.modules if name.startswith("_based_thermals_custom_")}
     processor = CustomProcessor()
     with pytest.raises(ValueError, match="Custom example"):
         processor.apply(np.zeros((2, 2, 3)), custom_item(source))
     assert not processor.packages
-    assert {name for name in sys.modules if name.startswith("_topdon_custom_")} == before
+    assert {name for name in sys.modules if name.startswith("_based_thermals_custom_")} == before
 
 
 @pytest.mark.parametrize(

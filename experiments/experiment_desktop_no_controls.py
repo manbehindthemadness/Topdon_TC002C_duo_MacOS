@@ -22,12 +22,12 @@ import sys
 import time
 from collections.abc import Callable
 from contextlib import ExitStack
-from pathlib import Path
 from typing import Any, NoReturn
 from unittest.mock import patch
 
 import cv2
 import numpy as np
+from capture_processes import desktop_is_running
 
 from based_thermals import desktop
 from based_thermals import graphs as graph_module
@@ -115,14 +115,8 @@ def main() -> int:
         or not 0.0001 <= options.python_switch_interval <= 0.1
     ):
         parser.error("--python-switch-interval must be between 0.0001 and 0.1 seconds")
-    for process in Path("/proc").glob("[0-9]*/cmdline"):
-        try:
-            command = process.read_bytes().split(b"\0")
-        except (FileNotFoundError, PermissionError, ProcessLookupError):
-            continue
-        if any(Path(arg.decode(errors="replace")).name == "topdon-duo-desktop"
-               for arg in command if arg):
-            raise SystemExit("Close the desktop viewer before running this diagnostic")
+    if desktop_is_running():
+        raise SystemExit("Close the desktop viewer before running this diagnostic")
     original_open = TC002CDuoCamera.open
     original_switch_interval = sys.getswitchinterval()
 

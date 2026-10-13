@@ -18,7 +18,7 @@ def test_cached_registered_and_current_models_are_discovered(
     """
     cache = tmp_path / "cache"
     cache.mkdir()
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(cache))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(cache))
     cached = cache / "cached.onnx"
     cached.write_bytes(b"cached")
     external = tmp_path / "external.onnx"
@@ -40,7 +40,7 @@ def test_invalid_browse_selection_and_corrupt_registry(
     """
     Ignore broken discovery metadata and refuse nonexistent or non-ONNX files.
     """
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     library_path().write_text('{"wrong": "shape"}')
     assert isinstance(existing_models(), list)
     for path in (tmp_path / "missing.onnx", tmp_path / "text.txt"):

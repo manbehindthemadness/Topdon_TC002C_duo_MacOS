@@ -167,7 +167,7 @@ def test_malformed_selection_metadata_falls_back_safely(tmp_path: Path, data: st
     """
     Ignore malformed metadata and retain recognition of a valid restored preset.
     """
-    path = tmp_path / "config" / "topdon-duo" / "pipeline-selection.json"
+    path = tmp_path / "config" / "based-thermals" / "pipeline-selection.json"
     path.parent.mkdir(parents=True)
     path.write_text(data)
     script = """

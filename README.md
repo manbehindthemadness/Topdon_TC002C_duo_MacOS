@@ -130,9 +130,9 @@ uv run ruff check .
 ```
 
 Application source lives in `src/based_thermals`; Python imports use `based_thermals`.
-Legacy `topdon-duo*` commands are aliases,
-and existing preference/cache locations retain the `topdon-duo` name. Updating
-does not require renaming an existing checkout or moving its IDE configuration.
+Commands and preference/cache locations use `based-thermals`. Existing checkouts
+and IDE configurations stay in place. See [setup](docs/setup.md#update-an-existing-checkout)
+for the one-time transition of older saved data.
 Optional example packages live in `examples/custom_nodes/`; the based-gan example
 is a separate Git submodule. See [Custom nodes](docs/custom-nodes.md) and the
 [skills guide](docs/skills.md) for building and extending the project.

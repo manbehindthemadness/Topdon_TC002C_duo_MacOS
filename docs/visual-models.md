@@ -150,9 +150,9 @@ Full 512×384 preview input is also supported; outputs must remain below the
 execute on the GPU; each model needs local speed/quality testing.
 
 Weights are checksum-verified and cached outside the repository (macOS:
-`~/Library/Caches/topdon-duo/models`; Linux: `$XDG_CACHE_HOME/topdon-duo/models`
-or `~/.cache/topdon-duo/models`). `BASED_THERMALS_MODEL_DIR` overrides the directory;
-the legacy `TOPDON_MODEL_DIR` remains supported, with the new variable taking precedence.
+`~/Library/Caches/based-thermals/models`; Linux: `$XDG_CACHE_HOME/based-thermals/models`
+or `~/.cache/based-thermals/models`). `BASED_THERMALS_MODEL_DIR` overrides the directory;
+the obsolete `TOPDON_MODEL_DIR` override is no longer read.
 Inference never downloads weights or executes model-provided Python code.
 V1 installation obtains the publisher's SHA256 from its Git LFS pointer over
 verified HTTPS and saves that checksum beside the verified weights for offline

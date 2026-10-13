@@ -146,14 +146,14 @@ def model_path(model: str, *, spec: dict[str, Any] | None = None) -> Path:
     Locate a catalog or custom model in the shared host-specific cache.
     """
     spec = MODELS[model] if spec is None else spec
-    override = os.environ.get("BASED_THERMALS_MODEL_DIR") or os.environ.get("TOPDON_MODEL_DIR")
+    override = os.environ.get("BASED_THERMALS_MODEL_DIR")
     if override:
         base = Path(override)
     elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Caches" / "topdon-duo" / "models"
+        base = Path.home() / "Library" / "Caches" / "based-thermals" / "models"
     else:
         base = (
-            Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "topdon-duo" / "models"
+            Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "based-thermals" / "models"
         )
     checksum = spec["sha256"]
     filename = f"{model}-{checksum[:12]}.onnx" if checksum else f"{model}.onnx"

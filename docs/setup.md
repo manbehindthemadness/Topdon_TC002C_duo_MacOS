@@ -128,7 +128,12 @@ Close the viewer and protect local changes before updating the checkout with Git
 Run `uv sync --no-dev` afterward (`.venv/bin/uv sync --inexact --no-dev` for environment-local uv).
 Use `--dev` when you need development tools. Reopen the viewer normally.
 Keep your existing project directory and IDE configuration; no rename is required.
-The previous `topdon-duo`, `topdon-duo-desktop` and `topdon-duo-models` commands remain aliases.
+Use `based-thermals`, `based-thermals-desktop` and `based-thermals-models`; the old
+`topdon-duo*` command aliases are no longer installed. Older installations need a
+one-time move of their `topdon-duo` data directories to `based-thermals` in the
+locations below, with the viewer closed. Back up first and do not overwrite an
+existing destination. No automatic migration or legacy path fallback runs at startup.
+Update older Custom packages before reuse; see [Custom nodes](custom-nodes.md).
 
 The based-gan example is optional and lives in its own repository. To populate it
 when working with that example, run from the repository root:
@@ -142,16 +147,20 @@ before downloading/converting weights or loading its Custom package.
 
 ## Preferences, models and disk space
 
-Existing data uses the legacy `topdon-duo` directory names:
+Application-owned data uses `based-thermals` directories:
 
-- Preferences/presets: `~/Library/Application Support/topdon-duo` on macOS;
-  `$XDG_CONFIG_HOME/topdon-duo` (default `~/.config/topdon-duo`) on Linux.
-- Downloaded models: `~/Library/Caches/topdon-duo/models` on macOS;
-  `$XDG_CACHE_HOME/topdon-duo/models` (default `~/.cache/topdon-duo/models`) on Linux.
-- Native runtimes: the corresponding cache root's `topdon-duo/runtimes` directory.
+- Preferences/presets: `~/Library/Application Support/based-thermals` on macOS;
+  `$XDG_CONFIG_HOME/based-thermals` (default `~/.config/based-thermals`) on Linux.
+- Downloaded models: `~/Library/Caches/based-thermals/models` on macOS;
+  `$XDG_CACHE_HOME/based-thermals/models` (default `~/.cache/based-thermals/models`) on Linux.
+- Native runtimes: the corresponding cache root's `based-thermals/runtimes` directory.
+- Qt Imaging settings: `~/.config/based-thermals/desktop.ini` on macOS, or
+  `$XDG_CONFIG_HOME/based-thermals/desktop.ini` (default `~/.config`) on Linux.
+- Camera baseline snapshots: `$XDG_STATE_HOME/based-thermals/camera-baselines`
+  (default `~/.local/state/based-thermals/camera-baselines`).
 
 `BASED_THERMALS_MODEL_DIR` and `BASED_THERMALS_RUNTIME_DIR` override the respective
-caches; the legacy `TOPDON_MODEL_DIR` remains supported for models. Model-cache
+caches. `TOPDON_MODEL_DIR` is no longer read; use `BASED_THERMALS_MODEL_DIR`. Model-cache
 clearing is available from the Imaging preset menu and preserves protected/local
 artifacts. It does not clear native runtime packages. See [Imaging](imaging-guide.md#manage-model-downloads).
 

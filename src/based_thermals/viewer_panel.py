@@ -50,7 +50,7 @@ class ViewerPanel(CapturePanel):
             # CapturePanel.open calls close before launching, so create storage afterwards.
             super().open(state)
             self._file = self._resources.enter_context(
-                tempfile.NamedTemporaryFile(prefix="topdon-viewer-")  # noqa: SIM115
+                tempfile.NamedTemporaryFile(prefix="based-thermals-viewer-")  # noqa: SIM115
             )
             self._file.truncate(FRAME_CAPACITY)
             self._mapping = mmap.mmap(self._file.fileno(), FRAME_CAPACITY)

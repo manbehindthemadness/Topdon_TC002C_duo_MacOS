@@ -20,7 +20,7 @@ from based_thermals.view_window import ViewWindow
 root = Path(sys.argv[1])
 cache = root / "models"
 cache.mkdir()
-os.environ["TOPDON_MODEL_DIR"] = str(cache)
+os.environ["BASED_THERMALS_MODEL_DIR"] = str(cache)
 cached = cache / "cached.onnx"
 cached.touch()
 external = root / "browsed.onnx"

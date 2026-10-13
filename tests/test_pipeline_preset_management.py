@@ -25,7 +25,7 @@ def test_deleted_bundled_presets_stay_deleted_and_can_be_saved_again(
     deleted = presets.pop(name)
     save_presets(presets)
     assert load_presets() == presets
-    path = tmp_path / "topdon-duo" / "pipeline-presets.json"
+    path = tmp_path / "based-thermals" / "pipeline-presets.json"
     assert json.loads(path.read_text())[name] is None
     assert predefined_presets()[name] == deleted
     presets["User pipeline"] = deleted

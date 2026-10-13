@@ -427,7 +427,7 @@ class ViewWindow(QWidget):
         self.setWindowTitle("Imaging")
         self.setMinimumWidth(650)
         self._settings = QSettings(
-            QSettings.Format.IniFormat, QSettings.Scope.UserScope, "topdon-duo", "desktop"
+            QSettings.Format.IniFormat, QSettings.Scope.UserScope, "based-thermals", "desktop"
         )
         layout = QVBoxLayout(self)
         heading = QLabel("Imaging")

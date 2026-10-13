@@ -127,7 +127,7 @@ def test_current_saved_presets_are_bundled_and_available_on_fresh_install(
     captured = collapsed_nodes(json.loads(export.read_text()))
     assert predefined_presets()[name] == captured
     assert load_presets()[name] == captured
-    assert not (tmp_path / "topdon-duo" / "pipeline-presets.json").exists()
+    assert not (tmp_path / "based-thermals" / "pipeline-presets.json").exists()
 
 
 def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
@@ -160,7 +160,7 @@ def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
     preview = next(n for n in original["branches"]["B"] if n["type"] == "preview")
     assert not preview["expanded"]
     save_presets(load_presets())
-    assert (tmp_path / "topdon-duo" / "pipeline-presets.json").read_text().strip() == "{}"
+    assert (tmp_path / "based-thermals" / "pipeline-presets.json").read_text().strip() == "{}"
     assert load_presets()[name] == original
     modified = load_presets()
     modified[name]["software"][0]["expanded"] = True
@@ -169,11 +169,16 @@ def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
     assert predefined_presets()[name] == original
 
 
-def test_corrupt_user_presets_do_not_hide_predefined_pipeline(monkeypatch, tmp_path):
+def test_corrupt_user_presets_do_not_hide_predefined_pipeline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Retain bundled pipelines when the current user preset file is corrupt.
+    """
     from based_thermals.pipeline_presets import load_presets
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    directory = tmp_path / "topdon-duo"
+    directory = tmp_path / "based-thermals"
     directory.mkdir()
     (directory / "pipeline-presets.json").write_text("broken json")
     assert "Detail Enhanced GPU Upscale" in load_presets()

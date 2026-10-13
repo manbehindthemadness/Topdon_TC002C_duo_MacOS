@@ -42,8 +42,8 @@ tests and the Orin path was verified on AGX Orin, L4T R39.2.1, CUDA 13.2, cuDNN 
 and Python 3.12. Other JetPack configurations still require physical verification.
 
 The project environment and `uv.lock` are untouched. Verified replacements live in
-`~/Library/Caches/topdon-duo/runtimes` on macOS or
-`$XDG_CACHE_HOME/topdon-duo/runtimes` (default `~/.cache/topdon-duo/runtimes`) on Linux,
+`~/Library/Caches/based-thermals/runtimes` on macOS or
+`$XDG_CACHE_HOME/based-thermals/runtimes` (default `~/.cache/based-thermals/runtimes`) on Linux,
 separated by Python ABI, OS, architecture, CUDA family and setup policy version.
 `BASED_THERMALS_RUNTIME_DIR` overrides this directory. Cache state is published only
 after verification; incomplete downloads are removed, including abandoned staging

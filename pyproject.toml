@@ -22,9 +22,6 @@ Repository = "https://github.com/manbehindthemadness/based-thermals"
 based-thermals = "based_thermals.web:main"
 based-thermals-desktop = "based_thermals.desktop:main"
 based-thermals-models = "based_thermals.onnx_models:main"
-topdon-duo = "based_thermals.web:main"
-topdon-duo-desktop = "based_thermals.desktop:main"
-topdon-duo-models = "based_thermals.onnx_models:main"
 
 [project.optional-dependencies]
 apple = ["onnxruntime>=1.23; sys_platform == 'darwin'"]

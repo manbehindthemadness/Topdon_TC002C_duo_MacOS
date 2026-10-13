@@ -51,7 +51,7 @@ def test_clear_cache_removes_only_downloaded_models(
     """
     Remove catalog/custom downloads and checksums, preserving other cache contents.
     """
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     downloaded = onnx_models.model_path("espcn")
     downloaded.write_bytes(b"weights")
     checksum = downloaded.with_suffix(".sha256")
@@ -86,7 +86,7 @@ def test_clear_cache_refuses_active_downloads(
     """
     A pending job excludes clearing without losing its progress or cached files.
     """
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     path = onnx_models.model_path("espcn")
     path.write_bytes(b"keep")
     manager = ModelDownloads()
@@ -103,7 +103,7 @@ def test_clear_cache_fails_safely_on_invalid_local_index(
     """
     Do not remove files when local-model protections cannot be read reliably.
     """
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     path = onnx_models.model_path("espcn")
     path.write_bytes(b"keep")
     (tmp_path / "custom-models.json").write_text('{}')

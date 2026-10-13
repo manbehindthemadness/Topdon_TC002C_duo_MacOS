@@ -9,6 +9,9 @@ from .preference_io import save_json
 
 
 def _path() -> Path:
+    """
+    Resolve the current application preferences directory for the host platform.
+    """
     config = os.environ.get("XDG_CONFIG_HOME")
     if config:
         base = Path(config)
@@ -16,7 +19,7 @@ def _path() -> Path:
         base = Path.home() / "Library" / "Application Support"
     else:
         base = Path.home() / ".config"
-    return base / "topdon-duo" / "main-window.json"
+    return base / "based-thermals" / "main-window.json"
 
 
 def load_main_window_size() -> tuple[int, int] | None:

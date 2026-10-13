@@ -44,7 +44,7 @@ def cache_root() -> Path:
         Path.home() / "Library" / "Caches" if sys.platform == "darwin"
         else Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
     )
-    return base / "topdon-duo" / "runtimes"
+    return base / "based-thermals" / "runtimes"
 
 
 def orin_host() -> bool:

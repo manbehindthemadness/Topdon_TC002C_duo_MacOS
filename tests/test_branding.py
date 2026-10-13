@@ -1,5 +1,5 @@
 """
-Application branding changes preserve commands, pipeline imports and installed data.
+Application branding uses current interfaces while retaining historical pipeline imports.
 """
 
 import json
@@ -19,23 +19,23 @@ from based_thermals.web import LiveStream, create_app
 
 
 @pytest.mark.parametrize("suffix", ["", "-desktop", "-models"])
-def test_renamed_distribution_installs_working_commands_and_legacy_aliases(suffix: str) -> None:
+def test_distribution_installs_only_current_commands(suffix: str) -> None:
     """
-    Run both installed command spellings without opening a camera or downloading models.
+    Run current commands without opening a camera or downloading models.
     """
     installed = distribution("based-thermals")
     assert installed.metadata["Name"] == "based-thermals"
     entry_points = {entry.name: entry.value for entry in installed.entry_points}
     current, legacy = f"based-thermals{suffix}", f"topdon-duo{suffix}"
-    assert entry_points[current] == entry_points[legacy]
-    for command in (current, legacy):
-        result = subprocess.run(
-            [str(Path(sys.executable).parent / command), "--help"],
-            capture_output=True, text=True, timeout=20, check=False,
-        )
-        assert result.returncode == 0, result.stderr
-        if suffix != "-models":
-            assert "based-thermals" in result.stdout
+    assert legacy not in entry_points
+    assert not (Path(sys.executable).parent / legacy).exists()
+    result = subprocess.run(
+        [str(Path(sys.executable).parent / current), "--help"],
+        capture_output=True, text=True, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    if suffix != "-models":
+        assert "based-thermals" in result.stdout
 
 
 def test_web_title_is_application_brand_and_device_identity_remains_visible() -> None:
@@ -51,21 +51,19 @@ def test_web_title_is_application_brand_and_device_identity_remains_visible() ->
     assert APP_NAME == WINDOW_NAME == "based-thermals"
 
 
-def test_model_directory_override_prefers_new_name_and_accepts_legacy(
+def test_model_directory_uses_current_override_and_ignores_legacy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     """
-    Reuse the existing model cache unless an explicit current or legacy override is supplied.
+    Use the current cache or explicit override without falling back to an obsolete variable.
     """
     monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path / "legacy"))
     monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path / "current"))
     assert onnx_models.model_path("espcn").parent == tmp_path / "current"
     monkeypatch.delenv("BASED_THERMALS_MODEL_DIR")
-    assert onnx_models.model_path("espcn").parent == tmp_path / "legacy"
-    monkeypatch.delenv("TOPDON_MODEL_DIR")
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     monkeypatch.setattr(sys, "platform", "linux")
-    assert onnx_models.model_path("espcn").parent == tmp_path / "topdon-duo" / "models"
+    assert onnx_models.model_path("espcn").parent == tmp_path / "based-thermals" / "models"
 
 
 @pytest.mark.parametrize("format_name", ["based-thermals-pipelines", "topdon-duo-pipelines"])

@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from capture_processes import desktop_is_running
+
 from based_thermals.camera import CameraError, TC002CDuoCamera, decode_duo_frame
 from based_thermals.frame_pump import CameraFramePump
 
@@ -59,14 +61,8 @@ def main() -> None:
         parser.error("--preview requires --frame-pump")
     if args.component != "none" and not args.preview:
         parser.error("--component requires --preview")
-    for process in Path("/proc").glob("[0-9]*/cmdline"):
-        try:
-            command = process.read_bytes().split(b"\0")
-        except (FileNotFoundError, PermissionError, ProcessLookupError):
-            continue
-        if any(Path(arg.decode(errors="replace")).name == "topdon-duo-desktop"
-               for arg in command if arg):
-            parser.error("Close the desktop viewer before opening the camera")
+    if desktop_is_running():
+        parser.error("Close the desktop viewer before opening the camera")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     camera = TC002CDuoCamera()
     camera.usb_queue_depth = args.usb_queue_depth

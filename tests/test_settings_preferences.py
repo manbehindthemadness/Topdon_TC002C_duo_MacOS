@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+
+import pytest
 
 from based_thermals.settings_preferences import load_settings, save_settings
 
@@ -12,9 +15,14 @@ def test_fixed_mode_persists_and_retired_bounds_are_ignored(monkeypatch, tmp_pat
     assert "fixed_range" not in load_settings()
 
 
-def test_invalid_preferences_preserve_independent_valid_fields(monkeypatch, tmp_path):
+def test_invalid_preferences_preserve_independent_valid_fields(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Retain valid settings when other fields or the current preference file are malformed.
+    """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    path = tmp_path / "topdon-duo" / "settings.json"
+    path = tmp_path / "based-thermals" / "settings.json"
     assert load_settings() == {}
     path.parent.mkdir()
     for contents in ("{", "null", "[]"):
@@ -92,10 +100,15 @@ def test_invalid_emissivity_reference_does_not_discard_other_settings(monkeypatc
         assert load_settings() == {"display": {"temperature_unit": "F"}, "hardware": {}}
 
 
-def test_invalid_graph_interval_preserves_other_preferences(monkeypatch, tmp_path):
+def test_invalid_graph_interval_preserves_other_preferences(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Discard invalid graph intervals without resetting unrelated preferences.
+    """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     for value in (True, "0.5", None, 0, 61, float("inf")):
-        path = tmp_path / "topdon-duo" / "settings.json"
+        path = tmp_path / "based-thermals" / "settings.json"
         path.parent.mkdir(exist_ok=True)
         path.write_text(json.dumps({"graph_interval": value, "show_graph": True}))
         assert load_settings() == {"display": {}, "hardware": {}, "show_graph": True}

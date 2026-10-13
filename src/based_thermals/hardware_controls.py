@@ -607,6 +607,9 @@ class HardwareControls:
             self._auto_calibrate_owned = False
 
     def load(self) -> None:
+        """
+        Read complete original settings and preserve a restoration baseline on disk.
+        """
         if self.original:
             return
         # Publish a baseline only after all required blocks are validated.
@@ -616,7 +619,7 @@ class HardwareControls:
             for name, spec in HARDWARE_CONTROLS.items()
         }
         state_root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
-        directory = state_root / "topdon-duo" / "camera-baselines"
+        directory = state_root / "based-thermals" / "camera-baselines"
         try:
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             snapshot_path = directory / f"{uuid4().hex}.json"

@@ -263,9 +263,9 @@ selection available to change/reload the package. A source declaration only supp
 metadata; the package must call the resolver during processing to request weights.
 
 Cached weights are reused offline. `BASED_THERMALS_MODEL_DIR` overrides the standard
-macOS/Linux model-cache directory; the legacy `TOPDON_MODEL_DIR` is still accepted.
-When both are set, `BASED_THERMALS_MODEL_DIR` takes precedence. Failed downloads raise
-a pipeline error on subsequent calls rather than retrying every frame. Bypass/re-enable or reload the
+macOS/Linux model-cache directory. The obsolete `TOPDON_MODEL_DIR` is no longer read.
+Failed downloads raise a pipeline error on subsequent calls rather than retrying every frame.
+Bypass/re-enable or reload the
 node to create a fresh resolver and retry. Catalog models requiring a local Torch
 export retain that requirement; the downloader does not perform those exports.
 Record model licenses/provenance and document automatic downloads in your package.

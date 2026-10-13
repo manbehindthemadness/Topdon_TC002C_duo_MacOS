@@ -1,3 +1,4 @@
+from pathlib import Path
 from threading import Event
 from time import monotonic, sleep
 
@@ -18,8 +19,13 @@ def wait_finished(manager, model):
     pytest.fail("background installation did not finish")
 
 
-def test_background_download_deduplicates_branches_and_reuses_offline_cache(monkeypatch, tmp_path):
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+def test_background_download_deduplicates_branches_and_reuses_offline_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Share background installation across branches and reuse the current model cache.
+    """
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     started, release = Event(), Event()
     calls = []
 
@@ -46,8 +52,13 @@ def test_background_download_deduplicates_branches_and_reuses_offline_cache(monk
     assert calls == ["style-candy"]
 
 
-def test_failed_download_does_not_retry_every_frame_but_can_retry(monkeypatch, tmp_path):
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+def test_failed_download_does_not_retry_every_frame_but_can_retry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Keep failed downloads stable until an explicit retry is requested.
+    """
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     calls = []
 
     def install(model, progress):
@@ -67,8 +78,13 @@ def test_failed_download_does_not_retry_every_frame_but_can_retry(monkeypatch, t
     assert calls == ["style-candy", "style-candy"]
 
 
-def test_local_export_is_never_automatically_started(monkeypatch, tmp_path):
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+def test_local_export_is_never_automatically_started(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Require a separate developer operation for weights needing conversion.
+    """
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     manager = model_downloads.ModelDownloads()
     with pytest.raises(ValueError, match="export_visual_denoisers"):
         manager.request("ffdnet-gray")
@@ -96,8 +112,13 @@ def test_pending_download_keeps_feed_live_without_starting_native_helper(monkeyp
     assert requests == [(model, True), (model, False)]
 
 
-def test_missing_checksum_sidecar_triggers_verified_reinstallation(monkeypatch, tmp_path):
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+def test_missing_checksum_sidecar_triggers_verified_reinstallation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Reverify cached weights when their checksum evidence is missing.
+    """
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     onnx_models.model_path("style-udnie").write_bytes(b"unverified")
     monkeypatch.setattr(model_downloads, "download_model", lambda *args, **kwargs: None)
     manager = model_downloads.ModelDownloads()

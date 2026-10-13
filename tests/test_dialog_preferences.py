@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -52,7 +53,12 @@ def test_each_directory_is_independent_and_cancel_does_not_replace_it(monkeypatc
         assert load_dialog_directory(kind) == tmp_path / kind
 
 
-def test_invalid_missing_and_explicit_directories(monkeypatch, tmp_path):
+def test_invalid_missing_and_explicit_directories(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    Validate dialog paths independently of corrupt saved preference values.
+    """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     remembered = tmp_path / "remembered"
     remembered.mkdir()
@@ -61,7 +67,7 @@ def test_invalid_missing_and_explicit_directories(monkeypatch, tmp_path):
     assert load_dialog_directory("image", tmp_path / "missing") == remembered
     remembered.rmdir()
     assert load_dialog_directory("image") is None
-    path = tmp_path / "config" / "topdon-duo" / "dialog-directories" / "image.json"
+    path = tmp_path / "config" / "based-thermals" / "dialog-directories" / "image.json"
     for contents in ("{", "null", json.dumps("relative/path"), json.dumps([str(tmp_path)])):
         path.write_text(contents)
         assert load_dialog_directory("image") is None

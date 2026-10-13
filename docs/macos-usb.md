@@ -55,8 +55,8 @@ To retain an affected existing model, inspect its ownership and repair only that
 file. For example, the affected RealESRGAN file in this project's review was:
 
 ```sh
-ls -l "$HOME/Library/Caches/topdon-duo/models/realesr-general-x4v3-a946f7a93970.onnx"
-sudo chown "$(id -u):$(id -g)" "$HOME/Library/Caches/topdon-duo/models/realesr-general-x4v3-a946f7a93970.onnx"
+ls -l "$HOME/Library/Caches/based-thermals/models/realesr-general-x4v3-a946f7a93970.onnx"
+sudo chown "$(id -u):$(id -g)" "$HOME/Library/Caches/based-thermals/models/realesr-general-x4v3-a946f7a93970.onnx"
 ```
 
 Do not recursively change unrelated caches or application data. Ownership repair

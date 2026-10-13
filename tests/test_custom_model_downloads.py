@@ -45,7 +45,7 @@ def test_direct_download_reuses_cache_and_rejects_corruption(
     """
     Verify direct custom weights without extending the built-in catalog.
     """
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     data = b"custom weights"
     identity, spec = model_source(source(data))
     opener = Mock(side_effect=lambda *args, **kwargs: io.BytesIO(data))
@@ -86,7 +86,7 @@ def test_archive_installs_only_verified_regular_member_atomically(
     Require both checksums and never unpack links or unrelated archive paths.
     """
     cache = tmp_path / "cache"
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(cache))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(cache))
     data = b"model weights"
     archive = archive_bytes(data, tarfile.SYMTYPE if failure == "symlink" else tarfile.REGTYPE)
     descriptor = source(data) | {
@@ -120,7 +120,7 @@ def test_shared_job_progress_deduplication_and_offline_readiness(
     """
     Multiple custom packages share one job and obtain verified cached paths.
     """
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     manager = model_downloads.ModelDownloads()
     # noinspection PyUnresolvedReferences
     monkeypatch.setattr(models, "MODEL_DOWNLOADS", manager)

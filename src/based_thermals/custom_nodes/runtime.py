@@ -33,8 +33,8 @@ class CustomPackage:
         Materialize a validated package; import it only in the processing worker.
         """
         self.source = source
-        self.name = f"_topdon_custom_{uuid4().hex}"
-        self.directory = TemporaryDirectory(prefix="topdon-custom-")
+        self.name = f"_based_thermals_custom_{uuid4().hex}"
+        self.directory = TemporaryDirectory(prefix="based-thermals-custom-")
         try:
             root = Path(self.directory.name)
             for name, content in package_files(source).items():

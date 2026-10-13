@@ -14,7 +14,7 @@ from based_thermals import onnx_models
 def test_denoiser_download_needs_export_and_no_network(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     opener = Mock(side_effect=AssertionError("no network"))
     monkeypatch.setattr(onnx_models.urllib.request, "urlopen", opener)
     with pytest.raises(ValueError, match="export_visual_denoisers.py dncnn-25"):
@@ -27,7 +27,7 @@ def test_denoiser_download_needs_export_and_no_network(
 def test_verified_download_is_atomic_reused_and_rejects_wrong_content(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     data = b"test model fixture"
     spec = dict(onnx_models.MODELS["espcn"], sha256=hashlib.sha256(data).hexdigest())
     monkeypatch.setitem(onnx_models.MODELS, "espcn", spec)
@@ -71,7 +71,7 @@ def test_download_trust_bundle_is_mac_only_and_respects_custom_ca(
 def test_v1_installer_verifies_publisher_pointer_and_retains_checksum_offline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     data = b"v1 test model"
     checksum = hashlib.sha256(data).hexdigest()
     pointer = f"version https://git-lfs.github.com/spec/v1\noid sha256:{checksum}\nsize {len(data)}\n".encode()
@@ -98,7 +98,7 @@ def test_v1_installer_verifies_publisher_pointer_and_retains_checksum_offline(
 def test_v1_installer_rejects_invalid_or_oversized_publisher_metadata(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pointer: Any
 ) -> None:
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     opener = Mock(return_value=io.BytesIO(pointer))
     monkeypatch.setattr(onnx_models.urllib.request, "urlopen", opener)
     with pytest.raises(ValueError):
@@ -111,6 +111,6 @@ def test_missing_model_is_actionable(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     """
     Point missing-model errors at the current application command.
     """
-    monkeypatch.setenv("TOPDON_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     with pytest.raises(ValueError, match="uv run based-thermals-models mewzoom"):
         onnx_models.verified_model("mewzoom")
