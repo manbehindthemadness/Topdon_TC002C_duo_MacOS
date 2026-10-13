@@ -11,15 +11,20 @@ import pytest
 from based_thermals import onnx_models
 
 
-def test_denoiser_download_needs_export_and_no_network(
+def test_denoiser_install_dispatches_conversion_without_downloading_directly(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """
+    Dispatch local preparation without using the direct-download path or converting on verification.
+    """
     monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     opener = Mock(side_effect=AssertionError("no network"))
     monkeypatch.setattr(onnx_models.urllib.request, "urlopen", opener)
-    with pytest.raises(ValueError, match="export_visual_denoisers.py dncnn-25"):
-        onnx_models.download_model("dncnn-25")
-    with pytest.raises(ValueError, match="export_visual_denoisers.py ffdnet-gray"):
+    prepare = Mock(return_value=tmp_path / "dncnn-25.onnx")
+    monkeypatch.setattr("based_thermals.model_exports.prepare_model", prepare)
+    assert onnx_models.download_model("dncnn-25") == tmp_path / "dncnn-25.onnx"
+    prepare.assert_called_once_with("dncnn-25")
+    with pytest.raises(ValueError, match="based-thermals-models ffdnet-gray"):
         onnx_models.verified_model("ffdnet-gray")
     opener.assert_not_called()
 

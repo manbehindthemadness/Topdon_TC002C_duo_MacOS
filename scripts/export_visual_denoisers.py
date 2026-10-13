@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import sys
 import tempfile
 import urllib.request
@@ -26,7 +27,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+source_root = os.environ.get("BASED_THERMALS_EXPORT_SOURCE_ROOT")
+sys.path.insert(0, source_root or str(Path(__file__).resolve().parents[1] / "src"))
 from based_thermals.onnx_models import download_ssl_context, model_path, verified_model
 
 CHECKPOINTS = {"dncnn-25": "dncnn_25.pth", "ffdnet-gray": "ffdnet_gray.pth"}

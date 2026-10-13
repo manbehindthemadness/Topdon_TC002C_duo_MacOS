@@ -2,11 +2,11 @@
 
 [Documentation home](../README.md) · [Imaging guide](imaging-guide.md)
 
-Run installation and conversion commands from the repository root. Most downloadable models install automatically on first use; manual preinstallation is optional. DnCNN/FFDNet conversion is a separate developer operation.
+Run installation commands from the repository root. Optional models install automatically on first use; manual preinstallation is optional. DnCNN/FFDNet are converted automatically in a separate background process.
 
 Complete [setup](setup.md) first. Commands assume uv is on PATH; use `.venv/bin/uv`
 for an environment-local installation. Conversion downloads developer dependencies
-in a separate script environment and should be done outside camera acquisition.
+in a separate script environment, outside the camera acquisition thread.
 
 ## Enhancement models
 
@@ -20,7 +20,7 @@ uv run based-thermals-models mewzoom-v1-2x mewzoom-v1-4x
 # Lightweight general-purpose 4x upscaler:
 uv run based-thermals-models realesr-general-x4v3
 # One-time conversion of the authors' denoising weights:
-uv run scripts/export_visual_denoisers.py dncnn-25 ffdnet-gray
+uv run based-thermals-models dncnn-25 ffdnet-gray
 # Then launch the camera viewer (install commands do not launch it):
 uv run based-thermals-desktop
 ```
@@ -92,9 +92,12 @@ ready. Progress appears in the viewer status and Pipeline panel. Verified weight
 are cached for offline reuse. On a download failure, bypass/re-enable the node
 to retry. Blend 0 or bypassed nodes do not trigger downloads.
 
-This also applies to downloadable ONNX enhancement models. DnCNN/FFDNet still
-require their documented one-time local export; the viewer does not install
-Torch or launch an export automatically.
+This also applies to ONNX enhancement models, including DnCNN/FFDNet. Selecting
+either denoiser prepares its conversion dependencies and official weights in a
+separate process on first use. This requires uv and internet access initially;
+later sessions reuse the verified cache offline. Torch stays outside the viewer's
+environment. Multiple branches and viewers share preparation, and failures use
+the same bypass/re-enable retry. Installed wheels include the converter and license.
 
 Manual pre-installation remains available if desired:
 

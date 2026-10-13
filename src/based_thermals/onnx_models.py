@@ -93,6 +93,7 @@ MODELS: dict[str, dict[str, Any]] = {
         "input_name": "input",
     },
     "dncnn-25": {
+        "name": "DnCNN-25",
         "factor": 1,
         "rgb": False,
         "sha256": None,
@@ -100,6 +101,7 @@ MODELS: dict[str, dict[str, Any]] = {
         "static_coreml": True,
     },
     "ffdnet-gray": {
+        "name": "FFDNet",
         "factor": 1,
         "rgb": False,
         "sha256": None,
@@ -192,10 +194,8 @@ def verified_model(model: str, *, spec: dict[str, Any] | None = None) -> bytes:
 
 def install_command(model: str) -> str:
     """
-    Describe the current model-install command while retaining offline conversion instructions.
+    Describe the model-install command, including automatic preparation of local exports.
     """
-    if MODELS[model].get("local_export"):
-        return "uv run scripts/export_visual_denoisers.py " + model
     return "uv run based-thermals-models " + model
 
 
@@ -237,7 +237,12 @@ def download_model(
         else:
             return path
     if spec.get("local_export"):
-        raise ValueError("This model needs a one-time export; run " + install_command(model))
+        if custom:
+            raise ValueError("Custom model descriptors cannot request code conversion")
+        from .model_exports import prepare_model
+
+        prepared = prepare_model(model)
+        return prepared
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     checksum_temporary = None

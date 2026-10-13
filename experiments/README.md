@@ -23,3 +23,14 @@ are reported as failures. A failed check returns a nonzero exit status.
 
 Normal application tests retain fake sessions and isolated temporary model files
 to cover pipeline behavior independently of the user's model cache.
+
+## First-use denoiser preparation
+
+```sh
+.venv/bin/python experiments/experiment_model_preparation.py dncnn-25 ffdnet-gray --model-dir /tmp/based-thermals-denoiser-check
+```
+
+This explicitly downloads isolated conversion dependencies and official weights,
+checks conversion parity, verifies offline cache reuse, and runs same-size CPU
+inference. Use a separate model directory as shown to preserve viewer data. It
+requires uv and internet access; normal pytest never performs conversion or downloads.

@@ -4,7 +4,8 @@ import logging
 from threading import Lock, Thread
 from typing import Any
 
-from .onnx_models import MODELS, download_model, install_command, model_path
+from . import model_exports
+from .onnx_models import MODELS, download_model, model_path
 
 LOG = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class ModelDownloads:
 
     def request(self, model: str, retry: bool = False, *, spec: dict[str, Any] | None = None) -> bool:
         """
-        Return readiness immediately; never wait for network or export Torch models.
+        Return readiness immediately while missing weights are downloaded or prepared in background.
         """
         definition = MODELS[model] if spec is None else spec
         with self.lock:
@@ -29,21 +30,23 @@ class ModelDownloads:
             if job is not None and job["state"] == "error" and not retry:
                 raise ValueError(job["message"])
             path = model_path(model, **({"spec": spec} if spec is not None else {}))
-            if path.is_file() and (
+            installed = path.is_file() and (
                 definition["sha256"] is not None or path.with_suffix(".sha256").is_file()
-            ):
-                self.jobs.pop(model, None)
+            )
+            local_export = bool(definition.get("local_export"))
+            if installed and (not local_export or job is not None and job["state"] == "ready"):
+                if not local_export:
+                    self.jobs.pop(model, None)
                 return True  # The inference worker still validates the full checksum.
-            if definition.get("local_export"):
-                raise ValueError("Model needs a one-time local export; run " + install_command(model))
             title = definition.get("name", model)
-            self.jobs[model] = {"state": "pending", "message": f"Downloading {title}…"}
+            action = "Preparing" if definition.get("local_export") else "Downloading"
+            self.jobs[model] = {"state": "pending", "message": f"{action} {title}…"}
             Thread(target=self._install, args=(model, spec), name=f"download-{model}", daemon=True).start()
             return False
 
     def _install(self, model: str, spec: dict[str, Any] | None = None) -> None:
         """
-        Install in a background thread and contain download errors for UI reporting.
+        Install or prepare in a background thread and contain failures for UI reporting.
         """
         definition = MODELS[model] if spec is None else spec
         title = definition.get("name", model)
@@ -58,16 +61,29 @@ class ModelDownloads:
             with self.lock:
                 self.jobs[model]["message"] = f"Downloading {title}: {detail}"
 
+        def preparation(detail: str) -> None:
+            """
+            Publish isolated conversion status without blocking the processing worker.
+            """
+            with self.lock:
+                self.jobs[model]["message"] = f"Preparing {title}: {detail}"
+
         try:
             if definition.get("noncommercial"):
                 LOG.warning("%s weights are for non-commercial use only; see upstream terms in README", model)
             LOG.info("Installing model on demand: %s", model)
-            download_model(model, progress=progress, **({"spec": spec} if spec is not None else {}))
+            if definition.get("local_export"):
+                if spec is not None:
+                    raise ValueError("Custom model descriptors cannot request code conversion")
+                model_exports.prepare_model(model, progress=preparation)
+            else:
+                download_model(model, progress=progress, **({"spec": spec} if spec is not None else {}))
             with self.lock:
                 self.jobs[model] = {"state": "ready", "message": ""}
             LOG.info("Model ready: %s", model)
         except Exception as exc:  # noqa: BLE001 - contain background installation failures
-            message = f"Model download failed ({title}): {exc}. Bypass/re-enable the node to retry."
+            action = "preparation" if definition.get("local_export") else "download"
+            message = f"Model {action} failed ({title}): {exc}. Bypass/re-enable the node to retry."
             with self.lock:
                 self.jobs[model] = {"state": "error", "message": message}
             LOG.warning("%s", message)

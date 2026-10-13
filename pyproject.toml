@@ -39,6 +39,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/based_thermals"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"scripts/export_visual_denoisers.py" = "based_thermals/resources/export_visual_denoisers.py"
+"scripts/LICENSE-KAIR.txt" = "based_thermals/resources/LICENSE-KAIR.txt"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
