@@ -211,9 +211,9 @@ worker, or Browse can select the faster tested 256 tiny export from the linked
 upstream archive. Both CPU and Apple GPU inference were tested on a saved thermal
 frame; the README records timings, cold compilation cost and source attribution.
 
-## Shared model downloader
+## Shared model downloads and conversion
 
-Custom packages can use the viewer's background downloader:
+Custom packages can use the viewer's background downloader and catalog converter:
 
 ```python
 from based_thermals.custom_nodes.models import ModelResolver
@@ -228,10 +228,26 @@ if path is None:
 ```
 
 Create one resolver per package, then call `resolve` during processing. It returns
-a checksum-verified `Path` when ready, or `None` while downloading. Return the
-input image during that wait. Downloads share the existing desktop progress/error
-display and cache, and matching requests from separate nodes share one job.
-Downloads do not run while browsing folders or importing pipeline documents.
+a checksum-verified `Path` when ready, or `None` while downloading or converting.
+Return the input image during that wait. Preparation shares the existing desktop
+progress/error display and cache; Custom and built-in nodes requesting the same
+catalog model share one job. Preparation does not run while browsing folders or
+importing pipeline documents.
+
+Catalog sources `"dncnn-25"` and `"ffdnet-gray"` automatically download official
+weights and convert them to ONNX on first use, just like built-in enhancement
+nodes. For example, declare `MODEL_SOURCE = "dncnn-25"` and call
+`models.resolve(config.get("model", MODEL_SOURCE))` inside `process`. Keep the
+resolver in module globals. First preparation requires uv and internet access;
+Torch runs in an isolated converter environment, and later sessions reuse verified
+exports offline. Bypass/re-enable recreates the package/resolver for a single retry
+after failure. The returned path is the model file; your callback still owns
+compatible inference, preprocessing and session cleanup. See
+[denoiser details](visual-models.md) for their luminance and noise inputs.
+
+Automatic conversion is limited to the application's catalog recipes. Custom
+HTTPS descriptors below download already exported models; they do not register
+arbitrary conversion scripts or install package dependencies.
 
 The source can be an existing catalog name such as `"espcn"`, or a JSON object:
 

@@ -1,5 +1,5 @@
 """
-Nonblocking access to the viewer's shared downloader from custom Python packages.
+Nonblocking access to shared model downloads and catalog conversion from custom packages.
 """
 
 import hashlib
@@ -52,7 +52,7 @@ def model_source(source: str | dict[str, Any]) -> tuple[str, dict[str, Any] | No
 
 class ModelResolver:
     """
-    Request shared background downloads and verify ready paths once per file revision.
+    Request shared downloads/catalog conversion and verify ready paths once per file revision.
     """
 
     def __init__(self) -> None:
@@ -64,10 +64,12 @@ class ModelResolver:
 
     def resolve(self, source: str | dict[str, Any]) -> Path | None:
         """
-        Return verified cached weights, or None while the background job is pending.
+        Return verified cached weights, or None while download/conversion is pending.
 
         Calling again polls without blocking or retrying failed jobs every frame.
         Recreating the resolver (such as bypass/re-enable) allows one fresh retry.
+        Catalog names include automatic DnCNN/FFDNet conversion; URL descriptors
+        download existing exports and cannot supply conversion code.
         """
         identity, spec = model_source(source)
         retry = identity not in self.requested
