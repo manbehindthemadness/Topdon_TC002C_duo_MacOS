@@ -9,7 +9,13 @@ Unknown fields are preserved verbatim; only Model.graph / Graph.node are visited
 """
 
 
-def _varint(value):
+from collections.abc import Callable, Iterator
+
+
+def _varint(value: int) -> bytes:
+    """
+    Encode an unsigned protobuf integer.
+    """
     result = bytearray()
     while value > 127:
         result.append((value & 127) | 128)
@@ -18,7 +24,10 @@ def _varint(value):
     return bytes(result)
 
 
-def _read_varint(data, pos):
+def _read_varint(data: bytes, pos: int) -> tuple[int, int]:
+    """
+    Decode one protobuf integer and return its next byte offset.
+    """
     value = 0
     for shift in range(0, 70, 7):
         if pos >= len(data):
@@ -31,7 +40,12 @@ def _read_varint(data, pos):
     raise ValueError("Invalid bundled ONNX protobuf varint")
 
 
-def _fields(data):
+def _fields(data: bytes | None) -> Iterator[tuple[int, bytes | None, bytes]]:
+    """
+    Read protobuf fields and reject missing or malformed payloads.
+    """
+    if data is None:
+        raise ValueError("Missing ONNX protobuf field payload")
     pos = 0
     while pos < len(data):
         start = pos
@@ -55,11 +69,17 @@ def _fields(data):
         yield field, payload, data[start:pos]
 
 
-def _bytes_field(field, payload):
+def _bytes_field(field: int, payload: bytes) -> bytes:
+    """
+    Encode one length-delimited protobuf field.
+    """
     return _varint(field << 3 | 2) + _varint(len(payload)) + payload
 
 
-def _rewrite(data, field, transform):
+def _rewrite(data: bytes, field: int, transform: Callable[[bytes], bytes]) -> bytes:
+    """
+    Transform selected protobuf fields while preserving other wire bytes.
+    """
     return b"".join(
         _bytes_field(number, transform(payload))
         if number == field and payload is not None
@@ -68,10 +88,15 @@ def _rewrite(data, field, transform):
     )
 
 
-def explicit_coreml_padding(model):
-    """Make default 2D convolution padding explicit without overriding auto_pad."""
+def explicit_coreml_padding(model: bytes) -> bytes:
+    """
+    Make default 2D convolution padding explicit without overriding auto_pad.
+    """
 
-    def patch_node(node):
+    def patch_node(node: bytes) -> bytes:
+        """
+        Add default padding only when convolution metadata requires it.
+        """
         fields = list(_fields(node))
         if not any(
             number == 4 and payload in (b"Conv", b"ConvTranspose") for number, payload, _ in fields
@@ -98,7 +123,11 @@ def explicit_coreml_padding(model):
     return _rewrite(model, 7, lambda graph: _rewrite(graph, 1, patch_node))
 
 
-def coreml_input_shape_overrides(model, shape, input_name="x"):
+def coreml_input_shape_overrides(
+    model: bytes,
+    shape: tuple[int, ...],
+    input_name: str = "x",
+) -> dict[str, int]:
     """Specialize V1's symbolic NCHW dimensions without changing its weights.
 
     Core ML's MLProgram layout conversion fails with the V1 dynamic-shape export.

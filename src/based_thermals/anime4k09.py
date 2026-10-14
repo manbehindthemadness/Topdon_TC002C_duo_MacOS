@@ -5,6 +5,8 @@ Copyright (c) 2020 TianZer; MIT license in models/LICENSE-ANIME4K09.txt.
 Phone parameters: 2x linear resize, 3 passes, gradient strength 0.5, color push 0.
 """
 
+from typing import cast
+
 import cv2
 import numpy as np
 
@@ -26,6 +28,9 @@ def _quantize(value: np.ndarray) -> np.ndarray:
 
 
 def upscale_anime4k09(image: np.ndarray, passes: int = 3, strength: float = 0.5) -> np.ndarray:
+    """
+    Upscale display colors with the upstream byte-image Anime4K09 operations.
+    """
     grayscale = image.ndim == 2
     color = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR) if grayscale else image
     color = cv2.resize(color.astype(np.float32), None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
@@ -55,7 +60,7 @@ def upscale_anime4k09(image: np.ndarray, passes: int = 3, strength: float = 0.5)
             condition = ((minimum > g[4]) & (g[4] > maximum)) if straight else minimum > maximum
             selected = remaining & condition
             if np.any(selected):
-                total = cv2.add(cv2.add(c[light[0]], c[light[1]]), c[light[2]])
+                total = cv2.add(cast(np.ndarray, cv2.add(c[light[0]], c[light[1]])), c[light[2]])
                 updated = cv2.addWeighted(color, 1 - strength, total, strength / 3, 0)
                 cv2.copyTo(updated, selected.astype(np.uint8), result)
                 remaining[selected] = False

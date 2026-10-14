@@ -52,6 +52,7 @@ def test_cuda_does_not_silently_initialize_cpu_only_session(
     monkeypatch.setattr(sys, "platform", "linux")
     ort = sys.modules["onnxruntime"]
     ort.get_available_providers = lambda: ["CUDAExecutionProvider"] if advertised else []
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(
         ort.InferenceSession, "get_providers", lambda self: ["CPUExecutionProvider"]
     )
@@ -85,8 +86,8 @@ def test_cuda_dispatch_preserves_measurements_preferences_and_releases_workers(
             self.closed = False
             engines.append(self)
 
+        @staticmethod
         def apply(
-            self,
             image: np.ndarray,
             selected: str,
             backend: str,
@@ -97,6 +98,7 @@ def test_cuda_dispatch_preserves_measurements_preferences_and_releases_workers(
             """
             Record execution and emulate the selected model's output geometry.
             """
+            del compute, kwargs
             calls.append((image.shape[:2], selected, backend, amount))
             factor = 2 if selected.startswith("acnet") else 3 if selected == "espcn" else 1
             return cv2.resize(image, None, fx=factor, fy=factor)
@@ -154,8 +156,10 @@ def test_bundled_acnet_never_requests_a_download(monkeypatch: pytest.MonkeyPatch
         """
         Fail on network preparation.
         """
+        del args, kwargs
         raise AssertionError("bundled weights must not download")
 
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr("based_thermals.onnx_upsampling.MODEL_DOWNLOADS.request", unexpected)
     with pytest.raises(ValueError, match="4 megapixels"):
         ONNXUpsampler().apply(np.zeros((1024, 1024), np.uint8), "acnet-legacy-hdn0", "cuda")
@@ -166,6 +170,7 @@ def test_bundled_acnet_reuses_worker_without_network(monkeypatch: pytest.MonkeyP
     Send bundled ACNet directly to the worker without any model installation job.
     """
     request = Mock(side_effect=AssertionError("bundled model download"))
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr("based_thermals.onnx_upsampling.MODEL_DOWNLOADS.request", request)
     image = np.zeros((8, 8), np.uint8)
     output = np.zeros((16, 16), np.uint8)

@@ -25,6 +25,7 @@ class DesktopSession(
         Initialize dependencies and restore validated session preferences.
         """
         super().__init__(api=api)
+        self.api.EXPORT_JOBS.begin()
         self.args = self.api.parse_args(argv)
         self.api.logging.basicConfig(
             level=self.api.logging.DEBUG if self.args.verbose else self.api.logging.INFO,
@@ -295,6 +296,10 @@ class DesktopSession(
         Shutdown for the current desktop session.
         """
         self.diagnostics.stage("shutdown")
+        try:
+            self.api.EXPORT_JOBS.close()
+        except (OSError, self.api.subprocess.TimeoutExpired) as exc:
+            self.api.LOG.error("Could not stop model preparation: %s", exc)
         if self.pipeline_worker is not None:
             self.pipeline_worker.close()
         try:

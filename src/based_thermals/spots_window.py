@@ -1,6 +1,7 @@
 """Measuring-spot context menu in the separate Qt process."""
 
 import sys
+from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QCursor
@@ -20,13 +21,20 @@ from .capture_window import run_window
 
 
 class SpotsMenu(QMenu):
-    def __init__(self, send):
+    def __init__(self, send: Any) -> None:
+        """
+        Create a separate-process spot menu with the JSON message callback.
+        """
         super().__init__()
         if sys.platform == "darwin":
             # This menu belongs to a separate process from the Cocoa viewer.
             # A native Popup cannot reliably acquire its mouse grab while that
             # viewer owns focus. A floating tool can activate independently.
-            self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+            self.setWindowFlags(
+                Qt.WindowType.Tool
+                | Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.WindowStaysOnTopHint
+            )
         self.setWindowTitle("Measuring spots")
         self._send = send
         self._state = None
@@ -56,7 +64,10 @@ class SpotsMenu(QMenu):
             self._send({"action": "rename", "spot": number, "name": field.text()})
             field.setModified(False)
 
-    def _build(self, spots):
+    def _build(self, spots: Any) -> None:
+        """
+        Rebuild spot controls and bind each callback to its stable spot number.
+        """
         for field in self.name_fields.values():
             field.blockSignals(True)
         self.clear()
@@ -83,8 +94,8 @@ class SpotsMenu(QMenu):
             check.setAccessibleName(f"Enable spot {number}")
             check.setToolTip("Show this spot and sample its temperature graph.")
             check.toggled.connect(
-                lambda enabled, number=number: self._send(
-                    {"action": "enable", "spot": number, "enabled": enabled}
+                lambda enabled, spot_number=number: self._send(
+                    {"action": "enable", "spot": spot_number, "enabled": enabled}
                 )
             )
             name = QLineEdit()
@@ -95,12 +106,12 @@ class SpotsMenu(QMenu):
             name.setToolTip(
                 "Region name used in the graph and log. On-image numbers stay unchanged. Press Enter or leave the field to save."
             )
-            name.editingFinished.connect(lambda number=number: self._rename(number))
+            name.editingFinished.connect(lambda spot_number=number: self._rename(spot_number))
             clear = QPushButton("Clear")
             clear.setAccessibleName(f"Clear spot {number}")
             clear.clicked.connect(
-                lambda _checked=False, number=number: self._send(
-                    {"action": "clear", "spot": number}
+                lambda _checked=False, spot_number=number: self._send(
+                    {"action": "clear", "spot": spot_number}
                 )
             )
             layout.addWidget(check)
@@ -147,12 +158,17 @@ class SpotsMenu(QMenu):
         if first or state.get("raise_window"):
             self.show()
 
-    def hideEvent(self, event):
+    def hideEvent(self, event: Any) -> None:
         # Clicking outside the menu commits edits before the helper exits.
+        """
+        Commit name edits before the hidden helper process exits.
+        """
         for number in self.name_fields:
             self._rename(number)
         super().hideEvent(event)
-        QApplication.instance().quit()
+        application = QApplication.instance()
+        if application is not None:
+            application.quit()
 
 
 def main():

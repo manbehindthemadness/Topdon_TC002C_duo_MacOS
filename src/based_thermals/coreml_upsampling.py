@@ -1,11 +1,14 @@
 """Optional, isolated Core ML ACNet inference; never reconfigure OpenCV's CPU DNN."""
 
+import importlib
 import logging
 import multiprocessing
+import multiprocessing.context as multiprocessing_context
 import sys
 from contextlib import suppress
 from importlib.resources import files
 from time import perf_counter
+from typing import cast
 
 import cv2
 import numpy as np
@@ -27,7 +30,10 @@ class _CoreMLRuntime:
     def close(self):
         self._session = None
 
-    def _load(self, denoise, compute):
+    def _load(self, denoise: int, compute: str) -> None:
+        """
+        Load the selected ACNet weights in an isolated Apple provider session.
+        """
         key = denoise, compute
         if self._key == key:
             if self.error:
@@ -40,9 +46,11 @@ class _CoreMLRuntime:
             if sys.platform != "darwin":
                 raise ValueError("requires macOS; bypass this node or use CPU AI enhancement")
             try:
-                import onnxruntime as ort
+                ort = importlib.import_module("onnxruntime")
             except ImportError as exc:
-                raise ValueError("Apple runtime missing; run uv sync in the project directory") from exc
+                raise ValueError(
+                    "Apple runtime missing; run uv sync in the project directory"
+                ) from exc
             if "CoreMLExecutionProvider" not in ort.get_available_providers():
                 raise ValueError("installed ONNX Runtime does not provide CoreMLExecutionProvider")
             data = (
@@ -85,16 +93,24 @@ class _CoreMLRuntime:
             self.error = f"Apple Core ML ACNet unavailable: {exc}"
             raise ValueError(self.error) from exc
 
-    def apply(self, image, denoise=0, compute="CPUAndGPU", amount=1.0):
+    def apply(
+        self, image: np.ndarray, denoise: int = 0, compute: str = "CPUAndGPU", amount: float = 1.0
+    ) -> np.ndarray:
+        """
+        Enhance display luminance while preserving preview chroma.
+        """
         if not amount:
             self.elapsed_ms = 0.0
             return image
         self._load(denoise, compute)
         started = perf_counter()
         try:
-            color = image.ndim == 3
-            ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb) if color else None
-            gray = ycrcb[..., 0] if color else image
+            ycrcb = None
+            if image.ndim == 2:
+                gray = image
+            else:
+                ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+                gray = ycrcb[..., 0]
             blob = np.ascontiguousarray(gray, dtype=np.float32)[None, None] / 255.0
             name = self._session.get_inputs()[0].name
             tensor = self._session.run(None, {name: blob})[0]
@@ -106,7 +122,7 @@ class _CoreMLRuntime:
             if amount != 1:
                 baseline = cv2.resize(gray, size, interpolation=cv2.INTER_CUBIC)
                 enhanced = cv2.addWeighted(enhanced, amount, baseline, 1 - amount, 0)
-            if color:
+            if ycrcb is not None:
                 ycrcb = cv2.resize(ycrcb, size, interpolation=cv2.INTER_CUBIC)
                 ycrcb[..., 0] = enhanced
                 enhanced = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
@@ -162,8 +178,11 @@ class CoreMLUpsampler:
         with suppress(OSError, ValueError, AssertionError, AttributeError):
             self.close()
 
-    def _start(self, denoise, compute):
-        context = multiprocessing.get_context("spawn")
+    def _start(self, denoise: int, compute: str) -> None:
+        """
+        Spawn a separate Apple inference process and retain its message pipe.
+        """
+        context = cast(multiprocessing_context.SpawnContext, multiprocessing.get_context("spawn"))
         parent, child = context.Pipe()
         process = context.Process(
             target=_coreml_worker, args=(child, denoise, compute), daemon=True
@@ -177,7 +196,12 @@ class CoreMLUpsampler:
         child.close()
         self._connection, self._process = parent, process
 
-    def apply(self, image, denoise=0, compute="CPUAndGPU", amount=1.0):
+    def apply(
+        self, image: np.ndarray, denoise: int = 0, compute: str = "CPUAndGPU", amount: float = 1.0
+    ) -> np.ndarray:
+        """
+        Enhance display luminance while preserving preview chroma.
+        """
         if not amount:
             self.elapsed_ms = 0.0
             return image
@@ -206,8 +230,9 @@ class CoreMLUpsampler:
             if process is not None:
                 process.join(timeout=0.2)
             code = process.exitcode if process is not None else None
+            exit_description = str(code) if isinstance(code, int) else "unknown"
             self.error = (
-                f"Apple Core ML helper exited unexpectedly (exit {code}); "
+                f"Apple Core ML helper exited unexpectedly (exit {exit_description}); "
                 "bypass this node to continue using the CPU pipeline"
             )
             self.close()

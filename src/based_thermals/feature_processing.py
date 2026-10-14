@@ -1,5 +1,7 @@
 """CPU feature selection on display images, with bounded detection resolution."""
 
+from typing import Any
+
 import cv2
 import numpy as np
 
@@ -55,7 +57,10 @@ def validate_feature(kind, p):
             raise ValueError("Minimum aspect ratio must not exceed maximum")
 
 
-def _prepare(image, p):
+def _prepare(image: np.ndarray, p: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Prepare bounded detection pixels and a region mask.
+    """
     height, width = image.shape[:2]
     factor = min(1.0, p["resolution"] / max(height, width))
     small = (
@@ -84,11 +89,17 @@ def _prepare(image, p):
     return small, gray, roi
 
 
-def _canny(gray, low, high, l2=True):
+def _canny(gray: np.ndarray, low: float, high: float, l2: bool = True) -> np.ndarray:
+    """
+    Find Canny edges in a NumPy display plane.
+    """
     return cv2.Canny(gray, low, high, apertureSize=3, L2gradient=l2)
 
 
-def _edge_mask(gray, p):
+def _edge_mask(gray: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    """
+    Build a directional edge mask without altering measurements.
+    """
     gx = (
         cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
         if p["method"] != "scharr"
@@ -117,7 +128,10 @@ def _edge_mask(gray, p):
     return mask
 
 
-def _select_edges(mask, p):
+def _select_edges(mask: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    """
+    Select connected edge components using the requested ranking.
+    """
     count, labels, stats, centers = cv2.connectedComponentsWithStats(mask, connectivity=8)
     ids = np.arange(1, count)
     ids = ids[stats[ids, cv2.CC_STAT_AREA] >= p["min_pixels"]]
@@ -144,7 +158,10 @@ def _select_edges(mask, p):
     return selected
 
 
-def _segment(gray, p):
+def _segment(gray: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    """
+    Segment display pixels with the selected threshold method.
+    """
     mode = p["segmentation"]
     if mode == "canny":
         mask = _canny(gray, p["lower"], p["upper"])
@@ -173,14 +190,25 @@ def _segment(gray, p):
     return mask
 
 
-def _region_mean(image, contour):
+def _region_mean(image: np.ndarray, contour: np.ndarray) -> tuple[float, ...]:
+    """
+    Measure the display color inside one contour.
+    """
     x, y, w, h = cv2.boundingRect(contour)
     mask = np.zeros((h, w), np.uint8)
     cv2.drawContours(mask, [(contour - [x, y]).astype(np.int32)], -1, 255, cv2.FILLED)
     return cv2.mean(image[y : y + h, x : x + w], mask)[:3]
 
 
-def _contours(small, gray, mask, p):
+def _contours(
+    small: np.ndarray,
+    gray: np.ndarray,
+    mask: np.ndarray,
+    p: dict[str, Any],
+) -> list[tuple[float, np.ndarray, tuple[float, ...]]]:
+    """
+    Rank bounded contour candidates and return their display geometry.
+    """
     detected, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     candidates = sorted(((cv2.contourArea(c), c) for c in detected), key=lambda pair: -pair[0])[
         :MAX_CANDIDATES
@@ -211,7 +239,7 @@ def _contours(small, gray, mask, p):
         polygon = cv2.approxPolyDP(contour, p["simplify"] * perimeter / 100, True)
         shape = p["shape"]
         if shape == "rectangle":
-            if len(polygon) != 4 or not cv2.isContourConvex(polygon) or area / (rw * rh) < 0.75:
+            if polygon.shape[0] != 4 or not cv2.isContourConvex(polygon) or area / (rw * rh) < 0.75:
                 continue
             vertices = polygon[:, 0, :].astype(np.float32)
             a = np.roll(vertices, 1, axis=0) - vertices
@@ -221,7 +249,7 @@ def _contours(small, gray, mask, p):
             )
             if np.max(cosines) > 0.35:
                 continue
-        if shape == "circle" and (len(polygon) < 6 or circularity < 0.75 or aspect > 1.3):
+        if shape == "circle" and (polygon.shape[0] < 6 or circularity < 0.75 or aspect > 1.3):
             continue
         if shape == "convex" and not cv2.isContourConvex(polygon):
             continue
@@ -250,7 +278,15 @@ def _contours(small, gray, mask, p):
     return sorted(selected, key=lambda candidate: candidate[0])[: int(p["max_count"])]
 
 
-def _render(image, mask, p, decorated=None):
+def _render(
+    image: np.ndarray,
+    mask: np.ndarray,
+    p: dict[str, Any],
+    decorated: np.ndarray | None = None,
+) -> np.ndarray:
+    """
+    Composite feature pixels into the display image.
+    """
     if p["output"] == "mask":
         filtered = np.repeat(mask[..., None], 3, axis=2).astype(np.float32)
     elif p["output"] == "cutout":
@@ -266,7 +302,10 @@ def _render(image, mask, p, decorated=None):
     )
 
 
-def apply_features(image, kind, p):
+def apply_features(image: np.ndarray, kind: str, p: dict[str, Any]) -> np.ndarray:
+    """
+    Apply bounded feature selection to display pixels only.
+    """
     if not p["mix"]:
         return image
     small, gray, roi = _prepare(image, p)
@@ -289,8 +328,10 @@ def apply_features(image, kind, p):
         if p["output"] in ("mask", "cutout"):
             cv2.drawContours(mask, [points], -1, 255, cv2.FILLED)
         if p["output"] == "mean":
+            assert decorated is not None
             cv2.drawContours(decorated, [points], -1, mean, cv2.FILLED)
         elif p["output"] in ("overlay", "fill"):
+            assert decorated is not None
             cv2.drawContours(
                 decorated,
                 [points],

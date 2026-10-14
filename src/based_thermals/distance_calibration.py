@@ -3,6 +3,7 @@
 import math
 from dataclasses import asdict, dataclass
 from itertools import combinations
+from typing import cast
 
 import cv2
 import numpy as np
@@ -10,12 +11,14 @@ import numpy as np
 from .camera_backends.duo.camera import SENSOR_HEIGHT, SENSOR_WIDTH
 
 
-def _edge_squares(thermal):
-    """Recover square outlines from two pairs of perpendicular parallel edges."""
+def _edge_squares(thermal: np.ndarray) -> list[np.ndarray]:
+    """
+    Recover square outlines from two pairs of perpendicular parallel edges.
+    """
     height, width = thermal.shape
     low, high = np.percentile(thermal, (2, 98))
     image = np.uint8(np.clip((thermal - low) * 255 / max(high - low, 1), 0, 255))
-    edges = cv2.Canny(image, 25, 70)
+    edges = cast(np.ndarray, cv2.Canny(image, 25, 70))
     lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=15, minLineLength=12, maxLineGap=4)
     if lines is None:
         return []
@@ -24,14 +27,14 @@ def _edge_squares(thermal):
     lines = lines[np.argsort(lengths)[::-1][:40]]
     directions = lines[:, 2:] - lines[:, :2]
     directions /= np.linalg.norm(directions, axis=1)[:, None]
-    pairs = []
+    pairs: list[tuple[int, int, float]] = []
     for first, second in combinations(range(len(lines)), 2):
         direction = directions[first]
         if abs(np.dot(direction, directions[second])) < 0.996:
             continue
         normal = np.array([-direction[1], direction[0]])
-        distance = abs(np.dot(lines[second, :2] - lines[first, :2], normal))
-        if 12 <= distance <= min(height, width):
+        distance = float(abs(np.dot(lines[second, :2] - lines[first, :2], normal)))
+        if 12 <= distance <= height and distance <= width:
             pairs.append((first, second, distance))
     distances = cv2.distanceTransform(255 - edges, cv2.DIST_L2, 3)
     polygons = []
@@ -69,7 +72,7 @@ def _edge_squares(thermal):
     return polygons
 
 
-def detect_hand_square(temperatures):
+def detect_hand_square(temperatures: np.ndarray | None) -> np.ndarray | None:
     """Find a cooler square with a warm surrounding hand; ambiguous scenes return None.
 
     All geometry uses the native Celsius plane. Temperature limits are initial
@@ -97,7 +100,7 @@ def detect_hand_square(temperatures):
                 continue
             perimeter = cv2.arcLength(contour, True)
             polygon = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
-            if len(polygon) != 4 or not cv2.isContourConvex(polygon):
+            if polygon.shape[0] != 4 or not cv2.isContourConvex(polygon):
                 continue
             if abs(area - cv2.contourArea(polygon)) / area > 0.08:
                 continue
@@ -107,7 +110,7 @@ def detect_hand_square(temperatures):
     for polygon in polygons:
         points = polygon[:, 0].astype(float)
         try:
-            edge = square_edge_pixels(points, (width, height))
+            square_edge_pixels(points, (width, height))
         except ValueError:
             continue
         lengths = np.linalg.norm(np.roll(points, -1, axis=0) - points, axis=1)
@@ -287,7 +290,10 @@ class DistanceCalibrator:
             else "Selection cancelled."
         )
 
-    def update(self, temperatures):
+    def update(self, temperatures: np.ndarray | None) -> bool:
+        """
+        Accept a stable square detection and update its reference or distance estimate.
+        """
         if self.selecting is None:
             return False
         detected = detect_hand_square(temperatures)
@@ -317,6 +323,7 @@ class DistanceCalibrator:
         if len(self._detections) < self.STABLE_FRAMES:
             return False
         self.corners = np.median(self._detections, axis=0).tolist()
+        assert temperatures is not None
         size = temperatures.shape[::-1]
         try:
             self.edge_pixels = square_edge_pixels(self.corners, size)
@@ -328,6 +335,7 @@ class DistanceCalibrator:
         mode, self.selecting = self.selecting, None
         self._detections = []
         if mode == "measure":
+            assert self.reference is not None
             self.estimated_m = self.reference.estimate(self.corners, size)
             self.message = "Estimate ready. Validate against a measured distance before applying."
         else:

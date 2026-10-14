@@ -10,6 +10,15 @@ from test_camera import make_frame
 from based_thermals import desktop
 
 
+def run_three_frames(viewer: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Run the viewer for three frames with a deterministic quit event.
+    """
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events([-1, -1, "q"]))
+    assert desktop.main([]) == 0
+
+
 def test_hardware_ambient_changes_and_restore_drive_measurements(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -20,6 +29,7 @@ def test_hardware_ambient_changes_and_restore_drive_measurements(
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     viewer.camera.device = Device()
     hardware = HardwareControls(viewer.camera)
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "HardwareControls", lambda _camera: hardware)
     panel = Mock()
     panel.poll.side_effect = [
@@ -27,6 +37,7 @@ def test_hardware_ambient_changes_and_restore_drive_measurements(
         [{"action": "hardware", "name": "ambient", "value": 35.0, "enabled": True}],
         [{"action": "restore_hardware"}],
     ]
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
     # Simulate corrected counts delivered by the camera following an ambient write.
     viewer.camera.frames.return_value = [make_frame(4500), make_frame(4600), make_frame(4500)]
@@ -177,9 +188,7 @@ def test_unsupported_hardware_protocol_does_not_retry_or_block_stream(
     viewer.hardware.load.side_effect = desktop.HardwareProtocolError(
         "Unsupported camera protocol version layout (length reply 0002)"
     )
-    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
-    monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events([-1, -1, "q"]))
-    assert desktop.main([]) == 0
+    run_three_frames(viewer, monkeypatch)
     viewer.hardware.load.assert_called_once()
     assert len(viewer.displayed) == 3
     viewer.hardware.set_auto_calibrate.assert_not_called()
@@ -189,9 +198,7 @@ def test_startup_calibration_failure_keeps_viewer_running_without_retries(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, caplog: Any
 ) -> None:
     viewer.hardware.calibrate_now.side_effect = desktop.CameraError("Calibration rejected")
-    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
-    monkeypatch.setattr(desktop.cv2, "waitKey", viewer.key_events([-1, -1, "q"]))
-    assert desktop.main([]) == 0
+    run_three_frames(viewer, monkeypatch)
     viewer.hardware.calibrate_now.assert_called_once()
     assert len(viewer.displayed) == 3
     assert "Could not run startup calibration: Calibration rejected" in caplog.text
@@ -219,6 +226,7 @@ def test_ambient_input_keeps_requested_value_but_sends_quantized_temperature(
     panel.poll.side_effect = [
         [{"action": "hardware", "name": "ambient", "value": 22.2222222222, "enabled": True}]
     ]
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
     setting = viewer.hardware.state.return_value["ambient"]
     viewer.hardware.set.side_effect = lambda name, value, enabled: setting.update(value=value)
@@ -243,6 +251,7 @@ def test_display_awake_request_matches_camera_lifetime(
 ) -> None:
     awake = Mock()
     awake.check.return_value = None
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "DisplayAwake", lambda: awake)
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)

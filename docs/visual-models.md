@@ -94,9 +94,10 @@ to retry. Blend 0 or bypassed nodes do not trigger downloads.
 
 This also applies to ONNX enhancement models, including DnCNN/FFDNet. Selecting
 either denoiser prepares its conversion dependencies and official weights in a
-separate process on first use. This requires uv and internet access initially;
-later sessions reuse the verified cache offline. Torch stays outside the viewer's
-environment. Multiple branches and viewers share preparation, and failures use
+separate process on first use. Closing the viewer cancels pending preparation
+and stops its converter process group. This requires uv and internet access
+initially; later sessions reuse the verified cache offline. Torch stays outside
+the viewer's environment. Multiple branches and viewers share preparation, and failures use
 the same bypass/re-enable retry. Installed wheels include the converter and license.
 
 Manual pre-installation remains available if desired:

@@ -2,13 +2,17 @@
 
 import math
 from itertools import pairwise
+from typing import Any
 
 import numpy as np
 
 from .camera_backends.errors import CameraError
 
 
-def validate_reference(value):
+def validate_reference(value: object) -> dict[str, float | int]:
+    """
+    Validate finite persisted calibration values and their supported ranges.
+    """
     if (
         not isinstance(value, dict)
         or type(value.get("version")) is not int
@@ -23,6 +27,7 @@ def validate_reference(value):
             or not math.isfinite(number)
         ):
             raise ValueError("Emissivity calibration values must be finite numbers")
+    assert isinstance(emissivity, (int, float)) and isinstance(known, (int, float))
     if (
         not 0.01 <= emissivity <= 1
         or abs(emissivity * 100 - round(emissivity * 100)) > 1e-8
@@ -38,7 +43,10 @@ class EmissivityCalibrator:
     TOLERANCE_C = 0.3
     TIMEOUT_SECONDS = 30
 
-    def __init__(self, hardware, reference=None):
+    def __init__(self, hardware: Any, reference: dict[str, Any] | None = None) -> None:
+        """
+        Restore an optional reference without applying hardware changes.
+        """
         self.hardware = hardware
         self.reference = validate_reference(reference) if reference is not None else None
         self.active = self.selecting = self.running = False
@@ -49,8 +57,9 @@ class EmissivityCalibrator:
         self.message = "Select a surface point and enter its independently measured temperature."
         self._original = None
         self._samples = []
-        self._observations = {}
+        self._observations: dict[int, float] = {}
         self._finish_pending = None
+        self._started = 0.0
         self._closing = False
 
     def begin(self):
@@ -103,7 +112,10 @@ class EmissivityCalibrator:
             self._finish(None, "Fit failed; previous emissivity restored.")
             raise
 
-    def _probe(self, value, now):
+    def _probe(self, value: int, now: float) -> None:
+        """
+        Apply one candidate emissivity and start its settling interval.
+        """
         self.hardware.set("emissivity", value / 100, True)
         self._current = value
         self._samples = []
@@ -140,10 +152,17 @@ class EmissivityCalibrator:
         self.result = None
         self.message = "Calibration closed. Image markers restored."
 
-    def apply(self):
+    def apply(self) -> float:
+        """
+        Apply the fitted or saved emissivity and close calibration controls.
+        """
         if self.running or (self.result is None and self.reference is None):
             raise ValueError("Fit an emissivity value before applying it")
-        fitted = self.result if self.result is not None else self.reference["emissivity"]
+        if self.result is not None:
+            fitted = self.result
+        else:
+            assert self.reference is not None
+            fitted = self.reference["emissivity"]
         self.hardware.set("emissivity", fitted, True)
         value = self.hardware.state()["emissivity"]["value"]
         self.active = self.selecting = False

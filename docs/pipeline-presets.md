@@ -29,6 +29,7 @@ presets, or both into one JSON file. Import accepts these bundles and existing
 individual pipeline files, including several files at once. Name conflicts offer
 Rename, Replace, or Skip; unique names are suggested to keep existing presets.
 Imported pipelines are saved as presets, with an option to load the first selection.
+If adding the export suffix selects an existing file, replacement requires confirmation.
 
 Raw thermal display pixels (including raw blend/mask inputs and branches) use
 the latest valid sensor frame, independently of temporal measurement averaging.
@@ -44,14 +45,15 @@ overlay, contrast mask and tuned Laplacian/antialiasing/sharpening thermal branc
 with native-input Real-ESRGAN 4× using Apple Core ML `ALL` devices.
 
 **Reaper Night GPU** and **Reaper Day GPU** bundle the saved masked raw-thermal
-blends, 4× bicubic thermal branch, gamma/contrast settings, sharpening and DnCNN
-denoising with Apple Core ML `ALL` devices. Day retains its black-hot thermal
+blends, gamma/contrast settings, sharpening and FFDNet denoising with Apple
+Core ML `ALL` devices. Night's interpolation node is bypassed; Day has no
+interpolation node. Day retains its black-hot thermal
 branch, inverted mix mask and camera palette setting.
 
 **Detail Enhanced CPU Upscale** bundles the saved Plasma preview with a Scharr
 thermal-edge branch, masked subtraction, CLAHE, sharpening, antialiasing and
-single-pass CPU ACNet enhancement. Standalone exports of these three presets
-and the current Yautja GPU are checked into `presets/`.
+single-pass CPU ACNet enhancement. Standalone exports of all eight bundled
+presets are checked into `presets/`.
 
 **Redneck Combat** is also bundled in the dropdown, preserving the original
 Inferno preview with its Laplacian/contour thermal branch and masked blend.

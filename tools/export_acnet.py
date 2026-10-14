@@ -10,7 +10,12 @@ import re
 from pathlib import Path
 
 import numpy as np
+
+# ONNX belongs to this developer tool environment, not the viewer SDK.
+# noinspection PyUnresolvedReferences
 import onnx
+
+# noinspection PyUnresolvedReferences
 from onnx import TensorProto, helper, numpy_helper
 
 
@@ -22,14 +27,17 @@ def export(source: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     for level in range(4):
 
-        def array(name, level=level):
+        def array(name: str, model_level: int = level) -> np.ndarray:
+            """
+            Read one upstream array for the selected model level.
+            """
             match = re.search(
-                rf"ACNetLegacy_HDN{level}_NHWC_{name}\[\]\s*=\s*\{{(.*?)\}};",
+                rf"ACNetLegacy_HDN{model_level}_NHWC_{name}\[]\s*=\s*{{(.*?)}};",
                 text,
                 re.DOTALL,
             )
             if match is None:
-                raise ValueError(f"Missing HDN{level} {name}")
+                raise ValueError(f"Missing HDN{model_level} {name}")
             return np.array(
                 re.findall(r"[-+]?\d+\.\d+(?:[eE][-+]?\d+)?", match[1]), dtype=np.float32
             )

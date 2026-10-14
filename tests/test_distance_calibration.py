@@ -19,7 +19,10 @@ def square(edge=48):
     return [(64, 48), (64 + edge, 48), (64 + edge, 48 + edge), (64, 48 + edge)]
 
 
-def thermal_square(edge=48, note=22, hand=32):
+def thermal_square(edge: int = 48, note: float = 22, hand: float = 32) -> np.ndarray:
+    """
+    Create an independent synthetic hand and square temperature plane.
+    """
     thermal = np.full((192, 256), 20, np.float32)
     thermal[30:170, 40:210] = hand
     thermal[48 : 48 + edge, 64 : 64 + edge] = note
@@ -97,7 +100,10 @@ def test_invalid_selection_and_cancel_preserve_saved_reference():
         (0.076, float("inf"), 48),
     ],
 )
-def test_invalid_reference_rejected(values):
+def test_invalid_reference_rejected(values: tuple[float, float, float]) -> None:
+    """
+    Reject invalid persisted distance reference values.
+    """
     with pytest.raises(ValueError):
         DistanceReference(*values)
 

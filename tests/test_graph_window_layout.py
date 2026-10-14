@@ -6,7 +6,10 @@ from based_thermals.graphs import graph_interval_rect, graph_log_button_rect
 
 
 @pytest.mark.parametrize("window", [(2400, 1200), (2400, 700), (1000, 1400), (600, 400)])
-def test_graphs_fill_window_and_camera_retains_aspect(window):
+def test_graphs_fill_window_and_camera_retains_aspect(window: tuple[int, int]) -> None:
+    """
+    Preserve camera aspect ratio across window shapes.
+    """
     layout = GraphWindowLayout.fit((768, 650), window)
     camera_width, camera_height = layout.camera_size
     assert layout.canvas_size == window
@@ -23,15 +26,24 @@ def test_graphs_fill_window_and_camera_retains_aspect(window):
 
 
 @pytest.mark.parametrize("event_scale", [0.5, 1, 1.5])
-def test_image_and_graph_controls_map_separately_with_letterboxing(event_scale):
+def test_image_and_graph_controls_map_separately_with_letterboxing(event_scale: float) -> None:
+    """
+    Map pointer coordinates separately for camera and graph controls.
+    """
     layout = GraphWindowLayout.fit((768, 650), (2400, 700))
-    viewport = tuple(value * event_scale for value in layout.canvas_size)
+    viewport = (
+        round(layout.canvas_size[0] * event_scale),
+        round(layout.canvas_size[1] * event_scale),
+    )
     camera_viewport = layout.camera_viewport(viewport)
     x = 240 * layout.camera_size[0] / 768 * event_scale
     y = 254 * layout.camera_size[1] / 650 * event_scale
-    assert image_position_at(x, y, (576, 768, 3), camera_viewport, 74) == (240, 180)
+    assert image_position_at(round(x), round(y), (576, 768, 3), camera_viewport, 74) == (240, 180)
     # Graph clicks cannot become image measurements or spots.
-    assert image_position_at(2390 * event_scale, y, (576, 768, 3), camera_viewport, 74) is None
+    assert (
+        image_position_at(round(2390 * event_scale), round(y), (576, 768, 3), camera_viewport, 74)
+        is None
+    )
     for rectangle in (graph_log_button_rect, graph_interval_rect):
         x0, y0, x1, y1 = rectangle(layout.graph_size[0])
         x = (layout.camera_size[0] + (x0 + x1) / 2) * event_scale

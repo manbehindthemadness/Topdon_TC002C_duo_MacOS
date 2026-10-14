@@ -1,5 +1,7 @@
 """Bounded classic OpenCV display filters; no models or optional contrib modules."""
 
+from typing import Any
+
 import cv2
 import numpy as np
 
@@ -73,7 +75,10 @@ def _bytes(image):
     return np.clip(image, 0, 255).round().astype(np.uint8)
 
 
-def _core(image, p):
+def _core(image: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    """
+    Apply the selected classic display filter with validated parameters.
+    """
     mode = p["filter"]
     border = {
         "reflect": cv2.BORDER_REFLECT_101,
@@ -122,7 +127,10 @@ def _core(image, p):
         )
     if mode in ("sobel", "scharr"):
 
-        def derivative(dx, dy):
+        def derivative(dx: int, dy: int) -> np.ndarray:
+            """
+            Compute one directional derivative with the selected kernel and border mode.
+            """
             if mode == "scharr":
                 return cv2.Scharr(image, cv2.CV_32F, dx, dy, borderType=border)
             return cv2.Sobel(image, cv2.CV_32F, dx, dy, ksize=kernel, borderType=border)
@@ -200,11 +208,13 @@ def _core(image, p):
     raise ValueError("Unknown image filter")
 
 
-def apply_filter(image, p):
+def apply_filter(image: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    """
+    Filter display channels and mix them with the original pixels.
+    """
     if p["filter"] == "none" or not p["mix"]:
         return image
     mode = p["filter"]
-    color = None
     grayscale = mode in ("sobel", "scharr", "laplacian", "canny", "threshold", "adaptive", "emboss")
     luma = grayscale or mode in ("clahe", "equalize") or p["channels"] == "luminance"
     if luma:

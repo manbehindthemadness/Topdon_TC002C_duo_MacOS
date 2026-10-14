@@ -78,6 +78,7 @@ def reject_control(*args: Any, **kwargs: Any) -> NoReturn:
     """
     Prevent settings reads, writes and calibration commands during this trial.
     """
+    del args, kwargs
     raise CameraError("Camera control transfers disabled for this diagnostic run")
 
 
@@ -124,6 +125,7 @@ def main() -> int:
         """
         Block control traffic only after the normal UVC setup has completed.
         """
+        # noinspection PyTypeChecker
         mode = original_open(camera)
         camera.device.ctrl_transfer = reject_control
         return mode
@@ -137,9 +139,13 @@ def main() -> int:
         patches.enter_context(patch.object(desktop, "save_settings", lambda _settings: None))
         patches.enter_context(patch.object(desktop, "save_main_window_size", lambda _size: None))
         if options.cached_graph:
-            patches.enter_context(patch.object(
-                graph_module, "render_graphs", cached_chart_renderer(graph_module.render_graphs),
-            ))
+            patches.enter_context(
+                patch.object(
+                    graph_module,
+                    "render_graphs",
+                    cached_chart_renderer(graph_module.render_graphs),
+                )
+            )
         if options.no_chart_markers:
             patches.enter_context(patch.object(graph_module, "cv2", ChartsWithoutMarkers()))
         session = CaptureOnlyDesktop(desktop, desktop_args)
@@ -160,8 +166,8 @@ def main() -> int:
                     return False
                 if session.last_frame_at is not None and now - session.last_frame_at >= 5:
                     return False
-                result = original_tick()
-                return result
+                tick_result = original_tick()
+                return tick_result
 
             session.tick = bounded_tick
         result = session.run()

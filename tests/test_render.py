@@ -1,3 +1,5 @@
+from typing import Any
+
 import cv2
 import numpy as np
 import pytest
@@ -18,7 +20,10 @@ def test_decode_keeps_complete_preview_and_discards_chroma(preview_scale):
 
 
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
-def test_camera_preview_preserves_detail_and_rotates_with_measurements(rotation):
+def test_camera_preview_preserves_detail_and_rotates_with_measurements(rotation: Any) -> None:
+    """
+    Verify camera preview preserves detail and rotates with measurements.
+    """
     frame, preview = frame_with_preview(preview_scale=2)
     rendered = ThermalRenderer(scale=2, rotation=rotation).render_detailed(frame)
     expected = cv2.applyColorMap(
@@ -27,20 +32,25 @@ def test_camera_preview_preserves_detail_and_rotates_with_measurements(rotation)
     expected = np.rot90(expected, -(rotation // 90))
     assert np.array_equal(rendered.image, expected)
     assert rendered.image_source == "preview"
+    assert rendered.raw_counts is not None
     assert rendered.image.shape[:2] == tuple(size * 2 for size in rendered.raw_counts.shape)
     assert np.all(rendered.temperatures_celsius == 22)
     assert np.all(rendered.raw_counts == 20_000)
 
 
 @pytest.mark.parametrize("scale", [1, 2, 3])
-def test_preview_keeps_mouse_and_spots_on_sensor_pixels(scale):
+def test_preview_keeps_mouse_and_spots_on_sensor_pixels(scale: Any) -> None:
+    """
+    Verify preview keeps mouse and spots on sensor pixels.
+    """
     frame, _ = frame_with_preview()
     rendered = ThermalRenderer(scale=scale, rotation=270).render_detailed(frame)
     x, y = 7 * scale + scale // 2, 11 * scale + scale // 2
     image, selected = draw_picker(rendered, MousePicker(x=x, y=y), scale)
+    assert selected is not None
     assert selected == (7, 11)
     assert np.array_equal(image[y, x], 255 - rendered.image[y, x])
-    image = draw_sample_spots(rendered.image, rendered, SampleSpots(pixels=[selected]), scale)
+    image = draw_sample_spots(rendered.image, rendered, SampleSpots(pixels=[(7, 11)]), scale)
     assert np.array_equal(image[y, x], 255 - rendered.image[y, x])
 
 
@@ -140,23 +150,32 @@ def test_analyze_fixed_colors_do_not_follow_scene_or_display_units():
     assert changed.temperatures_celsius[96, 128] == 30
 
 
-def test_analyze_uses_its_own_native_anime_passes_and_preserves_measurements(monkeypatch):
-    renderer = ThermalRenderer(scale=2, smoothing=1, image_source='analyze')
-    renderer.raw_upsampling = 'anime4k09'
+def test_analyze_uses_its_own_native_anime_passes_and_preserves_measurements(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Verify analyze uses its own native anime passes and preserves measurements.
+    """
+    renderer = ThermalRenderer(scale=2, smoothing=1, image_source="analyze")
+    renderer.raw_upsampling = "anime4k09"
     renderer.native_temperatures = True
-    renderer.upsampling = 'acnet-legacy-hdn3'
+    renderer.upsampling = "acnet-legacy-hdn3"
     renderer.anime4k_passes = 5
     calls = []
 
-    def enhance(image, model, amount, passes):
+    def enhance(image: np.ndarray, model: Any, _amount: Any, _passes: Any) -> Any:
+        """
+        Enhance.
+        """
         assert np.array_equal(image[..., 0], image[..., 1])
         assert np.array_equal(image[..., 0], image[..., 2])
-        calls.append((image.shape, model, amount, passes))
+        calls.append((image.shape, model, _amount, _passes))
         return cv2.resize(image, (512, 384))
 
-    monkeypatch.setattr(renderer.upsampler, 'apply', enhance)
+    # noinspection PyUnresolvedReferences
+    monkeypatch.setattr(renderer.upsampler, "apply", enhance)
     result = renderer.render_detailed(thermal_scene())
-    assert calls == [((192, 256, 3), 'anime4k09', 1.0, 3)]
+    assert calls == [((192, 256, 3), "anime4k09", 1.0, 3)]
     assert result.image.shape == (384, 512, 3)
     assert np.all(result.temperatures_celsius == 30)
     assert np.all(result.raw_counts == 5120)
@@ -189,36 +208,54 @@ def test_analyze_toggle_restores_source_and_does_not_change_measurements():
     assert np.array_equal(original.image, restored.image)
 
 
-def test_analyze_model_receives_grayscale_before_optional_palette(monkeypatch):
-    renderer = ThermalRenderer(scale=2, smoothing=1, image_source='raw')
-    renderer.set_view_setting('analyze_mode', True)
-    renderer.set_view_setting('raw_upsampling', 'acnet-legacy-hdn0')
-    renderer.set_view_setting('raw_palette', 'inferno')
+def test_analyze_model_receives_grayscale_before_optional_palette(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Verify analyze model receives grayscale before optional palette.
+    """
+    renderer = ThermalRenderer(scale=2, smoothing=1, image_source="raw")
+    renderer.set_view_setting("analyze_mode", True)
+    renderer.set_view_setting("raw_upsampling", "acnet-legacy-hdn0")
+    renderer.set_view_setting("raw_palette", "inferno")
     calls = []
 
-    def enhance(image, model, amount, passes):
+    def enhance(image: np.ndarray, model: Any, _amount: Any, _passes: Any) -> Any:
+        """
+        Enhance.
+        """
         assert np.array_equal(image[..., 0], image[..., 1])
         assert np.array_equal(image[..., 0], image[..., 2])
         calls.append(model)
         return np.full((384, 512, 3), 128, dtype=np.uint8)
 
-    monkeypatch.setattr(renderer.upsampler, 'apply', enhance)
+    # noinspection PyUnresolvedReferences
+    monkeypatch.setattr(renderer.upsampler, "apply", enhance)
     result = renderer.render_detailed(thermal_scene())
-    assert calls == ['acnet-legacy-hdn0']
+    assert calls == ["acnet-legacy-hdn0"]
     expected = cv2.applyColorMap(np.full((384, 512), 128, dtype=np.uint8), cv2.COLORMAP_INFERNO)
     assert np.array_equal(result.image, expected)
 
 
-def test_sensor_interpolation_uses_float_plane_without_enhancement(monkeypatch):
-    renderer = ThermalRenderer(scale=2, smoothing=1, image_source='analyze')
-    assert renderer.raw_upsampling == 'bicubic'
+def test_sensor_interpolation_uses_float_plane_without_enhancement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Verify sensor interpolation uses float plane without enhancement.
+    """
+    renderer = ThermalRenderer(scale=2, smoothing=1, image_source="analyze")
+    assert renderer.raw_upsampling == "bicubic"
     assert renderer.raw_sharpen_amount == 0
     counts = np.tile(np.linspace(64 * 70, 64 * 90, 256, dtype=np.float32), (192, 1))
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError('Sensor interpolation must not invoke model enhancement')
+    def forbidden(*_args: Any, **_kwargs: Any) -> None:
+        """
+        Forbidden.
+        """
+        raise AssertionError("Sensor interpolation must not invoke model enhancement")
 
-    monkeypatch.setattr(renderer.upsampler, 'apply', forbidden)
+    # noinspection PyUnresolvedReferences
+    monkeypatch.setattr(renderer.upsampler, "apply", forbidden)
     actual = renderer._render_raw(counts)
     intensity = (counts / 64 - 50 - 15) * (255 / 30)
     expected = cv2.resize(intensity, (512, 384), interpolation=cv2.INTER_CUBIC)

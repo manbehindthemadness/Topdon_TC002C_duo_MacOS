@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -29,7 +30,9 @@ def install_cached_model(path: Path, data: bytes = b"verified model") -> None:
 
 @pytest.mark.parametrize("model", exports.EXPORT_MODELS)
 def test_preparation_is_isolated_verified_and_reused_offline(
-    model: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    model: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """
     Resolve the installed interpreter, strip native runtime overrides and reuse verified artifacts.
@@ -42,13 +45,26 @@ def test_preparation_is_isolated_verified_and_reused_offline(
     path = exports.model_path(model)
     calls: list[list[str]] = []
 
-    def run(command: list[str], environment: dict[str, str], directory: Path) -> None:
+    def run(
+        command: list[str],
+        environment: dict[str, str],
+        directory: Path,
+        *,
+        cancellation: Event,
+    ) -> None:
         """
         Assert process isolation and publish only a checksum-valid result.
         """
         calls.append(command)
-        assert command[:6] == ["/tools/uv", "run", "--no-project", "--no-python-downloads",
-                               "--python", sys.executable]
+        assert not cancellation.is_set()
+        assert command[:6] == [
+            "/tools/uv",
+            "run",
+            "--no-project",
+            "--no-python-downloads",
+            "--python",
+            sys.executable,
+        ]
         assert command[6] == "--script" and command[-1] == model
         assert Path(command[7]).is_file()
         assert "PYTHONPATH" not in environment and "VIRTUAL_ENV" not in environment
@@ -67,7 +83,8 @@ def test_preparation_is_isolated_verified_and_reused_offline(
 
 
 def test_cached_models_need_no_uv_and_corrupt_cache_is_replaced(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """
     Permit offline reuse without installer availability and repair a bad checksum through conversion.
@@ -83,7 +100,7 @@ def test_cached_models_need_no_uv_and_corrupt_cache_is_replaced(
     with pytest.raises(ValueError, match="needs uv"):
         exports.prepare_model("dncnn-25")
     uv.return_value = "/tools/uv"
-    run = Mock(side_effect=lambda *_args: install_cached_model(path))
+    run = Mock(side_effect=lambda *_args, **_kwargs: install_cached_model(path))
     monkeypatch.setattr(exports, "run_export", run)
     assert exports.prepare_model("dncnn-25") == path
     run.assert_called_once()
@@ -150,3 +167,45 @@ def test_unknown_models_never_launch_conversion(tmp_path: Path) -> None:
     """
     with pytest.raises(ValueError, match="not supported"):
         exports.prepare_model("custom-something")
+
+
+def test_shutdown_cancels_cache_lock_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Cancel waiting work before a converter can acquire another viewer's cache lock.
+    """
+    monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(exports.fcntl, "flock", Mock(side_effect=BlockingIOError))
+    monkeypatch.setattr(exports.time, "sleep", lambda _seconds: exports.EXPORT_JOBS.close())
+    with pytest.raises(ValueError, match="cancelled"):
+        exports.prepare_model("dncnn-25")
+
+
+def test_interrupted_communication_reaps_converter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    Reap detached converters even when the caller interrupts their output wait.
+    """
+    process = Mock(returncode=None, pid=12345)
+
+    def communicate(*_args: object, **kwargs: object) -> tuple[str, None]:
+        """
+        Interrupt the bounded wait, then simulate successful cleanup reaping.
+        """
+        if kwargs:
+            raise KeyboardInterrupt
+        process.returncode = -signal.SIGKILL
+        return "", None
+
+    process.communicate.side_effect = communicate
+    monkeypatch.setattr(exports.subprocess, "Popen", Mock(return_value=process))
+    kill = Mock()
+    monkeypatch.setattr(exports.os, "killpg", kill)
+    with pytest.raises(KeyboardInterrupt):
+        run_export(["uv"], {}, tmp_path)
+    kill.assert_called_once_with(process.pid, signal.SIGKILL)
+    assert not exports.EXPORT_JOBS.processes

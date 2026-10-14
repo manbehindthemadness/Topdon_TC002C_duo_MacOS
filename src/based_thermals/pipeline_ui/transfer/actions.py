@@ -95,9 +95,20 @@ def export_pipelines(editor: PipelineEditor) -> None:
     )
     if not path:
         return
+    selected_path = Path(path)
     if not path.endswith(".pipeline.json"):
         path += ".pipeline.json"
     destination = Path(path)
+    if destination != selected_path and destination.exists():
+        answer = QMessageBox.question(
+            editor,
+            "Replace pipeline export",
+            f'Replace "{destination.name}"?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
     single = editor.current_preset_name is None and list(selected) == [current_name]
     try:
         write_pipelines(destination, selected, single=single)

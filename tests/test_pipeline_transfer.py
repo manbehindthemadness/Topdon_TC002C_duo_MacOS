@@ -282,3 +282,41 @@ window.close()
 """
     result = run_popup(script, tmp_path)
     assert result.returncode == 0, result.stderr
+
+
+def test_export_suffix_collision_requires_confirmation(tmp_path: Path) -> None:
+    """
+    Preserve an existing normalized target on refusal and replace it only on acceptance.
+    """
+    script = """
+import sys
+from pathlib import Path
+from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
+from based_thermals.pipeline_ui.transfer.dialogs import ExportDialog
+from based_thermals.view_window import ViewWindow
+app = QApplication([])
+window = ViewWindow(lambda _: None)
+editor = window.pipeline_editor
+editor.create_new_pipeline()
+folder = Path(sys.argv[1])
+target = folder / "existing.pipeline.json"
+target.write_text("keep me")
+ExportDialog.exec = lambda _: QDialog.DialogCode.Accepted
+QFileDialog.getSaveFileName = lambda *_: (str(folder / "existing"), "")
+questions = []
+def refuse(*args):
+    questions.append(args)
+    return QMessageBox.StandardButton.No
+QMessageBox.question = refuse
+editor.export_file()
+assert target.read_text() == "keep me" and len(questions) == 1
+QMessageBox.question = lambda *_: QMessageBox.StandardButton.Yes
+editor.export_file()
+assert target.read_text() != "keep me"
+QFileDialog.getSaveFileName = lambda *_: (str(target), "")
+QMessageBox.question = lambda *_: (_ for _ in ()).throw(AssertionError("double confirmation"))
+editor.export_file()
+window.close()
+"""
+    result = run_popup(script, tmp_path)
+    assert result.returncode == 0, result.stderr

@@ -1,4 +1,6 @@
 import struct
+from collections.abc import Generator
+from typing import Any, cast
 from unittest.mock import Mock
 
 import numpy as np
@@ -66,16 +68,20 @@ def test_decode_rejects_wrong_magic():
         decode_duo_frame(bytes(FRAME_BYTES))
 
 
-def test_linux_larger_preview_keeps_complete_radiometric_frame():
+def test_linux_larger_preview_keeps_complete_radiometric_frame() -> None:
     # This camera advertises a 512x384 preview on Ubuntu, following the
     # same telemetry and 256x192 radiometric plane as the macOS stream.
+    """
+    Verify linux larger preview keeps complete radiometric frame.
+    """
     source = make_frame() + bytes(512 * 384 * 2 - SENSOR_PIXELS * 2)
     assembler = LinuxFrameAssembler(len(source))
     result = None
     for offset in range(0, len(source), 8134):
-        result = assembler.feed(bytes([2, 0x80]) + source[offset:offset + 8134]) or result
+        result = assembler.feed(bytes([2, 0x80]) + source[offset : offset + 8134]) or result
     result = assembler.feed(bytes([2, 0x82])) or result
     assert result == source
+    assert result is not None
     _, raw, _ = decode_duo_frame(result)
     assert np.all(raw == 20_000)
     assert has_yuy2_preview(result)
@@ -122,7 +128,12 @@ def test_assembler_diagnostics_distinguish_header_error_size_and_magic():
     }
 
 
-def test_stream_diagnostics_distinguish_timeouts_from_rejected_frames(monkeypatch):
+def test_stream_diagnostics_distinguish_timeouts_from_rejected_frames(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Verify stream diagnostics distinguish timeouts from rejected frames.
+    """
     monkeypatch.setattr(camera_module.sys, "platform", "linux")
     clock = iter((0.0, 2.0, 4.0))
     monkeypatch.setattr(camera_module.time, "monotonic", lambda: next(clock))
@@ -140,7 +151,7 @@ def test_stream_diagnostics_distinguish_timeouts_from_rejected_frames(monkeypatc
     camera._running.set()
     events = []
     camera.stream_observer = events.append
-    frames = camera.frames()
+    frames = cast(Generator[bytes, None, None], camera.frames())
     try:
         assert next(frames) == make_frame()
     finally:
@@ -168,7 +179,12 @@ def test_supported_platforms_default_to_queued_usb(monkeypatch, platform, expect
 
 
 @pytest.mark.parametrize("full_preview", [False, True])
-def test_macos_queued_capture_preserves_tolerant_framing(monkeypatch, full_preview):
+def test_macos_queued_capture_preserves_tolerant_framing(
+    monkeypatch: pytest.MonkeyPatch, full_preview: Any
+) -> None:
+    """
+    Verify macos queued capture preserves tolerant framing.
+    """
     monkeypatch.setattr(camera_module.sys, "platform", "darwin")
     expected = make_frame()
     if full_preview:
@@ -187,7 +203,11 @@ def test_macos_queued_capture_preserves_tolerant_framing(monkeypatch, full_previ
         def __exit__(self, *_args):
             pass
 
-        def read(self):
+        @staticmethod
+        def read() -> bytes:
+            """
+            Supply an incomplete packet for the fake USB boundary.
+            """
             return next(packets)
 
     # noinspection PyUnresolvedReferences
@@ -196,7 +216,7 @@ def test_macos_queued_capture_preserves_tolerant_framing(monkeypatch, full_previ
     camera.device = Mock()
     camera.mode = NegotiatedMode(1, 10, 400_000, FRAME_BYTES, 5020)
     camera._running.set()
-    frames = camera.frames()
+    frames = cast(Generator[bytes, None, None], camera.frames())
     try:
         assert next(frames) == expected
     finally:

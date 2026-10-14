@@ -2,11 +2,12 @@
 
 import logging
 import multiprocessing
+import multiprocessing.context as multiprocessing_context
 import sys
 from contextlib import suppress
 from importlib.resources import files
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -59,8 +60,13 @@ class ONNXRuntime:
             fit_h = min(target_h, max(1, round(height * ratio)))
             fit_w = min(target_w, max(1, round(width * ratio)))
             rgb = blob[0].transpose(1, 2, 0)
-            fitted = cv2.resize(
-                rgb, (fit_w, fit_h), interpolation=cv2.INTER_AREA if ratio < 1 else cv2.INTER_LINEAR
+            fitted = cast(
+                np.ndarray,
+                cv2.resize(
+                    rgb,
+                    (fit_w, fit_h),
+                    interpolation=cv2.INTER_AREA if ratio < 1 else cv2.INTER_LINEAR,
+                ),
             )
             top, left = (target_h - fit_h) // 2, (target_w - fit_w) // 2
             padded = cv2.copyMakeBorder(
@@ -109,13 +115,16 @@ class ONNXRuntime:
             return self.session.run(None, {entry.name: blob})[0]
         # The published ESPCN export hard-codes 224x224 in its pixel shuffle.
         # Use overlapping tiles rather than squashing a rectangular camera feed.
-        tile_h, tile_w = shape[2:]
+        tile_h, tile_w = int(shape[2]), int(shape[3])
         halo = 8  # More than the convolution stack's five-pixel receptive radius.
         step_h, step_w = tile_h - 2 * halo, tile_w - 2 * halo
         if min(step_h, step_w) <= 0:
             raise ValueError("ESPCN tile size is too small")
         height, width = blob.shape[2:]
-        padded = cv2.copyMakeBorder(blob[0, 0], halo, tile_h, halo, tile_w, cv2.BORDER_REFLECT_101)
+        padded = cast(
+            np.ndarray,
+            cv2.copyMakeBorder(blob[0, 0], halo, tile_h, halo, tile_w, cv2.BORDER_REFLECT_101),
+        )
         factor = MODELS[model]["factor"]
         output = np.empty((1, 1, height * factor, width * factor), dtype=np.float32)
         for y in range(0, height, step_h):
@@ -168,7 +177,7 @@ class ONNXRuntime:
             import onnxruntime as ort
 
             data = model_data(model)
-            providers = ["CPUExecutionProvider"]
+            providers: list[str | tuple[str, dict[str, str]]] = ["CPUExecutionProvider"]
             if backend == "cuda":
                 if (
                     sys.platform != "linux"
@@ -228,12 +237,15 @@ class ONNXRuntime:
             )
         started = perf_counter()
         color = image.ndim == 3
+        gray: np.ndarray | None = None
+        ycrcb: np.ndarray | None = None
         if spec["rgb"]:
             rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB if color else cv2.COLOR_GRAY2RGB)
             blob = rgb.transpose(2, 0, 1)[None]
         else:
             ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb) if color else None
-            gray = ycrcb[..., 0] if color else image
+            gray = ycrcb[..., 0] if ycrcb is not None else image
+            assert gray is not None
             blob = gray[None, None]
         pixel_range = spec.get("pixel_range", 1)
         blob = np.ascontiguousarray(blob, dtype=np.float32) * (pixel_range / 255.0)
@@ -248,16 +260,19 @@ class ONNXRuntime:
             np.clip((tensor[0] - offset) * (255.0 / pixel_range), 0, 255).round().astype(np.uint8)
         )
         if spec["rgb"]:
-            result = cv2.cvtColor(pixels.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
+            result = cast(np.ndarray, cv2.cvtColor(pixels.transpose(1, 2, 0), cv2.COLOR_RGB2BGR))
             if not color:
                 result = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
         else:
+            assert gray is not None
             result = pixels[0]
             if model in BUNDLED_ACNET and amount != 1:
                 baseline = cv2.resize(gray, size, interpolation=cv2.INTER_CUBIC)
                 result = cv2.addWeighted(result, amount, baseline, 1 - amount, 0)
             if color:
+                assert ycrcb is not None
                 ycrcb = cv2.resize(ycrcb, size, interpolation=cv2.INTER_CUBIC)
+                assert ycrcb is not None
                 ycrcb[..., 0] = result
                 result = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
         if amount != 1 and model not in BUNDLED_ACNET:
@@ -350,7 +365,9 @@ class ONNXUpsampler:
             )
         try:
             if self.process is None:
-                context = multiprocessing.get_context("spawn")
+                context = cast(
+                    multiprocessing_context.SpawnContext, multiprocessing.get_context("spawn")
+                )
                 parent, child = context.Pipe()
                 process = context.Process(target=_worker, args=(child, *key), daemon=True)
                 try:

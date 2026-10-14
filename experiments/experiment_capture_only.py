@@ -14,10 +14,11 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from collections.abc import Generator
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from capture_processes import desktop_is_running
 
@@ -74,6 +75,7 @@ def main() -> None:
     started = time.monotonic()
     last_count = 0
     last_complete_at = None
+    cv2 = None
     if args.preview:
         import cv2
 
@@ -109,10 +111,12 @@ def main() -> None:
         camera.stream_observer = observe
         try:
             with camera:
-                source = CameraFramePump(camera) if args.frame_pump else camera.frames()
+                source = (CameraFramePump(camera) if args.frame_pump
+                          else cast(Generator[bytes, None, None], camera.frames()))
                 with closing(source):
                     for _frame in source:
                         if args.preview:
+                            assert cv2 is not None
                             if components is not None:
                                 image = components.process(_frame)
                                 if image is not None:

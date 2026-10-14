@@ -70,10 +70,12 @@ def test_alternate_gpu_dispatch_reuse_and_cleanup(
             """
             self.closed = False
 
-        def apply(self, image: np.ndarray, *args: Any, **kwargs: Any) -> np.ndarray:
+        @staticmethod
+        def apply(image: np.ndarray, *args: Any, **kwargs: Any) -> np.ndarray:
             """
             Capture backend or denoising arguments and emulate output geometry.
             """
+            del kwargs
             calls.append(args)
             result = cv2.resize(image, None, fx=factor, fy=factor)
             return result

@@ -25,6 +25,9 @@ class CapturePanel:
         return self._process is not None and self._process.poll() is None
 
     def open(self, state: dict) -> None:
+        """
+        Launch the isolated window with nonblocking JSON pipes or raise an existing window.
+        """
         if self.is_open:
             self._outgoing = json.dumps({**state, "raise_window": True}).encode() + b"\n"
             self._flush()
@@ -34,7 +37,7 @@ class CapturePanel:
         # OpenCV's Qt 5 plugin paths cannot be used by the popup's Qt 6 process.
         for name in ("QT_QPA_PLATFORM_PLUGIN_PATH", "QT_QPA_FONTDIR"):
             env.pop(name, None)
-        self._process = subprocess.Popen(
+        process = subprocess.Popen(
             [sys.executable, "-m", self.window_module],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -42,22 +45,30 @@ class CapturePanel:
             env=env,
             bufsize=0,
         )
-        os.set_blocking(self._process.stdin.fileno(), False)
-        os.set_blocking(self._process.stdout.fileno(), False)
-        os.set_blocking(self._process.stderr.fileno(), False)
+        self._process = process
+        assert (
+            process.stdin is not None and process.stdout is not None and process.stderr is not None
+        )
+        os.set_blocking(process.stdin.fileno(), False)
+        os.set_blocking(process.stdout.fileno(), False)
+        os.set_blocking(process.stderr.fileno(), False)
         self._incoming = b""
         self._last_state = None
         self.update(state)
 
     def _flush(self) -> None:
-        if not self.is_open:
+        """
+        Send pending bytes without blocking the viewer while its child is alive.
+        """
+        process = self._process
+        if process is None or process.poll() is not None or process.stdin is None:
             return
         if not self._inflight:
             self._inflight, self._outgoing = self._outgoing, b""
         if not self._inflight:
             return
         try:
-            written = os.write(self._process.stdin.fileno(), self._inflight)
+            written = os.write(process.stdin.fileno(), self._inflight)
             self._inflight = self._inflight[written:]
         except BlockingIOError:
             pass
@@ -75,12 +86,17 @@ class CapturePanel:
         self._flush()
 
     def poll(self) -> list[dict]:
-        if self._process is None:
+        """
+        Drain available child messages and report abnormal exits.
+        """
+        process = self._process
+        if process is None:
             return []
+        assert process.stderr is not None and process.stdout is not None
         self._flush()
         while True:
             try:
-                chunk = os.read(self._process.stderr.fileno(), 4096)
+                chunk = os.read(process.stderr.fileno(), 4096)
             except BlockingIOError:
                 break
             if not chunk:
@@ -88,7 +104,7 @@ class CapturePanel:
             self._stderr = (self._stderr + chunk)[-16384:]
         while True:
             try:
-                chunk = os.read(self._process.stdout.fileno(), 4096)
+                chunk = os.read(process.stdout.fileno(), 4096)
             except BlockingIOError:
                 break
             if not chunk:
@@ -103,9 +119,9 @@ class CapturePanel:
                     messages.append(message)
             except (ValueError, UnicodeDecodeError):
                 continue
-        if self._process.poll() is not None:
+        if process.poll() is not None:
             stderr = self._stderr.decode(errors="replace").strip()
-            if self._process.returncode:
+            if process.returncode:
                 messages.append(
                     {
                         "action": "error",
@@ -116,12 +132,16 @@ class CapturePanel:
         return messages
 
     def close(self) -> None:
+        """
+        Signal EOF, reap the child and release any pipes that were opened.
+        """
         process, self._process = self._process, None
         if process is not None:
             if process.poll() is None:
                 # EOF lets Qt quit normally and flush persistent window settings.
                 try:
-                    process.stdin.close()
+                    if process.stdin is not None:
+                        process.stdin.close()
                 except OSError:
                     pass
                 try:
@@ -134,7 +154,8 @@ class CapturePanel:
                         process.kill()
                         process.wait()
             for stream in (process.stdin, process.stdout, process.stderr):
-                stream.close()
+                if stream is not None:
+                    stream.close()
         self._outgoing = b""
         self._inflight = b""
         self._stderr = b""

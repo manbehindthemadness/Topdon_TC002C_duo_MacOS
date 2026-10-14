@@ -1,6 +1,7 @@
 """Measure reflected apparent temperature using a manually positioned IR reflector."""
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -31,7 +32,10 @@ class ReflectedCalibrator:
     STABLE_SECONDS = 2.0
     TIMEOUT_SECONDS = 30.0
 
-    def __init__(self, hardware, reference=None):
+    def __init__(self, hardware: Any, reference: dict[str, Any] | None = None) -> None:
+        """
+        Initialize resources and state before the session begins.
+        """
         self.hardware = hardware
         self.reference = validate_reference(reference) if reference is not None else None
         self.active = self.running = False
@@ -40,6 +44,7 @@ class ReflectedCalibrator:
         self._original = {}
         self._samples = []
         self._pending = None
+        self._started = 0.0
         self._closing = False
 
     def begin(self):

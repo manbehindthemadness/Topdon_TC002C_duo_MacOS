@@ -1,9 +1,11 @@
 import subprocess
 import sys
 from copy import deepcopy
+from typing import Any
 
 import cv2
 import numpy as np
+import pytest
 from test_capture_panel import popup_environment
 from test_pipeline import raw_pipeline
 from test_render import frame_with_preview
@@ -56,17 +58,30 @@ def test_cpu_system_ignores_but_retains_saved_apple_preferences(monkeypatch):
     processor.close()
 
 
-def test_gpu_node_uses_isolated_engine_and_preserves_passes(monkeypatch):
+def test_gpu_node_uses_isolated_engine_and_preserves_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Verify gpu node uses isolated engine and preserves passes.
+    """
     calls = []
 
     class Engine:
         error = ""
 
-        def apply(self, image, denoise, compute, amount):
+        @staticmethod
+        def apply(image: np.ndarray, denoise: Any, compute: Any, amount: Any) -> Any:
+            """
+            Apply.
+            """
             calls.append((image.shape[:2], denoise, compute, amount))
             return cv2.resize(image, None, fx=2, fy=2)
 
-        def close(self):
+        @staticmethod
+        def close() -> None:
+            """
+            Close.
+            """
             calls.append("closed")
 
     monkeypatch.setattr("based_thermals.processing.branch.CoreMLUpsampler", Engine)

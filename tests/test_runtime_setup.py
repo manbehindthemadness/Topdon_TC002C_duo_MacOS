@@ -25,6 +25,7 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNamespace
     Provide a writable runtime cache with no access to real native libraries or downloads.
     """
     monkeypatch.setattr(setup, "cache_root", lambda: tmp_path)
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(setup, "find_uv", lambda: "/fake/uv")
     monkeypatch.setattr(setup.sys, "platform", "linux")
     monkeypatch.setattr(setup.platform, "machine", lambda: "aarch64")
@@ -32,7 +33,9 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNamespace
     install = Mock(return_value=True)
     query = Mock(return_value={"available": False, "reason": "missing provider"})
     activate = Mock()
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(setup, "install_packages", install)
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(setup, "query", query)
     monkeypatch.setattr(setup, "activate", activate)
     return SimpleNamespace(root=tmp_path, install=install, query=query, activate=activate)
@@ -58,6 +61,7 @@ def test_host_selection(
     monkeypatch.setattr(setup.platform, "machine", lambda: machine)
     monkeypatch.setattr(setup, "orin_host", lambda: False)
     query = Mock(return_value={"cuda": version, "available": True})
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(setup, "query", query)
     assert setup.candidates() == expected
     if machine == "riscv64":
@@ -99,6 +103,7 @@ def test_orin_selection_is_scoped(
     monkeypatch.setattr(setup.sys, "platform", system)
     monkeypatch.setattr(setup.platform, "machine", lambda: machine)
     monkeypatch.setattr(setup, "orin_host", lambda: True)
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(setup, "query", Mock(return_value={"cuda": version, "available": True}))
     assert setup.candidates() == expected
 
@@ -218,6 +223,7 @@ def test_missing_uv_leaves_environment_intact(
     """
     Leave setup optional when a packaged deployment has no installer.
     """
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(setup, "find_uv", lambda: None)
     assert not setup.prepare("cuda13", retry=False)
     isolated.install.assert_not_called()
@@ -279,7 +285,9 @@ def test_activation_propagates_to_subprocesses_and_workers(
     monkeypatch.setattr(setup.sys, "path", ["/old/runtime", "/project"])
     monkeypatch.setenv("PYTHONPATH", "/old/runtime:/project")
     monkeypatch.setenv("BASED_THERMALS_ORT_PATH", "/old/runtime")
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(setup, "apple_acceleration", Mock())
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(setup, "nvidia_acceleration", Mock())
     setup.activate(tmp_path)
     assert setup.sys.path == [str(tmp_path), "/project"]

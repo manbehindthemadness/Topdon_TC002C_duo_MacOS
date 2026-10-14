@@ -2,24 +2,39 @@
 Keep optional NVIDIA hardware discovery out of deterministic application tests.
 """
 
+from collections.abc import Iterator
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 import pytest
 
+from based_thermals.export_jobs import EXPORT_JOBS
+
 
 @pytest.fixture(autouse=True)
-def no_live_model_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+def no_live_model_conversion(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """
     Keep automatic dependency/model downloads outside deterministic tests unless explicitly faked.
     """
-    def unavailable(_command: list[str], _environment: dict[str, str], _directory: Path) -> None:
+    EXPORT_JOBS.begin()
+
+    def unavailable(
+        _command: list[str],
+        _environment: dict[str, str],
+        _directory: Path,
+        *,
+        cancellation: Event | None = None,
+    ) -> None:
         """
         Refuse launching real conversion installers from ordinary application tests.
         """
+        del cancellation
         raise AssertionError("Live model conversion disabled in tests")
 
     monkeypatch.setattr("based_thermals.model_exports.run_export", unavailable)
+    yield
+    EXPORT_JOBS.close()
 
 
 @pytest.fixture(autouse=True)

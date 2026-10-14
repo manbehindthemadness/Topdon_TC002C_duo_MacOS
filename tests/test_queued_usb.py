@@ -1,6 +1,7 @@
-import ctypes as C
+import ctypes
 from collections import deque
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -11,49 +12,70 @@ from based_thermals.queued_usb import QueuedBulkReader
 
 
 class FakeLibrary:
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        Initialize resources and state before the session begins.
+        """
         self.pending = {}
         self.deliveries = deque()
         self.freed = []
+        # noinspection PyProtectedMember
         self.libusb_alloc_transfer = Mock(
-            side_effect=lambda _count: C.pointer(libusb1._libusb_transfer())
+            side_effect=lambda _count: ctypes.pointer(libusb1._libusb_transfer())
         )
         self.libusb_submit_transfer = Mock(side_effect=self.submit)
         self.libusb_cancel_transfer = Mock(side_effect=self.cancel)
         self.libusb_handle_events_timeout_completed = Mock(side_effect=self.events)
         self.libusb_free_transfer = Mock(side_effect=self.free)
 
-    def submit(self, transfer):
-        self.pending[C.addressof(transfer.contents)] = transfer
+    def submit(self, transfer: Any) -> Any:
+        """
+        Submit.
+        """
+        self.pending[ctypes.addressof(transfer.contents)] = transfer
         return 0
 
-    def cancel(self, transfer):
-        self.deliveries.append((C.addressof(transfer.contents), b"", 3))
+    def cancel(self, transfer: Any) -> Any:
+        """
+        Cancel.
+        """
+        self.deliveries.append((ctypes.addressof(transfer.contents), b"", 3))
         return 0
 
-    def events(self, *_args):
+    def events(self, *_args: Any) -> Any:
+        """
+        Events.
+        """
         if self.deliveries:
             address, packet, status = self.deliveries.popleft()
             if address is None:
                 address = next(iter(self.pending))
             transfer = self.pending.pop(address)
             native = transfer.contents
-            C.memmove(native.buffer, packet, len(packet))
+            ctypes.memmove(native.buffer, packet, len(packet))
             native.actual_length = len(packet)
             native.status = status
             native.callback(transfer)
         return 0
 
-    def free(self, transfer):
-        address = C.addressof(transfer.contents)
+    def free(self, transfer: Any) -> None:
+        """
+        Free.
+        """
+        address = ctypes.addressof(transfer.contents)
         assert address not in self.pending
         self.freed.append(address)
 
-    def device(self):
-        return SimpleNamespace(_ctx=SimpleNamespace(
-            backend=SimpleNamespace(lib=self, ctx=C.c_void_p()),
-            managed_open=lambda: SimpleNamespace(handle=C.c_void_p(1)),
-        ))
+    def device(self) -> Any:
+        """
+        Device.
+        """
+        return SimpleNamespace(
+            _ctx=SimpleNamespace(
+                backend=SimpleNamespace(lib=self, ctx=ctypes.c_void_p()),
+                managed_open=lambda: SimpleNamespace(handle=ctypes.c_void_p(1)),
+            )
+        )
 
 
 def test_requests_stay_queued_and_packet_bytes_are_owned_by_consumer():

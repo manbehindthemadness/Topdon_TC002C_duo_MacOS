@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import numpy as np
 import pytest
 
@@ -25,7 +27,10 @@ class Hardware:
         self.value = value if enabled else self.baseline
 
 
-def prepared(enabled=False):
+def prepared(enabled: bool = False) -> tuple[EmissivityCalibrator, Hardware]:
+    """
+    Prepared.
+    """
     hardware = Hardware(enabled)
     cal = EmissivityCalibrator(hardware)
     cal.begin()
@@ -33,7 +38,15 @@ def prepared(enabled=False):
     return cal, hardware
 
 
-def run_fit(cal, hardware, target=40, response=lambda e: 20 + 10 / e):
+def run_fit(
+    cal: EmissivityCalibrator,
+    hardware: Hardware,
+    target: float = 40,
+    response: Callable[[float], float] = lambda e: 20 + 10 / e,
+) -> None:
+    """
+    Run fit.
+    """
     cal.start(target, 0)
     for step in range(1, 200):
         cal.update(np.full((10, 10), response(hardware.value)), step * 0.2)
@@ -68,10 +81,13 @@ def test_unreachable_or_uninformative_response_is_not_applied(target, response):
     assert hardware.value == 0.95 and not hardware.enabled
 
 
-def test_cancel_restores_active_override_and_retains_no_selection():
+def test_cancel_restores_active_override_and_retains_no_selection() -> None:
+    """
+    Verify cancel restores active override and retains no selection.
+    """
     cal, hardware = prepared(True)
     cal.start(40, 0)
-    assert hardware.value == 1
+    assert float(hardware.value) == 1
     cal.cancel()
     assert hardware.value == 0.8 and hardware.enabled
     assert not cal.running and not cal.active and cal.point is None

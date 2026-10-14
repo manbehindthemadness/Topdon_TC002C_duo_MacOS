@@ -184,7 +184,7 @@ def combine_images(
     result = np.clip(result, 0, 255).astype(np.float32)
     strength = combine_strength(base.shape[:2], params, mask,
                                 incoming_coverage if mode == "replace" else None)
-    if isinstance(strength, float):
+    if isinstance(strength, (int, float)):
         return np.clip(
             cv2.addWeighted(base, 1 - strength, result, strength, 0), 0, 255
         )

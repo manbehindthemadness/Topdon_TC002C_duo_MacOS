@@ -19,13 +19,23 @@ import tempfile
 import urllib.request
 from itertools import pairwise
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+
+# Converter dependencies are supplied by the inline uv script environment.
+# noinspection PyUnresolvedReferences
 import onnx
 import onnxruntime as ort
+
+# noinspection PyUnresolvedReferences
 import torch
+
+# noinspection PyUnresolvedReferences
 from torch import nn
-from torch.nn import functional as F
+
+# noinspection PyUnresolvedReferences
+from torch.nn import functional
 
 source_root = os.environ.get("BASED_THERMALS_EXPORT_SOURCE_ROOT")
 sys.path.insert(0, source_root or str(Path(__file__).resolve().parents[1] / "src"))
@@ -47,12 +57,19 @@ class Denoiser(nn.Module):
                 layers.append(nn.ReLU())
         self.model = nn.Sequential(*layers)
 
-    def forward(self, x, sigma=None):
+    def forward(self, x: Any, sigma: Any = None) -> Any:
+        """
+        Apply the selected luminance denoiser with its optional FFDNet noise input.
+        """
         if not self.ffdnet:
             return x - self.model(x)
-        down = F.pixel_unshuffle(x, 2)
+        down = functional.pixel_unshuffle(x, 2)
+        if sigma is None:
+            raise ValueError("FFDNet requires noise sigma")
+        # The optional input is required and checked in this FFDNet-only branch.
+        # noinspection PyUnresolvedReferences
         noise = sigma.expand(-1, -1, down.shape[2], down.shape[3])
-        return F.pixel_shuffle(self.model(torch.cat((down, noise), dim=1)), 2)
+        return functional.pixel_shuffle(self.model(torch.cat((down, noise), dim=1)), 2)
 
 
 def checkpoint(model):
@@ -64,7 +81,10 @@ def checkpoint(model):
     return data, url
 
 
-def export_model(model, force=False):
+def export_model(model: str, force: bool = False) -> Path:
+    """
+    Convert upstream weights and install only an export that passes numerical parity checks.
+    """
     path = model_path(model)
     if not force:
         try:
@@ -106,7 +126,7 @@ def export_model(model, force=False):
         session = ort.InferenceSession(
             str(temporary), sess_options=options, providers=["CPUExecutionProvider"]
         )
-        errors = []
+        errors: list[float] = []
         for height, width in ((24, 32), (32, 46)):
             for noise in (0, 15, 75) if network.ffdnet else (25,):
                 image = torch.rand(1, 1, height, width)
@@ -119,6 +139,8 @@ def export_model(model, force=False):
                     else:
                         reference = network(image).numpy()
                 output = session.run(None, feed)[0]
+                if not isinstance(output, np.ndarray):
+                    raise TypeError("Expected a dense exported output")
                 np.testing.assert_allclose(output, reference, rtol=1e-4, atol=1e-5)
                 if output.shape != reference.shape or not np.isfinite(output).all():
                     raise ValueError("Invalid exported output")

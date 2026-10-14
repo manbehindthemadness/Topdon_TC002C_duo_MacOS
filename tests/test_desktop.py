@@ -44,9 +44,13 @@ def test_usb_queue_default_and_synchronous_override(monkeypatch, platform, expec
     assert desktop.parse_args(["--usb-queue-depth", "0"]).usb_queue_depth == 0
 
 
-def test_detailed_render_keeps_oriented_radiometric_arrays():
+def test_detailed_render_keeps_oriented_radiometric_arrays() -> None:
+    """
+    Verify detailed render keeps oriented radiometric arrays.
+    """
     rendered = ThermalRenderer(rotation=90).render_detailed(make_frame())
     assert rendered.temperatures_celsius.shape == (256, 192)
+    assert rendered.raw_counts is not None
     assert rendered.raw_counts.shape == (256, 192)
     assert rendered.image.shape == (768, 576, 3)
 

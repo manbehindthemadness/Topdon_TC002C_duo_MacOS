@@ -1,13 +1,18 @@
 """Small, isolated startup capability probe; never import Apple libraries on Linux."""
 
 import ctypes
+import importlib
 import json
 import subprocess
 import sys
 from functools import lru_cache
+from typing import Any
 
 
-def _metal_available():
+def _metal_available() -> bool:
+    """
+    Ask Metal for a device inside the disposable capability probe.
+    """
     metal = ctypes.CDLL("/System/Library/Frameworks/Metal.framework/Metal")
     create = metal.MTLCreateSystemDefaultDevice
     create.argtypes = []
@@ -17,7 +22,10 @@ def _metal_available():
     return bool(create())
 
 
-def _probe():
+def _probe() -> dict[str, Any]:
+    """
+    Discover Apple providers without importing their libraries on other platforms.
+    """
     result = {"available": False, "metal": False, "coreml": False, "reason": ""}
     if sys.platform != "darwin":
         return {**result, "reason": "Apple acceleration requires macOS"}
@@ -26,9 +34,12 @@ def _probe():
         if not result["metal"]:
             return {**result, "reason": "No Metal device available"}
         try:
-            import onnxruntime as ort
+            ort = importlib.import_module("onnxruntime")
         except ImportError:
-            return {**result, "reason": "Apple runtime missing; run uv sync in the project directory"}
+            return {
+                **result,
+                "reason": "Apple runtime missing; run uv sync in the project directory",
+            }
         result["coreml"] = "CoreMLExecutionProvider" in ort.get_available_providers()
         result["available"] = result["coreml"]
         result["reason"] = (
@@ -42,8 +53,10 @@ def _probe():
 
 
 @lru_cache(maxsize=1)
-def apple_acceleration():
-    """Probe once per viewer start, with native-library crashes/timeouts contained."""
+def apple_acceleration() -> dict[str, Any]:
+    """
+    Probe once per viewer start, with native-library crashes/timeouts contained.
+    """
     unavailable = {"available": False, "metal": False, "coreml": False}
     if sys.platform != "darwin":
         return {**unavailable, "reason": "Apple acceleration requires macOS"}

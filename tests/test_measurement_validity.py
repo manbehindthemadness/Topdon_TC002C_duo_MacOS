@@ -102,10 +102,15 @@ def test_graphs_gap_and_csv_skips_frozen_samples(tmp_path):
         worker.close()
 
 
-def test_web_exposes_freeze_status_and_null_startup_readings():
+def test_web_exposes_freeze_status_and_null_startup_readings() -> None:
+    """
+    Verify web exposes freeze status and null startup readings.
+    """
     stream = LiveStream()
     rendered = stream.renderer.render_detailed(frozen_frame())
     stream.stats = rendered.stats.as_dict()
     response = create_app(stream).test_client().get("/api/status")
-    assert response.json["measurement_status"] == rendered.measurement_status
-    assert response.json["stats"]["center"] is None
+    response_data = response.get_json()
+    assert isinstance(response_data, dict)
+    assert response_data["measurement_status"] == rendered.measurement_status
+    assert response_data["stats"]["center"] is None

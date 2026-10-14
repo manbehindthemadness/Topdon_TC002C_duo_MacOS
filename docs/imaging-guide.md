@@ -145,7 +145,8 @@ For enhancement, add **AI enhancement**, select a model, and start with Native
 sensor input and a single pass. Each ACNet pass doubles both dimensions; the
 software output limit is 4 megapixels. Downloadable models install in the
 background on first use. While pending, the effect is absent and the live feed continues.
-DnCNN/FFDNet need the separate conversion described in [visual models](visual-models.md).
+DnCNN/FFDNet convert in a background process on first use; see
+[visual models](visual-models.md) for requirements and optional preinstallation.
 
 The **Execution** selector reflects the effective CPU/CoreML/CUDA backend.
 Saved GPU intent survives fallback; explicit CPU stays CPU. Apple compute-device

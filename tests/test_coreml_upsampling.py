@@ -3,37 +3,64 @@
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import cv2
 import numpy as np
 import pytest
 
+# noinspection PyProtectedMember
 from based_thermals.coreml_upsampling import CoreMLUpsampler, _CoreMLRuntime
 from based_thermals.pipeline import node
 from based_thermals.pipeline_titles import node_title
 
 
-def fake_runtime(monkeypatch, providers=None, tensor=None):
+def fake_runtime(monkeypatch: pytest.MonkeyPatch, providers: Any = None, tensor: Any = None) -> Any:
+    """
+    Fake runtime.
+    """
     calls = []
 
     class Session:
-        def __init__(self, data, **kwargs):
+        def __init__(self, data: Any, **kwargs: Any) -> None:
+            """
+            Initialize resources and state before the session begins.
+            """
+            del data
             calls.append(kwargs)
 
-        def disable_fallback(self):
+        @staticmethod
+        def disable_fallback() -> None:
+            """
+            Disable fallback.
+            """
             calls.append("disable_fallback")
 
-        def get_providers(self):
+        @staticmethod
+        def get_providers() -> Any:
+            """
+            Get providers.
+            """
             return ["CoreMLExecutionProvider", "CPUExecutionProvider"]
 
-        def get_inputs(self):
+        @staticmethod
+        def get_inputs() -> Any:
+            """
+            Get inputs.
+            """
             return [SimpleNamespace(name="input")]
 
-        def run(self, outputs, feed):
+        @staticmethod
+        def run(outputs: Any, feed: Any) -> Any:
+            """
+            Run.
+            """
+            del outputs
             if tensor is not None:
                 return [tensor]
             gray = feed["input"][0, 0]
-            return [cv2.resize(gray, None, fx=2, fy=2)[None, None]]
+            scaled = cv2.resize(np.asarray(gray), None, fx=2, fy=2)
+            return [scaled[None, None]]
 
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setitem(
@@ -118,7 +145,10 @@ def test_pipeline_node_executes_independently_and_can_be_bypassed(monkeypatch):
 
 
 @pytest.mark.parametrize("level", range(4))
-def test_real_coreml_matches_upstream_reference_when_runtime_is_installed(level):
+def test_real_coreml_matches_upstream_reference_when_runtime_is_installed(level: int) -> None:
+    """
+    Compare each optional hardware model against independent upstream reference pixels.
+    """
     if sys.platform != "darwin":
         pytest.skip("Core ML requires macOS")
     ort = pytest.importorskip("onnxruntime")
@@ -141,14 +171,22 @@ def test_real_coreml_matches_upstream_reference_when_runtime_is_installed(level)
         assert np.array_equal(image, original)
 
 
-def _exiting_worker(connection, denoise, compute):
+def _exiting_worker(connection: Any, denoise: Any, compute: Any) -> None:
+    """
+    Exiting worker.
+    """
+    del compute, denoise
     import os
 
     connection.recv()
     os._exit(17)
 
 
-def _echo_worker(connection, denoise, compute):
+def _echo_worker(connection: Any, denoise: Any, compute: Any) -> None:
+    """
+    Echo worker.
+    """
+    del compute, denoise
     try:
         while True:
             image, _amount = connection.recv()

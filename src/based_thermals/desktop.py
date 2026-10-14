@@ -39,6 +39,7 @@ from .dialog_preferences import load_dialog_directory, remember_dialog_directory
 from .display_awake import DisplayAwake
 from .distance_calibration import DistanceCalibrator
 from .emissivity_calibration import EmissivityCalibrator
+from .export_jobs import EXPORT_JOBS
 from .frame_pump import CameraFramePump
 from .graph_panel import GraphPanel
 from .graph_settings import GRAPH_DEFAULTS, validate_graph_settings
@@ -157,6 +158,7 @@ if __name__ == "__main__":
 __all__ = [
     "DEFAULT_USB_QUEUE_DEPTH",
     "DUO_PROFILE",
+    "EXPORT_JOBS",
     "FRAME_RATE",
     "GRAPH_DEFAULTS",
     "GRAPH_INTERVAL",

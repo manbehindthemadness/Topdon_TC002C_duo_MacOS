@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import Mock
 
 import cv2
@@ -14,7 +15,12 @@ def monitor(monkeypatch):
 
 
 @pytest.mark.parametrize("scale", [0.5, 1.0, 1.5])
-def test_native_pointer_detects_image_exit_toolbar_and_reentry(monitor, monkeypatch, scale):
+def test_native_pointer_detects_image_exit_toolbar_and_reentry(
+    monitor: Any, monkeypatch: pytest.MonkeyPatch, scale: Any
+) -> None:
+    """
+    Verify native pointer detects image exit toolbar and reentry.
+    """
     left, top = 100, 200
     width, height = int(768 * scale), int(630 * scale)
     monkeypatch.setattr(
@@ -30,7 +36,10 @@ def test_native_pointer_detects_image_exit_toolbar_and_reentry(monitor, monkeypa
         (left + 100, top + 10, False),
         (left + width // 2, top + height // 2, True),
     ):
-        monkeypatch.setattr(monitor, "_screen_position", lambda x=x, y=y: (x, y))
+        # noinspection PyUnresolvedReferences
+        monkeypatch.setattr(
+            monitor, "_screen_position", lambda screen_x=x, screen_y=y: (screen_x, screen_y)
+        )
         assert monitor.over_image(576, 54) is expected
 
 
@@ -62,15 +71,24 @@ def test_macos_coregraphics_pointer_uses_safe_c_api(monitor, monkeypatch):
     coregraphics.CFRelease.assert_called_with(123)
 
 
-def test_macos_pointer_containment_ignores_cocoa_image_rectangle(monitor, monkeypatch):
+def test_macos_pointer_containment_ignores_cocoa_image_rectangle(
+    monitor: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Verify macos pointer containment ignores cocoa image rectangle.
+    """
     monitor._coregraphics = Mock()
     # This rectangle is deliberately in an incompatible coordinate space.
     get_rect = Mock(return_value=(200, 900, 768, 576))
     monkeypatch.setattr("based_thermals.pointer.cv2.getWindowImageRect", get_rect)
     bounds = Mock(return_value=(100, 200, 384, 315))
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(monitor, "_mac_window_rect", bounds)
     for position, expected in (((200, 350), True), ((90, 350), False), ((200, 350), True)):
-        monkeypatch.setattr(monitor, "_screen_position", lambda position=position: position)
+        # noinspection PyUnresolvedReferences
+        monkeypatch.setattr(
+            monitor, "_screen_position", lambda screen_position=position: screen_position
+        )
         assert monitor.over_image(576, 54) is expected
     get_rect.assert_not_called()
     bounds.return_value = None

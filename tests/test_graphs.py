@@ -4,15 +4,24 @@ import time
 from collections import deque
 from dataclasses import replace
 from itertools import pairwise
+from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import numpy as np
 import pytest
 
 from based_thermals import graphs
+from based_thermals.measurements.series import MeasurementValue
 
 
-def snapshot(spots=(), unit="C", size=(600, 650)):
+def snapshot(
+    spots: tuple[tuple[tuple[int, int], MeasurementValue], ...] = (),
+    unit: str = "C", size: tuple[int, int] = (600, 650),
+) -> graphs.GraphSnapshot:
+    """
+    Construct deterministic graph snapshots with optional spot readings.
+    """
     return graphs.GraphSnapshot((18, 20, 24, 21), spots, size, unit)
 
 
@@ -72,13 +81,26 @@ def test_spot_histories_survive_reorientation_but_not_clear_and_replacement():
         worker.close()
 
 
-def test_graphs_share_height_and_convert_entire_history_to_selected_unit(monkeypatch):
+def test_graphs_share_height_and_convert_entire_history_to_selected_unit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Verify graphs share height and convert entire history to selected unit.
+    """
     charts = []
     real_chart = graphs._draw_chart
+
+    def track_chart(canvas: np.ndarray, *args: Any) -> None:
+        """
+        Observe chart sizes while retaining the real drawing behavior.
+        """
+        charts.append(canvas.shape)
+        real_chart(canvas, *args)
+
     monkeypatch.setattr(
         graphs,
         "_draw_chart",
-        lambda canvas, *args: (charts.append(canvas.shape), real_chart(canvas, *args)),
+        track_chart,
     )
     text = Mock(wraps=graphs.cv2.putText)
     monkeypatch.setattr(graphs.cv2, "putText", text)
@@ -137,7 +159,10 @@ def test_csv_logging_tracks_units_and_spot_generations_and_blocks_pause(tmp_path
         worker.close()
 
 
-def test_logging_write_failure_stops_logging_and_preserves_error(tmp_path):
+def test_logging_write_failure_stops_logging_and_preserves_error(tmp_path: Path) -> None:
+    """
+    Verify logging write failure stops logging and preserves error.
+    """
     worker = graphs.GraphWorker()
     try:
         worker.start_logging(tmp_path / "failure.csv")
@@ -149,7 +174,7 @@ def test_logging_write_failure_stops_logging_and_preserves_error(tmp_path):
             worker._write_log(snapshot(), worker._log_started + 0.5)
         assert not worker.logging
         assert stream.closed
-        assert "disk full" in worker.take_logging_error()
+        assert "disk full" in (worker.take_logging_error() or "")
         assert worker.take_logging_error() is None
     finally:
         worker.close()
@@ -339,7 +364,12 @@ def test_compressed_nan_buckets_do_not_join_across_measurement_gaps():
             assert right[0] - left[0] <= 1
 
 
-def test_reset_clears_histories_without_changing_settings_or_sampling_cadence(tmp_path):
+def test_reset_clears_histories_without_changing_settings_or_sampling_cadence(
+    tmp_path: Path,
+) -> None:
+    """
+    Verify reset clears histories without changing settings or sampling cadence.
+    """
     worker = graphs.GraphWorker()
     try:
         worker.set_interval(60)
@@ -351,9 +381,9 @@ def test_reset_clears_histories_without_changing_settings_or_sampling_cadence(tm
         worker.clear_history()
         with worker._condition:
             assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
-            assert not worker._master and not worker._spots
+            assert len(worker._master) == 0 and len(worker._spots) == 0
             assert worker._latest.spots == (((0, 0), 22),)
-            assert worker._interval == 60 and worker._settings == settings
+            assert float(worker._interval) == 60 and worker._settings == settings
         path = worker.start_logging(tmp_path / "reset.csv")
         before = path.read_bytes()
         with pytest.raises(ValueError, match="Stop logging"):

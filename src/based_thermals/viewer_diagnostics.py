@@ -8,6 +8,7 @@ import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from .camera_backends.duo.camera import FRAME_BYTES, FRAME_MAGIC
 
@@ -35,7 +36,12 @@ class ViewerDiagnostics:
             self._thread = threading.Thread(target=self._watch, name="ui-diagnostics", daemon=True)
             self._thread.start()
 
-    def _write(self, event, **details):
+    def _write(self, event: str, **details: Any) -> None:
+        """
+        Append one JSON diagnostic event while output is open.
+        """
+        if self._output is None:
+            return
         self._output.write(
             json.dumps(
                 {
@@ -83,10 +89,13 @@ class ViewerDiagnostics:
             with self._lock:
                 self._write("usb_stream", **counters)
 
-    def rejected_frame(self, frame):
-        """Save a bounded sample of long rejected frames for offline inspection."""
+    def rejected_frame(self, frame: bytes) -> None:
+        """
+        Save a bounded sample of long rejected frames for offline inspection.
+        """
         if (
             self._output is None
+            or self._path is None
             or self._rejected_captures >= 4
             or len(frame) < FRAME_BYTES
             or frame[:4] != FRAME_MAGIC.to_bytes(4, "little")
@@ -106,7 +115,13 @@ class ViewerDiagnostics:
             else:
                 self._write("rejected_frame_capture", path=str(path), bytes=len(frame))
 
-    def _watch(self):
+    def _watch(self) -> None:
+        """
+        Record heartbeats and dump stacks when a viewer stage stalls.
+        """
+        stacks = self._stacks
+        if stacks is None:
+            return
         reported = None
         while not self._stop.wait(1):
             with self._lock:
@@ -115,14 +130,17 @@ class ViewerDiagnostics:
                 if elapsed >= 2 and reported != self._sequence:
                     reported = self._sequence
                     self._write("stall", seconds=round(elapsed, 4))
-                    self._stacks.write(
+                    stacks.write(
                         f"\n{datetime.now(UTC).isoformat()} stage={self._stage} "
                         f"seconds={elapsed:.4f}\n"
                     )
-                    self._stacks.flush()
-                    faulthandler.dump_traceback(file=self._stacks, all_threads=True)
+                    stacks.flush()
+                    faulthandler.dump_traceback(file=stacks, all_threads=True)
 
-    def close(self):
+    def close(self) -> None:
+        """
+        Join the watchdog before closing its diagnostic output streams.
+        """
         self._stop.set()
         if self._thread is not None:
             self._thread.join()
@@ -130,5 +148,6 @@ class ViewerDiagnostics:
             with self._lock:
                 self._write("stop")
                 self._output.close()
-                self._stacks.close()
+                if self._stacks is not None:
+                    self._stacks.close()
                 self._output = None

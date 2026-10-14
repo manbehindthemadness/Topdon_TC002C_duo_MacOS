@@ -6,6 +6,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from PySide6.QtGui import QStandardItemModel
+from PySide6.QtWidgets import QComboBox
+
 from ..acceleration import select_backend
 from ..onnx_models import MODELS as ONNX_MODELS
 
@@ -89,9 +92,15 @@ def configure_backend_row(
     )
     row.setVisible(visible)
     if key == "backend":
-        for index in range(row.input.count()):
-            selected = row.input.itemData(index)
-            row.input.model().item(index).setEnabled(
+        control = row.input
+        assert isinstance(control, QComboBox)
+        model = control.model()
+        assert isinstance(model, QStandardItemModel)
+        for index in range(control.count()):
+            selected = control.itemData(index)
+            option = model.item(index)
+            assert option is not None
+            option.setEnabled(
                 selected == "cpu" or selected == "coreml" and apple or selected == "cuda" and nvidia
             )
         help_text = (

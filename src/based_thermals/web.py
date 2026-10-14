@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import signal
+import subprocess
 import threading
 import time
 from collections.abc import Callable
@@ -18,6 +19,7 @@ from flask import Flask, Response, jsonify, render_template_string
 from . import APP_NAME, __version__
 from .camera_backends import DUO_PROFILE, CameraBackend, CameraFrame, CameraProfile, create_camera
 from .camera_backends.duo.camera import CameraError, TC002CDuoCamera, platform_warning
+from .export_jobs import EXPORT_JOBS
 from .render import ThermalRenderer
 from .runtime_setup import ensure_runtime
 
@@ -94,8 +96,12 @@ class LiveStream:
         self.thread: threading.Thread | None = None
 
     def start(self) -> None:
+        """
+        Start camera capture and permit model preparation for this viewer session.
+        """
         if self.thread and self.thread.is_alive():
             return
+        EXPORT_JOBS.begin()
         self.camera.open()
         self.running.set()
         thread = threading.Thread(target=self._capture, name="camera-capture", daemon=True)
@@ -167,6 +173,10 @@ class LiveStream:
         Stop acquisition before releasing backend resources owned by the capture thread.
         """
         self.running.clear()
+        try:
+            EXPORT_JOBS.close()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            LOG.error("Could not stop model preparation: %s", exc)
         stopper = getattr(self.camera, "stop_stream", None)
         if callable(stopper):
             cast(Callable[[], None], stopper)()
@@ -272,6 +282,8 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGTERM, stop)
     try:
+        # This Flask viewer serves HTTP; it does not configure a TLS endpoint.
+        # noinspection HttpUrlsUsage
         LOG.info("Open http://%s:%d", args.host, args.port)
         app.run(host=args.host, port=args.port, threaded=True, use_reloader=False)
     except KeyboardInterrupt:

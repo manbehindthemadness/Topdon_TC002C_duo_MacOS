@@ -1,5 +1,6 @@
 import json
 import struct
+from typing import Any
 from unittest.mock import Mock
 
 import cv2
@@ -17,12 +18,21 @@ from based_thermals.hardware_controls import (
 from based_thermals.render import ThermalRenderer
 
 
-def test_processing_preset_wire_modes_and_bank_getter(controls):
+def test_processing_preset_wire_modes_and_bank_getter(controls: Any) -> None:
+    """
+    Verify processing preset wire modes and bank getter.
+    """
     device = Mock()
     packets = []
     bank = 1
 
-    def transfer(kind, request, value, index, data, timeout):
+    def transfer(
+        kind: int, request: int, value: int, index: int, data: Any, timeout: int
+    ) -> bytes | int:
+        """
+        Transfer.
+        """
+        del timeout
         nonlocal bank
         assert value == 0 and index == 0xA00
         if kind == 0x41:
@@ -92,6 +102,7 @@ def test_unknown_preset_and_fixed_mode_reject_writes(controls):
     controls._processing_command = Mock()
     for value in ([], True, 1, "manual"):
         with pytest.raises(ValueError):
+            # noinspection PyTypeChecker
             controls.set_processing_preset(value)
     controls._fixed_range_owned = True
     with pytest.raises(CameraError, match="fixed mode"):
@@ -99,13 +110,22 @@ def test_unknown_preset_and_fixed_mode_reject_writes(controls):
     controls._processing_command.assert_not_called()
 
 
-def test_fixed_range_packets_and_restore_order(controls):
+def test_fixed_range_packets_and_restore_order(controls: Any) -> None:
+    """
+    Verify fixed range packets and restore order.
+    """
     controls._fixed_range_bounds = (1000, 2800)
     controls._fixed_range_baseline = Mock(return_value=(1000, 2800))
     device = Mock()
     packets = []
 
-    def transfer(kind, request, value, index, data, timeout):
+    def transfer(
+        kind: int, request: int, value: int, index: int, data: Any, timeout: int
+    ) -> bytes | int:
+        """
+        Transfer.
+        """
+        del timeout
         assert value == 0 and index == 0xA00
         if kind == 0x41:
             assert request == 1
@@ -166,6 +186,7 @@ def test_fixed_range_rejects_unknown_preset_before_serial_writes(controls):
 
 def test_fixed_range_requires_boolean(controls):
     with pytest.raises(ValueError, match="boolean"):
+        # noinspection PyTypeChecker
         controls.set_fixed_range(1)
 
 
@@ -252,7 +273,19 @@ class Device:
         self.protocol_ready = False
         self.version_reads = 0
 
-    def ctrl_transfer(self, kind, request, value, index, data, timeout):
+    def ctrl_transfer(
+        self,
+        kind: int,
+        request: int,
+        value: int,
+        index: int,
+        data: Any,
+        timeout: int,
+    ) -> bytes | int:
+        """
+        Ctrl transfer.
+        """
+        del timeout
         assert index == 0x0A00
         selector = value >> 8
         if kind == 0xA1 and selector == 4:
@@ -301,8 +334,12 @@ def controls(monkeypatch, tmp_path):
     return controls
 
 
-def test_controls_preserve_snapshot_and_other_enabled_fields(controls):
+def test_controls_preserve_snapshot_and_other_enabled_fields(controls: Any) -> None:
+    """
+    Verify controls preserve snapshot and other enabled fields.
+    """
     original = {key: bytes(data) for key, data in controls.camera.device.blocks.items()}
+    assert controls.snapshot_path is not None
     snapshot = json.loads(controls.snapshot_path.read_text())
     assert snapshot["values"]["ambient"] == 30
     assert snapshot["blocks"]["3:1"] == original[3, 1].hex()
@@ -462,7 +499,18 @@ class CalibrationDevice(Device):
         self.statuses = [b"\x00"]
         self.status_selection = None
 
-    def ctrl_transfer(self, kind, request, value, index, data, timeout):
+    def ctrl_transfer(
+        self,
+        kind: int,
+        request: int,
+        value: int,
+        index: int,
+        data: Any,
+        timeout: int,
+    ) -> bytes | int:
+        """
+        Ctrl transfer.
+        """
         if value == 0x0600:
             assert kind == 0xA1 and index == 0x0A00
             self.status_selection = self.selected
@@ -549,6 +597,7 @@ def test_failed_auto_command_keeps_previous_state_and_can_restore(monkeypatch):
     control.restore_auto_calibrate()
     assert control.auto_calibrate is True
     with pytest.raises(ValueError, match="boolean"):
+        # noinspection PyTypeChecker
         control.set_auto_calibrate(1)
 
 

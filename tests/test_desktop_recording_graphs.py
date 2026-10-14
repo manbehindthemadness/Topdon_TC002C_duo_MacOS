@@ -10,9 +10,29 @@ from test_camera import make_frame
 from based_thermals import desktop
 
 
+def install_graph_cache(viewer: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Install the real pane cache while keeping recording dimensions deterministic.
+    """
+    from based_thermals.graphs import GraphWorker
+
+    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    cache = GraphWorker()
+    cache.close()
+    cache._image = np.full(
+        (576 + desktop.toolbar_layout(768).height, 768, 3), (12, 34, 56), dtype=np.uint8
+    )
+    viewer.graphs.image.side_effect = cache.image
+
+
 def test_show_graph_doubles_window_width_and_hides_back_to_original(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """
+    Verify show graph doubles window width and hides back to original.
+    """
+    resizes = Mock()
+    monkeypatch.setattr(desktop.cv2, "resizeWindow", resizes)
     from based_thermals.settings_preferences import load_settings
     from based_thermals.window_preferences import save_main_window_size
 
@@ -45,7 +65,7 @@ def test_show_graph_doubles_window_width_and_hides_back_to_original(
 
     monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
     assert desktop.main([]) == 0
-    assert [call.args[1:] for call in desktop.cv2.resizeWindow.call_args_list] == [
+    assert [call.args[1:] for call in resizes.call_args_list] == [
         (930, 710),
         (1860, 710),
         (930, 710),
@@ -61,6 +81,11 @@ def test_show_graph_doubles_window_width_and_hides_back_to_original(
 def test_show_graph_survives_restart_without_doubling_again(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """
+    Verify show graph survives restart without doubling again.
+    """
+    resizes = Mock()
+    monkeypatch.setattr(desktop.cv2, "resizeWindow", resizes)
     from based_thermals.settings_preferences import load_settings
     from based_thermals.window_preferences import load_main_window_size
 
@@ -70,11 +95,12 @@ def test_show_graph_survives_restart_without_doubling_again(
     assert desktop.main([]) == 0
     assert load_settings()["show_graph"] is True
     size = load_main_window_size()
+    assert size is not None
     assert size[0] == 1536
-    desktop.cv2.resizeWindow.reset_mock()
+    resizes.reset_mock()
     monkeypatch.setattr(desktop.cv2, "waitKey", lambda _delay: ord("q"))
     assert desktop.main([]) == 0
-    desktop.cv2.resizeWindow.assert_called_once_with(desktop.WINDOW_NAME, *size)
+    resizes.assert_called_once_with(desktop.WINDOW_NAME, *size)
     assert viewer.displayed[-1].shape[1] == 1536
     assert np.count_nonzero(viewer.displayed[-1][34:, 768:]) == 0
 
@@ -86,6 +112,7 @@ def test_graph_area_does_not_sample_thermal_pixels(
 
     save_settings({"show_graph": True})
     height = 576 + desktop.toolbar_layout(768).height
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "mouse_viewport_size", lambda: (1536, height))
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     samples = []
@@ -99,6 +126,7 @@ def test_graph_area_does_not_sample_thermal_pixels(
         samples.append(pixel)
         return image, pixel
 
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "draw_picker", sample)
     step = 0
 
@@ -166,6 +194,11 @@ def test_graph_submission_uses_frame_orientation_and_pauses_when_hidden(
 def test_graph_logging_button_locks_hiding_until_logging_stops(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """
+    Verify graph logging button locks hiding until logging stops.
+    """
+    resizes = Mock()
+    monkeypatch.setattr(desktop.cv2, "resizeWindow", resizes)
     from based_thermals.graphs import graph_log_button_rect
     from based_thermals.settings_preferences import save_settings
 
@@ -210,7 +243,7 @@ def test_graph_logging_button_locks_hiding_until_logging_stops(
     viewer.graphs.start_logging.assert_called_once_with(viewer.dialog.selected)
     viewer.graphs.stop_logging.assert_called_once()
     assert [image.shape[1] for image in viewer.displayed] == [1536] * 6 + [768]
-    assert len(desktop.cv2.resizeWindow.call_args_list) == 2
+    assert len(resizes.call_args_list) == 2
     assert any(call.kwargs["graph_locked"] for call in viewer.draw_toolbar.call_args_list)
 
 
@@ -261,6 +294,7 @@ def test_logging_blocks_camera_settings_toolbar_and_shortcuts_then_unlocks(
         [],
         [],
     ]
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "ViewPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     step = 0
@@ -316,17 +350,7 @@ def test_logging_blocks_camera_settings_toolbar_and_shortcuts_then_unlocks(
 def test_optional_graph_recording_uses_visible_pane_and_keeps_dimensions(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, mode: Any, include: Any, visible: Any
 ) -> None:
-    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
-    from based_thermals.graphs import GraphWorker
-
-    cache = GraphWorker()
-    cache.close()
-    # Use the real cache lookup: the live pane includes the toolbar's height,
-    # while saved images include the temperature readout instead.
-    cache._image = np.full(
-        (576 + desktop.toolbar_layout(768).height, 768, 3), (12, 34, 56), dtype=np.uint8
-    )
-    viewer.graphs.image.side_effect = cache.image
+    install_graph_cache(viewer, monkeypatch)
     step = 0
 
     def key(_delay: Any) -> Any:
@@ -374,19 +398,12 @@ def test_optional_graph_recording_uses_visible_pane_and_keeps_dimensions(
 def test_image_graph_capture_preserves_native_radiometric_data(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, visible: Any
 ) -> None:
+    """
+    Verify image graph capture preserves native radiometric data.
+    """
     import json
 
-    monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
-    from based_thermals.graphs import GraphWorker
-
-    cache = GraphWorker()
-    cache.close()
-    # Use the real cache lookup: the live pane includes the toolbar's height,
-    # while saved images include the temperature readout instead.
-    cache._image = np.full(
-        (576 + desktop.toolbar_layout(768).height, 768, 3), (12, 34, 56), dtype=np.uint8
-    )
-    viewer.graphs.image.side_effect = cache.image
+    install_graph_cache(viewer, monkeypatch)
     viewer.dialog.selected = viewer.dialog.selected.with_suffix(".png")
     step = 0
 
@@ -405,6 +422,7 @@ def test_image_graph_capture_preserves_native_radiometric_data(
     monkeypatch.setattr(desktop.cv2, "waitKey", key)
     assert desktop.main([]) == 0
     image = cv2.imread(str(viewer.dialog.selected))
+    assert image is not None
     assert image.shape == (576 + desktop.READOUT_HEIGHT, 1536 if visible else 768, 3)
     if visible:
         assert np.all(image[:, 768:] == (12, 34, 56))
@@ -499,6 +517,7 @@ def test_popup_covering_window_center_preserves_graph_layout(
     window_size = (2400, 1200)
     covered = False
     step = 0
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(
         desktop, "window_resize_size", lambda _name: None if covered else window_size
     )
@@ -534,6 +553,9 @@ def test_popup_covering_window_center_preserves_graph_layout(
 def test_resized_graph_window_keeps_spots_and_controls_aligned(
     viewer: Any, monkeypatch: pytest.MonkeyPatch, event_scale: Any
 ) -> None:
+    """
+    Verify resized graph window keeps spots and controls aligned.
+    """
     from based_thermals.graphs import graph_interval_rect
     from based_thermals.settings_preferences import load_settings, save_settings
 
@@ -541,9 +563,12 @@ def test_resized_graph_window_keeps_spots_and_controls_aligned(
     native_height = 576 + desktop.toolbar_layout(768).height
     window = [1536, native_height]
     spots = desktop.SampleSpots(pixels=[(80, 60)])
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "SampleSpots", lambda: spots)
-    monkeypatch.setattr(desktop, "window_resize_size", lambda _name: tuple(window))
+    # noinspection PyUnresolvedReferences
+    monkeypatch.setattr(desktop, "window_resize_size", lambda _name: (window[0], window[1]))
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(
         desktop,
         "mouse_viewport_size",
@@ -560,7 +585,7 @@ def test_resized_graph_window_keeps_spots_and_controls_aligned(
         callback = viewer.set_mouse.call_args.args[1]
         if step == 1:
             window[:] = [2400, 1200]
-            layout = desktop.GraphWindowLayout.fit((768, native_height), tuple(window))
+            layout = desktop.GraphWindowLayout.fit((768, native_height), (window[0], window[1]))
             factor = event_scale or 1
             scale_x = layout.camera_size[0] / 768 * factor
             scale_y = layout.camera_size[1] / native_height * factor
@@ -584,7 +609,7 @@ def test_resized_graph_window_keeps_spots_and_controls_aligned(
             )
         elif step == 2:
             assert spots.pixels == [(90, 70)]
-            layout = desktop.GraphWindowLayout.fit((768, native_height), tuple(window))
+            layout = desktop.GraphWindowLayout.fit((768, native_height), (window[0], window[1]))
             x0, y0, x1, y1 = graph_interval_rect(layout.graph_size[0])
             factor = event_scale or 1
             callback(
@@ -621,6 +646,7 @@ def test_graph_configuration_button_settings_persist_and_lock(
     save_settings({"show_graph": True})
     panel = Mock()
     panel.poll.return_value = []
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "GraphPanel", lambda: panel)
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)
     settings = {
@@ -672,6 +698,7 @@ def test_graph_reset_button_only_clears_chart_history_and_obeys_logging_lock(
     save_settings({"show_graph": True})
     spots = desktop.SampleSpots(pixels=[(80, 60)])
     spots.rename(1, "Motor")
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(desktop, "SampleSpots", lambda: spots)
     viewer.graphs.logging = logging
     monkeypatch.setattr(desktop.cv2, "getWindowProperty", lambda *_args: 1)

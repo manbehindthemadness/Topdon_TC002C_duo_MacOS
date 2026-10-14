@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+# noinspection PyProtectedMember
 from based_thermals.coreml_model import _bytes_field, _fields, explicit_coreml_padding
 
 
@@ -35,7 +36,9 @@ def test_only_convolution_nodes_change_and_padding_is_idempotent(level):
         )
         attrs = [payload for n, payload, _ in _fields(after[1]) if n == 5]
         assert attrs[-1] == b"\x0a\x04pads\x40\x00\x40\x00\x40\x00\x40\x00\xa0\x01\x07"
-        assert after[1] == before[1] + b"\x2a\x11" + attrs[-1]
+        original_node, padding = before[1], attrs[-1]
+        assert original_node is not None and padding is not None
+        assert after[1] == original_node + b"\x2a\x11" + padding
 
 
 @pytest.mark.parametrize("level", range(4))

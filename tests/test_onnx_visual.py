@@ -191,6 +191,9 @@ def test_new_models_apple_shape_specialization(monkeypatch: pytest.MonkeyPatch, 
 def test_regular_ai_dispatch_single_pass_fallback_measurements_and_cleanup(
     monkeypatch: pytest.MonkeyPatch, model: Any, apple_available: Any
 ) -> None:
+    """
+    Verify regular ai dispatch single pass fallback measurements and cleanup.
+    """
     from test_pipeline import raw_pipeline
     from test_render import frame_with_preview
 
@@ -208,8 +211,8 @@ def test_regular_ai_dispatch_single_pass_fallback_measurements_and_cleanup(
             self.closed = False
             engines.append(self)
 
+        @staticmethod
         def apply(
-            self,
             image: Any,
             selected: Any,
             backend: Any,
@@ -320,6 +323,7 @@ def test_zero_amount_and_pixel_budget_do_not_load_models(monkeypatch: pytest.Mon
 def test_helper_crash_is_contained_and_configuration_change_clears_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(
         "based_thermals.onnx_upsampling.MODEL_DOWNLOADS.request", lambda *args, **kwargs: True
     )

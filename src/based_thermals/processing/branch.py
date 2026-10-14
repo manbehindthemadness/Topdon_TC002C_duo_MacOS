@@ -142,14 +142,14 @@ class BranchProcessor:
         detail_size: tuple[int, int] | None = None
         available_inputs = inputs if inputs is not None else {}
 
-        def resolve_input(source: str, params: dict[str, Any]) -> np.ndarray:
+        def resolve_input(input_source: str, params: dict[str, Any]) -> np.ndarray:
             """
             Resolve input.
             """
             nonlocal direct_preview
-            if source == "visible":
+            if input_source == "visible":
                 return visible_image(decoded)
-            if source == "preview":
+            if input_source == "preview":
                 if direct_preview is None:
                     if decoded.preview_bgr is None or (
                         decoded.profile.id == "duo" and not np.any(preview)
@@ -157,7 +157,7 @@ class BranchProcessor:
                         raise ValueError("Camera preview is unavailable for the combine input/mask")
                     direct_preview = preview_image(decoded, preview)
                 return cast(np.ndarray, direct_preview)
-            if source == "raw":
+            if input_source == "raw":
                 plane = decoded.temperatures(raw)
                 gray = np.clip(
                     (plane - params["raw_low"]) * 255 / (params["raw_high"] - params["raw_low"]),
@@ -165,7 +165,7 @@ class BranchProcessor:
                     255,
                 )
                 return np.repeat(gray[..., None], 3, axis=2)
-            return available_inputs[source]
+            return available_inputs[input_source]
 
         first_range = True
         for index, item in enumerate(software):
@@ -219,7 +219,7 @@ class BranchProcessor:
                     size = bounded_promotion(previous_size, desired_size, software[index + 1:],
                                              self.native_size)
                     image = resize(image, size, self.display_interpolation)
-                    coverage = resize_coverage(coverage, image.shape[:2])
+                    coverage = resize_coverage(coverage, (image.shape[0], image.shape[1]))
                     previous_size = (image.shape[1], image.shape[0])
                     detail_size = previous_size
                 if deferred is not None and incoming.shape[:2] != image.shape[:2]:
@@ -240,10 +240,12 @@ class BranchProcessor:
                 if p["mode"] == "replace":
                     self.custom.labels = replace_labels(
                         self.custom.labels, self.input_labels.get(p["tab"], []),
-                        image.shape[:2], p, mask, incoming_coverage,
+                        (image.shape[0], image.shape[1]), p, mask, incoming_coverage,
                     )
                 if self.track_coverage:
-                    coverage = combine_coverage(coverage, incoming_coverage, image.shape[:2], p, mask)
+                    coverage = combine_coverage(
+                        coverage, incoming_coverage, (image.shape[0], image.shape[1]), p, mask
+                    )
                 image = combine_images(image, incoming, p, mask, incoming_coverage)
                 if p["mode"] != "replace" and p["opacity"] > 0 and p["mode"] != "mask":
                     if p["mode"] == "opacity" and p["opacity"] == 1 and mask is None:
@@ -281,7 +283,7 @@ class BranchProcessor:
                 p = raster_transform_params(p, next_logical, target_size)
                 source_image = image
                 if self.track_coverage:
-                    coverage = transform_coverage(coverage, image.shape[:2], p)
+                    coverage = transform_coverage(coverage, (image.shape[0], image.shape[1]), p)
                 image, self.custom.labels = apply_transform(image, p, self.custom.labels)
                 if p["resize_mode"] == "canvas" and has_warp(p):
                     self.output_transform = CanvasTransform(
@@ -334,7 +336,7 @@ class BranchProcessor:
                 logical_size = size
                 detail_size = None
                 self.output_interpolation = None
-            coverage = resize_coverage(coverage, image.shape[:2])
+            coverage = resize_coverage(coverage, (image.shape[0], image.shape[1]))
         self.prune_models(software)
         self.output_coverage = coverage
         self.output_logical_size = logical_size

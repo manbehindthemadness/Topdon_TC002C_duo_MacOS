@@ -44,7 +44,9 @@ def install_fixture(path: Path) -> None:
 
 @pytest.mark.parametrize("model", model_exports.EXPORT_MODELS)
 def test_custom_worker_shares_conversion_with_builtin_nodes_and_reuses_cache(
-    model: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    model: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """
     Validate/export inert packages, then prepare once for independent workers and built-in consumers.
@@ -59,7 +61,12 @@ def test_custom_worker_shares_conversion_with_builtin_nodes_and_reuses_cache(
     started, release = Event(), Event()
     calls: list[str] = []
 
-    def convert(command: list[str], environment: dict[str, str], directory: Path) -> None:
+    def convert(
+        command: list[str],
+        environment: dict[str, str],
+        directory: Path,
+        **_kwargs: object,
+    ) -> None:
         """
         Hold conversion while Custom and built-in consumers continue polling.
         """

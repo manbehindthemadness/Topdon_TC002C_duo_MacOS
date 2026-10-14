@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -144,16 +145,25 @@ def test_anime4k09_passes_and_strength_control_edge_processing():
 
 
 @pytest.mark.parametrize("algorithm", ["anime4k09", "acnet-legacy-hdn2"])
-def test_input_size_option_controls_actual_processing_resolution(algorithm, monkeypatch):
+def test_input_size_option_controls_actual_processing_resolution(
+    algorithm: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Verify input size option controls actual processing resolution.
+    """
     frame, _ = frame_with_preview()
     renderer = ThermalRenderer(scale=3, rotation=90)
     renderer.set_view_setting("upsampling", algorithm)
     seen = []
 
-    def apply(image, _model, *args, **kwargs):
+    def apply(image: np.ndarray, _model: Any, *_args: Any, **_kwargs: Any) -> Any:
+        """
+        Apply.
+        """
         seen.append(image.shape[:2])
         return cv2.resize(image, None, fx=2, fy=2)
 
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(renderer.upsampler, "apply", apply)
     renderer.render_detailed(frame)
     renderer.set_view_setting("enhancement_input", "preview")

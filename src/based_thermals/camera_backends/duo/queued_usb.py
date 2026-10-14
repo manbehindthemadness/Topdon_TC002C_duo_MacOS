@@ -7,25 +7,33 @@ Each submitted transfer owns a separate buffer until cancellation completes.
 
 from __future__ import annotations
 
-import ctypes as C
+import ctypes
 import threading
 import time
 from collections import Counter, deque
+from typing import Any, Self
 
 import usb.core
 from usb.backend import libusb1
 
 
-class _Timeval(C.Structure):
-    _fields_ = [("seconds", C.c_long), ("microseconds", C.c_long)]
+class _Timeval(ctypes.Structure):
+    _fields_ = [("seconds", ctypes.c_long), ("microseconds", ctypes.c_long)]
 
 
 class QueuedBulkReader:
-    def __init__(self, device, endpoint, size, timeout_ms, depth=32):
+    def __init__(
+        self, device: usb.core.Device, endpoint: int, size: int, timeout_ms: int, depth: int = 32
+    ) -> None:
+        """
+        Bind the existing PyUSB handle and configure bounded native transfers.
+        """
         if not 2 <= depth <= 128:
             raise ValueError("USB queue depth must be between 2 and 128")
+        # noinspection PyProtectedMember
         self._backend = device._ctx.backend
         self._lib = self._backend.lib
+        # noinspection PyProtectedMember
         self._handle = device._ctx.managed_open().handle
         self._endpoint, self._size = endpoint, size
         self._timeout_ms, self._depth = timeout_ms, depth
@@ -37,20 +45,31 @@ class QueuedBulkReader:
         self._closing = False
         self._error = None
         self.statuses = Counter()
+        # noinspection PyProtectedMember
         self._callback = libusb1._libusb_transfer_cb_fn_p(self._completed)
+        # noinspection PyProtectedMember
         self._lib.libusb_cancel_transfer.argtypes = [libusb1._libusb_transfer_p]
-        self._lib.libusb_cancel_transfer.restype = C.c_int
+        self._lib.libusb_cancel_transfer.restype = ctypes.c_int
         self._lib.libusb_handle_events_timeout_completed.argtypes = [
-            C.c_void_p, C.POINTER(_Timeval), C.POINTER(C.c_int)
+            ctypes.c_void_p,
+            ctypes.POINTER(_Timeval),
+            ctypes.POINTER(ctypes.c_int),
         ]
-        self._lib.libusb_handle_events_timeout_completed.restype = C.c_int
+        self._lib.libusb_handle_events_timeout_completed.restype = ctypes.c_int
 
-    def _submit(self, transfer):
+    def _submit(self, transfer: Any) -> None:
+        """
+        Submit one native transfer and retain ownership until its callback completes.
+        """
         result = self._lib.libusb_submit_transfer(transfer)
+        # noinspection PyProtectedMember
         libusb1._check(result)
-        self._pending[C.addressof(transfer.contents)] = transfer
+        self._pending[ctypes.addressof(transfer.contents)] = transfer
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
+        """
+        Allocate buffers and start continuous queued capture.
+        """
         try:
             with self._lock:
                 for _ in range(self._depth):
@@ -58,7 +77,7 @@ class QueuedBulkReader:
                     if not transfer:
                         raise MemoryError("Cannot allocate USB transfer")
                     self._transfers.append(transfer)
-                    buffer = C.create_string_buffer(self._size)
+                    buffer = ctypes.create_string_buffer(self._size)
                     self._buffers.append(buffer)
                     native = transfer.contents
                     native.dev_handle = self._handle
@@ -68,7 +87,7 @@ class QueuedBulkReader:
                     native.timeout = self._timeout_ms
                     native.length = self._size
                     native.callback = self._callback
-                    native.buffer = C.cast(buffer, C.c_void_p)
+                    native.buffer = ctypes.cast(buffer, ctypes.c_void_p)
                     native.num_iso_packets = 0
                 for transfer in self._transfers:
                     self._submit(transfer)
@@ -77,19 +96,22 @@ class QueuedBulkReader:
             self.close()
             raise
 
-    def _completed(self, transfer):
+    def _completed(self, transfer: Any) -> None:
         # libusb may invoke this on a thread doing a control transfer, too.
         # Never let an exception escape a ctypes callback.
+        """
+        Collect completed packets and resubmit transfers while capture is active.
+        """
         with self._lock:
             native = transfer.contents
-            self._pending.pop(C.addressof(native), None)
+            self._pending.pop(ctypes.addressof(native), None)
             self.statuses[native.status] += 1
             if self._closing:
                 return
             try:
                 if native.status not in (0, 2):  # completed or timed out
                     raise usb.core.USBError(f"Queued USB transfer status {native.status}")
-                packet = C.string_at(native.buffer, native.actual_length)
+                packet = ctypes.string_at(native.buffer, native.actual_length)
                 if len(self._packets) >= 512:
                     raise usb.core.USBError("Queued USB consumer fell behind (512 packets)")
                 # Re-arm before parsing the payload; other requests remain queued.
@@ -99,12 +121,16 @@ class QueuedBulkReader:
             except Exception as exc:  # noqa: BLE001 - propagate on the reader thread
                 self._error = exc
 
-    def _events(self):
+    def _events(self) -> None:
+        """
+        Events.
+        """
         timeout = _Timeval(0, 20_000)
         result = self._lib.libusb_handle_events_timeout_completed(
-            self._backend.ctx, C.byref(timeout), None
+            self._backend.ctx, ctypes.byref(timeout), None
         )
         if result != -10:  # LIBUSB_ERROR_INTERRUPTED is retryable.
+            # noinspection PyProtectedMember
             libusb1._check(result)
 
     def read(self):
@@ -128,6 +154,7 @@ class QueuedBulkReader:
         for transfer in pending:
             result = self._lib.libusb_cancel_transfer(transfer)
             if result not in (0, -5):  # NOT_FOUND can mean completion is already pending.
+                # noinspection PyProtectedMember
                 libusb1._check(result)
         # A timeout is not permission to free buffers still owned by libusb.
         while self._pending:

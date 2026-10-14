@@ -40,6 +40,8 @@ def check_model(model: str, output: Path) -> dict[str, Any]:
     session.run(None, feed)
     started = perf_counter()
     gpu = session.run(None, feed)[0]
+    if not isinstance(gpu, np.ndarray):
+        raise TypeError("Expected dense inference output")
     elapsed = (perf_counter() - started) * 1000
     profile = Path(session.end_profiling())
     providers: dict[str, int] = {}
@@ -55,6 +57,8 @@ def check_model(model: str, output: Path) -> dict[str, Any]:
         model_data(model), sess_options=cpu_options, providers=["CPUExecutionProvider"]
     )
     reference = cpu.run(None, {cpu.get_inputs()[0].name: blob})[0]
+    if not isinstance(reference, np.ndarray):
+        raise TypeError("Expected dense reference output")
     np.testing.assert_allclose(gpu, reference, atol=1e-5, rtol=1e-5)
     image = np.random.default_rng(18).integers(0, 256, (192, 256, 3), dtype=np.uint8)
     original = image.copy()

@@ -2,6 +2,7 @@
 
 from importlib.resources import files
 from time import perf_counter
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -29,7 +30,8 @@ class VisionUpsampler:
         self.error = ""
         try:
             data = files("based_thermals").joinpath("models", f"{model}.onnx").read_bytes()
-            net = cv2.dnn.readNetFromONNX(np.frombuffer(data, dtype=np.uint8))
+            weights = cast(np.ndarray[Any, np.dtype[np.uint8]], np.frombuffer(data, dtype=np.uint8))
+            net = cv2.dnn.readNetFromONNX(weights)
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             # CPU is the default. OpenCV 5's graph engine warns on target setters.
             self._net = net
@@ -49,6 +51,9 @@ class VisionUpsampler:
         amount: float = 1.0,
         passes: int = 3,
     ) -> np.ndarray:
+        """
+        Enhance display pixels through the selected portable CPU model.
+        """
         if amount == 0:
             self.elapsed_ms = 0.0
             return image
@@ -67,7 +72,7 @@ class VisionUpsampler:
             # A hardware color preview uses enhanced luminance with resized chroma.
             color = image.ndim == 3
             ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb) if color else None
-            gray = ycrcb[..., 0] if color else image
+            gray = ycrcb[..., 0] if ycrcb is not None else image
             blob = np.ascontiguousarray(gray, dtype=np.float32)[None, None] / 255.0
             self._net.setInput(blob)
             tensor = self._net.forward()
@@ -88,6 +93,7 @@ class VisionUpsampler:
                 )
                 enhanced = cv2.addWeighted(enhanced, amount, baseline, 1 - amount, 0)
             if color:
+                assert ycrcb is not None
                 ycrcb = cv2.resize(
                     ycrcb, (enhanced.shape[1], enhanced.shape[0]), interpolation=cv2.INTER_CUBIC
                 )

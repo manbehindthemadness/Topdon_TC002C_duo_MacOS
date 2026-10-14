@@ -1,5 +1,7 @@
 import threading
+from collections.abc import Iterator
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -32,14 +34,19 @@ def test_capture_keeps_draining_without_a_consumer_and_retains_newest_frame():
         pump.close()
 
 
-def test_waiting_camera_yields_heartbeat_and_shuts_down():
+def test_waiting_camera_yields_heartbeat_and_shuts_down() -> None:
+    """
+    Verify waiting camera yields heartbeat and shuts down.
+    """
     holder = camera(None)
 
-    def frames():
+    def frames() -> Iterator[Any]:
+        """
+        Frames.
+        """
+        yield from ()
         while holder._running.is_set():
             threading.Event().wait(0.01)
-        return
-        yield  # Make this a generator without producing frames.
 
     holder.frames = frames
     pump = CameraFramePump(holder)
@@ -50,10 +57,17 @@ def test_waiting_camera_yields_heartbeat_and_shuts_down():
     assert not pump._thread.is_alive()
 
 
-def test_acquisition_errors_reach_viewer():
-    def frames():
+def test_acquisition_errors_reach_viewer() -> None:
+    """
+    Verify acquisition errors reach viewer.
+    """
+
+    def frames() -> Iterator[Any]:
+        """
+        Frames.
+        """
+        yield from ()
         raise CameraError("USB disconnected")
-        yield
 
     pump = CameraFramePump(camera(frames))
     try:
