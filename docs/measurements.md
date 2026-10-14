@@ -19,6 +19,13 @@ Dragging an area in the image translates its whole geometry, keeping every
 vertex/control handle inside the sensor. Existing measurement and calibration
 locks apply to all mutations.
 
+**Show all measurements** uses the existing per-item enabled state. Checked means
+every saved item is enabled, unchecked means none, and mixed means some; a click
+from mixed enables all. The dialog sends one `enable_all` command and the parent
+validates its boolean before replacing the enabled set under the same edit locks.
+The operation includes exclusions and graph sampling, retains all configuration
+and does not commit pending dialog edits. Empty lists and locked edits disable it.
+
 In the main image, vertices can be dragged directly or clicked to select them.
 Selection exposes handles, including the two adjacent Bézier controls; moving an
 anchor translates its controls together. Arrow keys with image focus nudge the
@@ -26,11 +33,13 @@ selected point, label or whole spot/area by one oriented native pixel. An empty
 image click clears selection and consumes that click before restoring normal
 placement. Labels can be dragged independently; their baseline positions are
 stored in native sensor coordinates and transformed with the measurement.
-Point drags use a transient outline and hold committed sampling until release.
+Vertex/control drags use a transient outline and retain committed sampling until release.
 Consecutive pointer motion is coalesced, geometry hit tests run on press, and
 unchanged preview outlines and manual label geometry are cached. Moving a label
 reuses the automatic layout without reflowing other labels. Locks, invalid mapping,
 deletion, disabling or external edits cancel captures and suppress their release.
+Releasing a captured point/label edit outside the image commits its last valid
+preview position. This differs from the unfinished creation gestures below.
 
 ## Drawing on live video
 

@@ -44,11 +44,6 @@ then click positions. Press `P` again to stop placement without removing spots.
 
 ## Configure, move or disable an area
 
-The **Show all measurements** checkbox at the top enables or disables the entire
-list, including exclusions and graph sampling. A mixed check means only some
-measurements are enabled; clicking it shows all. Individual list checkboxes still
-control one measurement at a time. Logging and calibration locks disable this control.
-
 Each measurement has **Line Color**, **Fill**, and **Opacity** controls.
 Uncheck **Dynamic** to choose an RGB line color; Dynamic retains the contrasting
 outline that follows the thermal image. **Fill** uses the same color inside
@@ -75,29 +70,59 @@ controls to add/remove a vertex or Bézier segment.
 valid edits. **Close** dismisses the dialog without applying pending edits; it stays
 available even when measurement editing is locked.
 
-Drag a spot's crosshair or an area's body in the thermal image to move the whole
-measurement. Its identity/name stays the same, and geometry stays inside the sensor.
-Click a vertex to select it, or drag it directly. A selected Bézier anchor exposes
-its incoming and outgoing control handles; moving the anchor carries both handles.
-Click or drag either handle to adjust it independently. Rectangles and ovals use
-their two opposite bounding corners. With the image focused, arrow keys nudge the
-selected point by one native pixel. Clicking empty image space clears the selection;
-the next click resumes normal spot placement when placement is enabled.
-
-Drag a label to position it manually, or click it and use arrow keys. Manual label
-positions are saved with the measurement and follow viewer rotation and movement.
-During vertex dragging, a yellow outline previews the edit while readings keep
-using the saved shape; release commits the new geometry. Label dragging changes
-only the display. Logging/calibration locks, deletion and view changes cancel edits.
-
-Uncheck a list item to disable it without deleting its configuration. Use **Delete
-selected** to remove it, or **Clear all measurements** to remove everything and reset numbering.
-
 Rotation maps geometry with the thermal canvas. Pipeline Transform resizing,
 skew, distortion, positioning and mirrors do not move sampling onto processed imagery.
 For example, a measurement over a raw inset still samples the background native
 thermal canvas at that location. Optical imagery needs explicit registration for
 thermal overlays; virtual-camera registration is synthetic.
+
+## Edit on the main image
+
+Existing measurements can be edited directly in the main viewer without opening
+the dialog's coordinate grid. Click without dragging to retain a selection;
+dragging works immediately without a separate edit mode.
+
+| Target | Gesture and result |
+| ------ | ------------------ |
+| Spot crosshair or area body | Drag to move the whole measurement, retaining its identity and name |
+| Polygon vertex | Click to select, or drag to move that vertex |
+| Rectangle / oval | Select the area to reveal its two opposite bounding-corner handles, then drag a corner |
+| Bézier anchor | Click to expose its incoming/outgoing controls; dragging the anchor carries both controls |
+| Bézier control | Click or drag an exposed control to change it independently |
+| Label | Click to select, or drag to move the text and its leader independently of the shape |
+| Selected point, label or whole measurement | With the image focused, press an arrow key to nudge by one native pixel |
+| Empty image space | Click to clear selection; a subsequent click resumes quick spot placement if `P` is enabled |
+
+A yellow outline previews vertex/control edits while readings and graphs continue
+to sample the saved shape. Releasing commits the edited geometry; releasing outside
+the image commits the last valid preview position. Existing spot/body movement
+continues to update while dragging. Geometry and controls stay inside sensor bounds.
+Label movement affects only display, and manual positions are saved with the
+measurement, follow its movement and viewer rotation, and are clamped to image edges.
+
+Arrow keys in a focused numeric field retain that field's normal behavior. Logging
+or calibration locks, disabled/deleted measurements, external configuration edits
+and view changes cancel a captured point/label edit without saving its preview.
+
+## Show, hide or delete measurements
+
+The **Show all measurements** checkbox is at the top of the dialog:
+
+- Checked: all measurements are enabled; click to hide all.
+- Unchecked: all measurements are disabled; click to show all.
+- Mixed: some are enabled; click to show all.
+
+This uses the same enabled state as the individual list checkboxes. Disabled
+measurements stop sampling and lose their active chart; disabled exclusions stop
+subtracting pixels. Showing all enables every saved item, including items previously
+disabled individually. Names, geometry, label positions and appearance are retained,
+and enabled states are remembered across launches. Changing this checkbox does not
+apply or discard pending configuration edits. It is disabled when the list is empty
+or measurement edits are locked by logging or calibration.
+
+Uncheck an individual list item to disable it without deleting its configuration.
+Use **Delete selected** to remove one item, or **Clear all measurements** to remove
+everything and reset numbering.
 
 ## Exclude pixels from sampling
 
@@ -150,7 +175,7 @@ Areas have Min/Avg/Max curves; exclusions never have charts.
 
 *Portrait layout puts charts and their controls below the image. Warm region and
 Reference each have three curves; Exclude peak has none. The same synthetic scene
-appears in the README's landscape example. On narrow windows, use toolbar overflow
+can also be displayed in landscape layout. On narrow windows, use toolbar overflow
 for controls that do not fit.*
 
 - **Update (s)** sets the sampling/update interval.
@@ -166,8 +191,8 @@ graph histories are session-only. Changing a scalar spot into an area or back re
 its history. Disabling/deleting a measurement or making it an exclusion removes
 its active chart. Graph compression does not discard valid CSV samples.
 
-Chart Config also offers **Average over samples** (1–256; 1 turns it off) and
-**Extra points per sample interval** (0–32; 0 turns interpolation off). Averaging
+Chart Config also offers **Average over samples** (1–256; 1 is displayed as **Off**) and
+**Extra points per sample interval** (0–32; 0 is displayed as **Off**). Averaging
 uses a trailing window of retained chart samples for each curve independently,
 including samples preceding the visible time window. Older compressed history
 therefore uses its retained samples rather than discarded readings. Smooth

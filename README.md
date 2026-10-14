@@ -67,6 +67,10 @@ for retry, offline operation, exact compatibility limits, and tested Orin/Spark 
 
 - Inspect temperatures under the pointer; draw spots, rectangles, ovals, polygons,
   and Bézier areas with minimum, maximum, and average readings.
+- Drag measurement vertices, Bézier handles and labels directly on the image;
+  click to select and use arrow keys for one-native-pixel nudges.
+- Set measurement line color, fill, opacity and Z order, or show/hide all
+  measurements from the dialog's top checkbox.
 - Exclude regions from user measurements; graph and log readings to CSV.
 - Save PNG images with matching lossless radiometric NPZ and JSON metadata.
 - Record MP4 video or timelapse, optionally including the cursor and graphs.
@@ -96,8 +100,18 @@ images. Saved temperatures remain Celsius when the UI displays Fahrenheit.
 | Quit         | `Q`; Escape outside drawing/fullscreen | Close the viewer                                  |
 
 While drawing, Enter/**Finish** completes a shape and Escape/**Cancel** discards
-the draft before fullscreen/quit handling. In portrait layout, charts and their
-controls move below the image. Smaller windows use Qt's toolbar overflow menu.
+the draft before fullscreen/quit handling. For existing measurements, click a
+point to select it and expose its handles, or drag it directly. Arrow keys nudge
+the selected point, label or whole measurement when the image has focus; clicking
+empty image space deselects it. Vertex drags preview the edit and update sampling
+on release. See the [measurement editing guide](docs/measurements-guide.md#edit-on-the-main-image).
+
+**Show all measurements** enables/disables all saved measurements, including
+exclusions and graph sampling. Its mixed state means only some are enabled;
+clicking mixed shows all. This control follows the existing logging/calibration locks.
+
+In portrait layout, charts and their controls move below the image. Smaller
+windows use Qt's toolbar overflow menu.
 Watch the status bar for download progress, camera errors, and rejected settings.
 The number beside the status is elapsed viewport draw time in milliseconds:
 image preparation, measurement overlays, graph composition, frame copying and Qt
