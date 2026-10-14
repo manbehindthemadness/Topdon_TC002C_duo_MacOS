@@ -24,6 +24,11 @@ and bounded Duo control-interface transfers. Complete raw frames cross private
 stdin/stdout pipes in a length-bounded binary protocol with JSON metadata. There
 is no pickle, shell-command dispatch, path selection or application-code execution
 request. The viewer continuously drains the helper and retains the newest frame.
+The helper also separates USB drainage from pipe writes, retaining one pending
+complete frame and diagnostics snapshot. If native model compilation stalls the
+viewer reader, older complete frames can be replaced while USB packets continue
+to be assembled normally. Control replies remain serialized with frame messages;
+partial packets are never dropped to recover from queue overflow.
 The existing HardwareControls owner stays in the viewer and performs the same
 startup reads, write/readback checks and settings restoration before shutdown.
 Closing the command pipe stops acquisition, drains transfers and closes the camera,
@@ -34,6 +39,7 @@ Authorization requires a controlling terminal. For an IDE launch that cannot sho
 the password prompt, use a terminal instead; `sudo -v` can authorize that terminal
 before launching. Failed authorization produces a viewer error. This implementation
 does not install a background daemon, modify sudoers or grant passwordless access.
+Runtime stream errors are reported directly without suggesting terminal authorization.
 
 ## Development and distribution
 
@@ -69,5 +75,8 @@ does not bypass the downloader's existing checksum verification.
 `tests/test_macos_usb.py` exercises the actual client/service protocol over local
 pipes with fake USB: frame bytes, controls, USB errors, malformed requests,
 disconnect cleanup and platform/factory selection. It runs without sudo or hardware.
+`tests/test_macos_usb_backpressure.py` blocks viewer output during a 600-frame
+burst and verifies continued acquisition/diagnostics, newest-frame delivery and
+camera release. It does not simulate physical USB timing or verify a live camera.
 A physical macOS check must additionally verify authorization, sustained capture,
 control readback/restoration and driver release with other camera apps closed.

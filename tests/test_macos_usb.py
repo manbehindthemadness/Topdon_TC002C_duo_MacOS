@@ -292,10 +292,13 @@ def test_helper_keeps_only_the_newest_frame(monkeypatch: pytest.MonkeyPatch) -> 
         camera.open()
         camera.request("start")
         assert finished.wait(5)
-        # This reply follows the burst on the same pipe, so receiving it proves drainage.
+        # Replies are serialized with output, but pending frames are delivered independently.
         camera.request("transfer", request_type=0xA1, request=0x81, value=0x400,
                        index=0x0A00, length=4, timeout=2000)
-        assert list(camera._frames) == [bytes((29,)) * FRAME_BYTES]
+        with camera._condition:
+            assert camera._condition.wait_for(
+                lambda: list(camera._frames) == [bytes((29,)) * FRAME_BYTES], timeout=2,
+            )
     finally:
         camera.close()
     assert physical.closed.is_set()
@@ -322,8 +325,9 @@ def test_stream_failure_wakes_the_viewer_and_releases_the_helper(
     monkeypatch.setattr(client.subprocess, "Popen", Mock(return_value=FakeProcess(physical)))
     camera = client.MacOSCamera()
     try:
-        with pytest.raises(CameraError, match="USB disconnected"):
+        with pytest.raises(CameraError, match="USB disconnected") as failure:
             next(camera.frames())
+        assert "sudo -v" not in str(failure.value)
     finally:
         camera.close()
     assert physical.closed.is_set()

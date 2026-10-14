@@ -118,6 +118,26 @@ normalized RGB hex values or `dynamic`; the package decides how to render them.
 Classless YOLO reuses the measurement contrast compositor for dynamic borders
 and labels, and uses inverted pixels for its optional dynamic fill.
 
+A `model` control may include optional `models` discovery hints to show readable
+names and limit its dropdown to relevant cached/registered files:
+
+```json
+{"key": "detector", "label": "Detector", "type": "model", "models": [
+  {"name": "HGNet-N head detector",
+   "sha256": "155c3c6f37dcf398288735f96a18738b67eb8f7d02ec54f024c75bed0a169e31",
+   "filenames": ["deimv2_hgnetv2_n_wholebody49_boxes_only.onnx"]}
+]}
+```
+
+Each hint needs a unique name and a lowercase SHA-256 and/or a list of exact ONNX
+basenames. Up to 128 hints and 32 basenames per hint are allowed. The UI matches
+the cache's checksum suffix or an original filename, sorts by readable name, and
+rescans on popup opening, so subsequent downloads receive the same labels. It
+does not read weights or initialize sessions; hints are not compatibility/security
+validation. Browse and saved paths remain available as explicit **Local override**
+entries even when unlisted or missing. Controls without hints retain ordinary
+unfiltered discovery. Hints travel with saved/exported control definitions.
+
 `CONFIG_JSON` and `MODEL_SOURCE` must be direct, unique module-level literal
 assignments (annotations are allowed). Computed expressions such as `json.loads`
 or function calls are rejected for these declarations. The editor reads their AST

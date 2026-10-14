@@ -4,6 +4,7 @@ Color pickers and local-model dropdowns for declarative custom controls.
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QColor
@@ -18,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..custom_nodes.colors import color_value
-from ..custom_nodes.model_library import add_model, existing_models
+from ..custom_nodes.model_library import add_model, named_model_choices
 
 
 class ColorPicker(QWidget):
@@ -103,13 +104,15 @@ class ModelPicker(QWidget):
     Select automatic download or an existing model, with optional Browse registration.
     """
 
-    def __init__(self, value: str, changed: Callable[[str], None]) -> None:
+    def __init__(self, value: str, changed: Callable[[str], None],
+                 models: list[dict[str, Any]] | None = None) -> None:
         """
-        Bind model paths to configuration without creating inference sessions in the UI.
+        Bind model paths and optional discovery hints without loading weights in the UI.
         """
         super().__init__()
         self.changed = changed
         self.value = value
+        self.models = models
         self.choices: list[tuple[str, str]] = []
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -135,13 +138,7 @@ class ModelPicker(QWidget):
         if self.combo.view().isVisible() and value == self.value:
             return
         self.value = value
-        choices = [("Automatic download", "")]
-        for path in existing_models(value):
-            file = Path(path)
-            label = f"{file.name} ({file.parent.name})"
-            if not file.is_file():
-                label += " — missing"
-            choices.append((label, path))
+        choices = [("Automatic download", ""), *named_model_choices(value, self.models)]
         selected = str(Path(value).expanduser().absolute()) if value else ""
         blocker = QSignalBlocker(self.combo)
         if choices != self.choices:

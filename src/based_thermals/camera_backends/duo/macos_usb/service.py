@@ -16,6 +16,7 @@ from typing import Any, BinaryIO
 import usb.core
 
 from ..camera import CameraError, TC002CDuoCamera
+from .output import LatestOutput
 from .protocol import receive, send
 
 
@@ -67,13 +68,15 @@ def serve(source: BinaryIO, target: BinaryIO, camera: Any) -> None:
         with writing:
             send(target, metadata, body)
 
+    output = LatestOutput(publish)
+
     def capture() -> None:
         """
-        Publish complete raw frames without decoding or running application callbacks.
+        Drain complete raw frames independently of viewer pipe delivery.
         """
         try:
             for frame in camera.frames():
-                publish({"kind": "frame"}, frame)
+                output.submit_frame(frame)
         except (CameraError, OSError, ValueError) as capture_error:
             try:
                 publish({"kind": "failure", "error": str(capture_error)})
@@ -95,8 +98,7 @@ def serve(source: BinaryIO, target: BinaryIO, camera: Any) -> None:
                     if depth == 1:
                         raise ValueError("Invalid USB queue depth")
                     camera.usb_queue_depth = depth
-                    camera.stream_observer = lambda event: publish({"kind": "diagnostics",
-                                                                    "event": event})
+                    camera.stream_observer = output.submit_diagnostics
                     mode = camera.open()
                     extra = {"mode": asdict(mode)}
                 elif operation == "start":
@@ -120,11 +122,14 @@ def serve(source: BinaryIO, target: BinaryIO, camera: Any) -> None:
     except (EOFError, OSError, ValueError, TypeError):
         pass  # Invalid or disconnected clients end this single-session helper.
     finally:
-        camera.stop_stream()
-        if acquisition is not None:
-            acquisition.join(timeout=camera.timeout_ms / 1000 + 1)
-        if acquisition is None or not acquisition.is_alive():
-            camera.close()
+        try:
+            camera.stop_stream()
+            if acquisition is not None:
+                acquisition.join(timeout=camera.timeout_ms / 1000 + 1)
+            if acquisition is None or not acquisition.is_alive():
+                camera.close()
+        finally:
+            output.close()
 
 
 def main() -> int:

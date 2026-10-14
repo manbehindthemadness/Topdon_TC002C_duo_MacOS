@@ -6,6 +6,7 @@ import json
 import logging
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from ..onnx_models import model_path
 from .bundle import MAX_CONFIG_BYTES
@@ -51,6 +52,39 @@ def existing_models(current: str = "") -> list[str]:
     if current:
         paths.add(Path(current).expanduser())
     return sorted({str(path.absolute()) for path in paths}, key=str.casefold)
+
+
+def named_model_choices(
+    current: str = "", models: list[dict[str, Any]] | None = None,
+) -> list[tuple[str, str]]:
+    """
+    Filter discovery with declarative hints while retaining explicit local overrides.
+
+    Cache checksum suffixes and original basenames identify display names only;
+    the worker still verifies bytes and model contracts before using weights.
+    """
+    selected = str(Path(current).expanduser().absolute()) if current else ""
+    choices = []
+    for path in existing_models(current):
+        file = Path(path)
+        if models is None:
+            label = f"{file.name} ({file.parent.name})"
+        else:
+            matches = [model["name"] for model in models
+                       if file.name in model.get("filenames", [])
+                       or ("sha256" in model
+                           and file.name.endswith(f"-{model['sha256'][:12]}.onnx"))]
+            if matches:
+                label = matches[0]
+            elif path == selected:
+                label = f"Local override: {file.name}"
+            else:
+                continue
+        if not file.is_file():
+            label += " — missing"
+        choices.append((label, path))
+    choices.sort(key=lambda choice: (choice[0].casefold(), choice[1].casefold()))
+    return choices
 
 
 def add_model(path: Path) -> str:

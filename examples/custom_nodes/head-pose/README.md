@@ -15,6 +15,12 @@ The image passes through during downloads, with the viewer's shared model progre
 and cache. No preparation command is needed for these exact audited releases.
 If updating an existing node, reopen this folder and save the pipeline again to
 replace its embedded code and add the new JSON-defined dropdown.
+The Detector override lists HGNet-N/DINOv3-S head detectors by readable name;
+the Pose override lists HFHPE ViT-T 64×64 rollgate. Their JSON discovery hints
+hide unrelated cached models, including ACNet image enhancers. Known downloads
+that arrive later receive the same names on the next dropdown opening. Browse
+remains available for other compatible exports; unlisted saved selections stay
+visible as explicit local overrides, and the worker validates them as usual.
 Local overrides take precedence over the detector dropdown. First-use automatic
 downloads and subsequent inference were verified in an initially empty diagnostics
 cache; both models became ready in about 5.6 seconds on this connection. Download

@@ -39,9 +39,11 @@ class CustomFields(QWidget):
             key, kind = control["key"], control["type"]
             if kind == "device":
                 widget = DevicePicker(values[key], lambda value, name=key: changed(name, value), state)
-            elif kind in ("color", "model"):
-                factory = ColorPicker if kind == "color" else ModelPicker
-                widget = factory(values[key], lambda value, name=key: changed(name, value))
+            elif kind == "color":
+                widget = ColorPicker(values[key], lambda value, name=key: changed(name, value))
+            elif kind == "model":
+                widget = ModelPicker(values[key], lambda value, name=key: changed(name, value),
+                                     control.get("models"))
             elif kind == "boolean":
                 widget = QCheckBox()
                 widget.setChecked(values[key])

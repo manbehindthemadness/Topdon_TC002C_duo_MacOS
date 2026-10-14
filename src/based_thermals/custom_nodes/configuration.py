@@ -3,11 +3,40 @@ Validate declarative custom controls and configuration documents.
 """
 
 import math
+import re
 from typing import Any
 
 from .bundle import read_json_object
 from .colors import color_value
 from .devices import validate_device
+
+
+def validate_model_choices(models: Any) -> None:
+    """
+    Check optional model names and filename/checksum hints without reading any weights.
+    """
+    if not isinstance(models, list) or not 1 <= len(models) <= 128:
+        raise ValueError("Custom model choices must contain 1 to 128 definitions")
+    names: set[str] = set()
+    for model in models:
+        if (not isinstance(model, dict) or set(model) - {"name", "sha256", "filenames"}
+                or "name" not in model or not ({"sha256", "filenames"} & set(model))):
+            raise ValueError("Custom model choice requires name and sha256 or filenames")
+        name = model["name"]
+        if not isinstance(name, str) or not name.strip() or len(name) > 200 or name in names:
+            raise ValueError("Custom model choices require unique nonempty names")
+        names.add(name)
+        if "sha256" in model:
+            digest = model["sha256"]
+            if not isinstance(digest, str) or not re.fullmatch("[0-9a-f]{64}", digest):
+                raise ValueError("Custom model choice needs a lowercase SHA-256")
+        if "filenames" in model:
+            filenames = model["filenames"]
+            if (not isinstance(filenames, list) or not 1 <= len(filenames) <= 32
+                    or any(not isinstance(name, str) or not 1 <= len(name) <= 255
+                           or "/" in name or "\\" in name or not name.lower().endswith(".onnx")
+                           for name in filenames)):
+                raise ValueError("Custom model choice filenames must be ONNX basenames")
 
 
 def validate_controls(controls: Any, values: dict[str, Any]) -> list[dict[str, Any]]:
@@ -33,6 +62,9 @@ def validate_controls(controls: Any, values: dict[str, Any]) -> list[dict[str, A
             fields |= {"min", "max", "step"}
         elif kind == "choice":
             fields.add("options")
+        elif kind == "model" and "models" in control:
+            fields.add("models")
+            validate_model_choices(control["models"])
         if set(control) != fields or key not in values:
             raise ValueError(f"Custom control fields/default missing: {key}")
         value = values[key]

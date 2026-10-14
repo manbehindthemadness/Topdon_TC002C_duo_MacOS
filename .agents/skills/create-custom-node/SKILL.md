@@ -53,6 +53,11 @@ name from the algorithm actually executed.
   Use `color` controls for RGB hex/dynamic choices and `model` controls for local
   ONNX dropdowns with Browse. Model controls register paths without copying or
   loading weights; validate model compatibility in the processing callback.
+  For stage-specific pickers, add optional `models` hints with readable `name`,
+  pinned `sha256` and/or exact ONNX `filenames`; see `docs/custom-nodes.md`.
+  Hints filter/name discovery without loading weights, including later downloads.
+  Keep explicit local overrides visible and validate actual compatibility in the
+  worker; filename/checksum-prefix matching in the UI is only a discovery hint.
   For packages that support execution selection, add an optional `device` control
   whose value has `backend` (`cpu`/`coreml`/`cuda`) and `apple_compute` (the built-in
   Apple unit choices). The callback receives the effective device after standard
@@ -118,6 +123,11 @@ Benchmark each stage and each intended device separately when choosing defaults.
 Small pose/crop models can be faster on CPU even when their detector benefits
 from GPU execution. Report cold compilation separately from warm inference and
 do not infer thermal accuracy from an RGB preview or a frame with no visible head.
+Native model setup can stall other Python threads even inside a processing worker.
+If camera drainage fails during initialization, trace the acquisition and output
+boundaries and reproduce backpressure with fakes; an async worker alone does not
+prove isolation. Preserve packet/framing validity and keep transport fixes in
+their owning backend rather than adding capture threads to a Custom package.
 
 Extract only the image-processing part of an existing application; replace its
 capture/UI loop with the callback. Preserve verified channel order, normalization,

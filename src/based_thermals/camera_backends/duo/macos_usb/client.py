@@ -107,10 +107,13 @@ class MacOSCamera(TC002CDuoCamera):
         except (EOFError, OSError, ValueError, TypeError, CameraError, queue.Full) as exc:
             with self._condition:
                 if not self._closed:
-                    self._error = (
-                        f"{exc}. USB authorization runs in the terminal; "
-                        "run sudo -v there and launch the viewer without sudo."
-                    )
+                    error = str(exc)
+                    if self.mode is None and not isinstance(exc, CameraError):
+                        error += (
+                            ". USB authorization runs in the terminal; "
+                            "run sudo -v there and launch the viewer without sudo."
+                        )
+                    self._error = error
                 self._condition.notify_all()
             try:
                 self._replies.put_nowait(({"error": self._error or "USB helper closed"}, b""))
