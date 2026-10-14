@@ -31,19 +31,24 @@ class ViewerController(SessionState):
             "show_graph": self.show_graph,
             "show_instructions": self.show_instructions,
             "placing_spots": self.spots.placing,
-            "recording": bool(self.recorder.mode or self.pending_save_kind in ("video", "timelapse")),
+            "recording": bool(
+                self.recorder.mode or self.pending_save_kind in ("video", "timelapse")
+            ),
             "logging": self.graphs.logging,
             "log_pending": self.pending_save_kind == "graph_log",
             "graph_locked": self.graphs.logging or self.pending_save_kind == "graph_log",
             "graph_config_locked": self.graph_config_state()["locked"],
-            "settings_locked": self.graphs.logging or self.emissivity_calibration.running
+            "settings_locked": self.graphs.logging
+            or self.emissivity_calibration.running
             or self.reflected_calibration.running,
             "spots_locked": self.spots_state()["locked"],
             "radiometry": self.camera_profile.radiometry,
             "graph_interval": self.graph_interval,
-            "history": "History | " + (
+            "history": "History | "
+            + (
                 history_duration(self.graph_settings["range_seconds"])
-                if self.graph_settings["range_mode"] == "fixed" else "Entire session"
+                if self.graph_settings["range_mode"] == "fixed"
+                else "Entire session"
             ),
             "status": self.status,
             "viewport_draw_ms": self.viewport_draw_ms,
@@ -56,8 +61,13 @@ class ViewerController(SessionState):
         if self.viewer is None:
             return True
         keys = {
-            "rotate": "o", "unit": "f", "view": "v",
-            "capture": "c", "graph": "g", "help": " ", "graph_log": "l",
+            "rotate": "o",
+            "unit": "f",
+            "view": "v",
+            "capture": "c",
+            "graph": "g",
+            "help": " ",
+            "graph_log": "l",
         }
         for command in self.viewer.poll():
             action = command.get("action")
@@ -75,13 +85,32 @@ class ViewerController(SessionState):
                     self.set_viewer_orientation(command)
                 elif action in ("draw_finish", "draw_cancel", "draw_undo"):
                     self.measurement_drawing_action(action)
+                elif action == "measurement_nudge":
+                    if (
+                        not self.spots_state()["locked"]
+                        and self.measurement_drawing.kind is None
+                        and hasattr(self, "rendered")
+                        and self.rendered.measurement_mapping_valid
+                    ):
+                        direction = command.get("direction")
+                        if isinstance(direction, str) and direction in (
+                            "left",
+                            "right",
+                            "up",
+                            "down",
+                        ):
+                            self.spot_drag.edit.pending_nudges.append(direction)
                 elif isinstance(action, str) and action in keys:
                     self.viewer_keys.append(ord(keys[action]))
                 elif action == "key":
                     key = command.get("key")
                     if key == ord("q"):
                         return False
-                    if isinstance(key, int) and not isinstance(key, bool) and key in map(ord, "qop glfvsc"):
+                    if (
+                        isinstance(key, int)
+                        and not isinstance(key, bool)
+                        and key in map(ord, "qop glfvsc")
+                    ):
                         self.viewer_keys.append(key)
                 elif action == "graph_config":
                     self.graph_panel.open(self.graph_config_state())
@@ -155,15 +184,21 @@ class ViewerController(SessionState):
             return
         x, y, flags = command.get("x"), command.get("y"), command.get("flags", 0)
         if (
-            not isinstance(x, int) or not isinstance(y, int)
-            or not isinstance(flags, int) or any(isinstance(n, bool) for n in (x, y, flags))
+            not isinstance(x, int)
+            or not isinstance(y, int)
+            or not isinstance(flags, int)
+            or any(isinstance(n, bool) for n in (x, y, flags))
         ):
             return
         if not (-1 <= x <= 16384 and -1 <= y <= 16384 and 0 <= flags <= 63):
             return
         if self.measurement_drawing_pointer(command):
             return
-        if hasattr(self, "rendered") and not self.rendered.measurement_mapping_valid and button == "left":
+        if (
+            hasattr(self, "rendered")
+            and not self.rendered.measurement_mapping_valid
+            and button == "left"
+        ):
             return
         pointer_event = cast(int, event)
         self.picker.callback(pointer_event, x, y, flags, None)

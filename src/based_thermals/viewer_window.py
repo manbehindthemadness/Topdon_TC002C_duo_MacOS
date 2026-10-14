@@ -78,7 +78,8 @@ class ViewerWindow(QMainWindow):
         """
         self._viewport_draw_ms = (
             self._frame_draw_ms + self._frame_copy_ms + elapsed_ms
-            if self._frame_draw_ms is not None else None
+            if self._frame_draw_ms is not None
+            else None
         )
         self._update_status()
 
@@ -112,8 +113,10 @@ class ViewerWindow(QMainWindow):
         started = perf_counter()
         width, height, path = frame.get("width"), frame.get("height"), frame.get("path")
         if (
-            not isinstance(width, int) or isinstance(width, bool)
-            or not isinstance(height, int) or isinstance(height, bool)
+            not isinstance(width, int)
+            or isinstance(width, bool)
+            or not isinstance(height, int)
+            or isinstance(height, bool)
             or not isinstance(path, str)
         ):
             raise TypeError("Invalid viewer frame descriptor")
@@ -126,8 +129,10 @@ class ViewerWindow(QMainWindow):
                 self._mapping = mmap.mmap(stream.fileno(), FRAME_CAPACITY, access=mmap.ACCESS_READ)
             self._path = frame_path
         assert self._mapping is not None
-        pixels = self._mapping[:width * height * 3]
-        self.canvas.image = QImage(pixels, width, height, width * 3, QImage.Format.Format_BGR888).copy()
+        pixels = self._mapping[: width * height * 3]
+        self.canvas.image = QImage(
+            pixels, width, height, width * 3, QImage.Format.Format_BGR888
+        ).copy()
         self._frame_draw_ms = validated_draw_time(frame.get("viewport_draw_ms"))
         self._frame_copy_ms = (perf_counter() - started) * 1000 + (
             validated_draw_time(frame.get("viewport_copy_ms")) or 0.0
@@ -161,17 +166,22 @@ class ViewerWindow(QMainWindow):
             self._update_status()
         size = state.get("resize")
         if (
-            isinstance(size, list) and len(size) == 2
+            isinstance(size, list)
+            and len(size) == 2
             and all(type(n) is int and 0 < n <= 16384 for n in size)
             and not self.isFullScreen()
         ):
             chart_height = (
-                0 if self.toolbar.graph_toolbar.isHidden()
+                0
+                if self.toolbar.graph_toolbar.isHidden()
                 else self.toolbar.graph_toolbar.sizeHint().height()
             )
             self.resize(
-                size[0], size[1] + self.toolbar.sizeHint().height()
-                + chart_height + self.statusBar().height()
+                size[0],
+                size[1]
+                + self.toolbar.sizeHint().height()
+                + chart_height
+                + self.statusBar().height(),
             )
         self._schedule_geometry()
 
@@ -190,7 +200,9 @@ class ViewerWindow(QMainWindow):
         self._geometry_pending = False
         size = [self.canvas.width(), self.canvas.height()]
         if not self.isFullScreen():
-            drawing_height = self.drawing_toolbar.height() if self.drawing_toolbar.isVisible() else 0
+            drawing_height = (
+                self.drawing_toolbar.height() if self.drawing_toolbar.isVisible() else 0
+            )
             self._windowed_size = [size[0], size[1] + drawing_height]
         self.send({"action": "geometry", "size": size, "windowed_size": self._windowed_size})
 
@@ -218,11 +230,29 @@ class ViewerWindow(QMainWindow):
         Keep viewer shortcuts and let Escape leave fullscreen before requesting quit.
         """
         key = event.key()
+        directions: dict[int, str] = {
+            Qt.Key.Key_Left: "left",
+            Qt.Key.Key_Right: "right",
+            Qt.Key.Key_Up: "up",
+            Qt.Key.Key_Down: "down",
+        }
+        if key in directions and self.canvas.hasFocus() and not self.drawing_toolbar.active:
+            self.send({"action": "measurement_nudge", "direction": directions[key]})
+            event.accept()
+            return
         if self.drawing_toolbar.active and key in (
-            Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Backspace,
+            Qt.Key.Key_Escape,
+            Qt.Key.Key_Return,
+            Qt.Key.Key_Enter,
+            Qt.Key.Key_Backspace,
         ):
-            action = ("draw_cancel" if key == Qt.Key.Key_Escape else "draw_undo"
-                      if key == Qt.Key.Key_Backspace else "draw_finish")
+            action = (
+                "draw_cancel"
+                if key == Qt.Key.Key_Escape
+                else "draw_undo"
+                if key == Qt.Key.Key_Backspace
+                else "draw_finish"
+            )
             self._command({"action": action})
             event.accept()
             return

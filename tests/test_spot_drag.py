@@ -18,7 +18,8 @@ def mouse(picker, event, x, y, flags=0):
 @pytest.mark.parametrize("placing", [False, True])
 @pytest.mark.parametrize("viewport", [None, (384, 303)])
 def test_drag_keeps_identity_name_and_grab_offset_without_placing_another_spot(
-    placing: bool, viewport: tuple[int, int] | None,
+    placing: bool,
+    viewport: tuple[int, int] | None,
 ) -> None:
     """
     Retain the grab offset across viewport scaling and placement modes.
@@ -115,7 +116,10 @@ def test_unlock_does_not_resume_drag_started_before_logging() -> None:
     assert not picker.consume_clicks()
 
 
-def test_empty_space_clicks_still_place_and_nearest_marker_is_selected():
+def test_empty_space_deselects_then_places_and_nearest_marker_is_selected() -> None:
+    """
+    Consume the deselection click before restoring normal empty-space placement.
+    """
     picker = desktop.MousePicker()
     drag = desktop.SpotDrag()
     spots = desktop.SampleSpots(pixels=[(10, 20), (12, 20)])
@@ -124,6 +128,11 @@ def test_empty_space_clicks_still_place_and_nearest_marker_is_selected():
     assert drag.number == 2
     mouse(picker, cv2.EVENT_LBUTTONUP, 36, 61)
     drag.update(picker, spots, (576, 768, 3), 3)
+    mouse(picker, cv2.EVENT_LBUTTONDOWN, 200, 200)
+    mouse(picker, cv2.EVENT_LBUTTONUP, 200, 200)
+    drag.update(picker, spots, (576, 768, 3), 3)
+    assert drag.edit.selected is None
+    assert picker.consume_clicks() == []
     mouse(picker, cv2.EVENT_LBUTTONDOWN, 200, 200)
     mouse(picker, cv2.EVENT_LBUTTONUP, 200, 200)
     drag.update(picker, spots, (576, 768, 3), 3)
@@ -182,7 +191,8 @@ def test_main_drag_updates_temperature_and_keeps_named_graph_identity(viewer, mo
 
 
 def test_logging_locks_spot_controls_from_file_dialog_until_stopped(
-    viewer: Any, monkeypatch: pytest.MonkeyPatch,
+    viewer: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
     Keep geometry and placement intact while the logging lock rejects UI edits.
@@ -260,8 +270,10 @@ def test_logging_locks_spot_controls_from_file_dialog_until_stopped(
     assert desktop.main([]) == 0
     expected = [{"number": 1, "enabled": True, "name": "Spot 1"}]
     assert all(
-        [{key: item[key] for key in ("number", "enabled", "name")} for item in state["spots"]] == expected
-        and state["placing"] for state in states[3:]
+        [{key: item[key] for key in ("number", "enabled", "name")} for item in state["spots"]]
+        == expected
+        and state["placing"]
+        for state in states[3:]
     )
     assert [state["locked"] for state in states] == [False] * 3 + [True] * 4 + [False] * 2
     assert [call.kwargs["spots_locked"] for call in viewer.draw_toolbar.call_args_list] == [

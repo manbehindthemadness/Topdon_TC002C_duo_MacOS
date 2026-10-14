@@ -16,6 +16,7 @@ from ..camera_backends.duo.camera import (
     SENSOR_WIDTH,
 )
 from ..measurements.display_cache import MeasurementDisplayCache
+from ..measurements.editing import EditTarget, MeasurementEdit
 from ..measurements.model import MeasurementRegions
 from ..measurements.schema import transform_region
 from ..spot_preferences import validate_spots
@@ -45,7 +46,16 @@ class MousePicker:
                 self.context_clicks.append((x, y))
             return
         if event in (cv2.EVENT_MOUSEMOVE, cv2.EVENT_LBUTTONDOWN, cv2.EVENT_LBUTTONUP):
-            self.drag_events.append((event, x, y, flags))
+            pointer = (event, x, y, flags)
+            if (
+                event == cv2.EVENT_MOUSEMOVE
+                and self.drag_events
+                and self.drag_events[-1][0] == cv2.EVENT_MOUSEMOVE
+                and self.drag_events[-1][3] == flags
+            ):
+                self.drag_events[-1] = pointer
+            else:
+                self.drag_events.append(pointer)
         if event in (cv2.EVENT_MOUSEMOVE, cv2.EVENT_LBUTTONDOWN):
             self.x, self.y = x, y
         if event == cv2.EVENT_LBUTTONUP:
@@ -97,7 +107,9 @@ class SampleSpots(MeasurementRegions):
     names: dict[int, str] = field(default_factory=dict, init=False)
     regions: dict[int, dict] = field(default_factory=dict, init=False)
     region_masks: dict[int, tuple[tuple, np.ndarray]] = field(default_factory=dict, init=False)
-    display_cache: MeasurementDisplayCache = field(default_factory=MeasurementDisplayCache, init=False)
+    display_cache: MeasurementDisplayCache = field(
+        default_factory=MeasurementDisplayCache, init=False
+    )
 
     def __post_init__(self) -> None:
         """
@@ -151,19 +163,27 @@ class SampleSpots(MeasurementRegions):
             raise ValueError("Choose an existing spot to move")
         index = self.numbers.index(number)
         previous = self.pixels[index]
+        width, height = size or self.native_size
         if number in self.regions:
             dx, dy = pixel[0] - previous[0], pixel[1] - previous[1]
             points = self.regions[number]["points"]
             if points:
-                width, height = size or self.native_size
                 dx = max(-min(p[0] for p in points), min(dx, width - 1 - max(p[0] for p in points)))
-                dy = max(-min(p[1] for p in points), min(dy, height - 1 - max(p[1] for p in points)))
+                dy = max(
+                    -min(p[1] for p in points), min(dy, height - 1 - max(p[1] for p in points))
+                )
                 dx = max(-previous[0], min(dx, width - 1 - previous[0]))
                 dy = max(-previous[1], min(dy, height - 1 - previous[1]))
                 pixel = (round(previous[0] + dx), round(previous[1] + dy))
             self.regions[number] = transform_region(
                 self.regions[number], lambda x, y: (x + dx, y + dy)
             )
+            label_position = self.regions[number].get("label_position")
+            if isinstance(label_position, list):
+                self.regions[number]["label_position"] = [
+                    max(0, min(bound - 1, coordinate))
+                    for coordinate, bound in zip(label_position, (width, height), strict=True)
+                ]
         self.pixels[index] = pixel
 
     def name(self, number: int) -> str:
@@ -228,9 +248,7 @@ class SampleSpots(MeasurementRegions):
         """
         Saved state.
         """
-        width, height = (
-            self.native_size if rotation in (0, 180) else self.native_size[::-1]
-        )
+        width, height = self.native_size if rotation in (0, 180) else self.native_size[::-1]
         pixels = [
             (width - 1 - x if horizontal else x, height - 1 - y if vertical else y)
             for x, y in self.pixels
@@ -242,13 +260,21 @@ class SampleSpots(MeasurementRegions):
             self.native_size if rotation in (0, 180) else self.native_size[::-1]
         )
         # Use the original oriented bounds; the anchor loop above has already unrotated them.
-        regions = {number: transform_region(
-            region, lambda x, y: (region_width - 1 - x if horizontal else x,
-                                  region_height - 1 - y if vertical else y)
-        ) for number, region in self.regions.items()}
+        regions = {
+            number: transform_region(
+                region,
+                lambda x, y: (
+                    region_width - 1 - x if horizontal else x,
+                    region_height - 1 - y if vertical else y,
+                ),
+            )
+            for number, region in self.regions.items()
+        }
         for _ in range((360 - rotation) % 360 // 90):
-            regions = {number: transform_region(region, lambda x, y, h=region_height: (h - 1 - y, x))
-                       for number, region in regions.items()}
+            regions = {
+                number: transform_region(region, lambda x, y, h=region_height: (h - 1 - y, x))
+                for number, region in regions.items()
+            }
             region_width, region_height = region_height, region_width
         return {
             "version": 2 if self.regions else 1,
@@ -261,7 +287,9 @@ class SampleSpots(MeasurementRegions):
                     "y": y,
                     "name": self.name(number),
                     "enabled": number not in self.disabled,
-                    **({"region": regions.get(number, self.region(number))} if self.regions else {}),
+                    **(
+                        {"region": regions.get(number, self.region(number))} if self.regions else {}
+                    ),
                 }
                 for number, (x, y) in zip(self.numbers, pixels, strict=True)
             ],
@@ -278,7 +306,9 @@ class SampleSpots(MeasurementRegions):
         self.pixels = [(item["x"], item["y"]) for item in saved["items"]]
         self.numbers = [item["number"] for item in saved["items"]]
         self.names = {item["number"]: item["name"] for item in saved["items"] if item["name"]}
-        self.regions = {item["number"]: item["region"] for item in saved["items"] if "region" in item}
+        self.regions = {
+            item["number"]: item["region"] for item in saved["items"] if "region" in item
+        }
         self.disabled = {item["number"] for item in saved["items"] if not item["enabled"]}
         self.next_number, self.placing = saved["next_number"], saved["placing"]
         width, height = self.native_size
@@ -302,8 +332,9 @@ class SampleSpots(MeasurementRegions):
             (width - 1 - x if horizontal else x, height - 1 - y if vertical else y)
             for x, y in self.pixels
         ]
-        self.transform_regions(lambda x, y: (width - 1 - x if horizontal else x,
-                                             height - 1 - y if vertical else y))
+        self.transform_regions(
+            lambda x, y: (width - 1 - x if horizontal else x, height - 1 - y if vertical else y)
+        )
 
 
 def spot_hit(
@@ -327,12 +358,15 @@ def spot_hit(
             sensor_x, sensor_y = position[0] // scale, position[1] // scale
             shape = (image_shape[0] // scale, image_shape[1] // scale)
             if 0 <= sensor_x < shape[1] and 0 <= sensor_y < shape[0]:
-                inside_area = bool(spots.measurement_mask(number, (sx, sy), shape)[sensor_y, sensor_x])
+                inside_area = bool(
+                    spots.measurement_mask(number, (sx, sy), shape)[sensor_y, sensor_x]
+                )
         if inside_area or (region["kind"] == "spot" and distance <= radius**2):
             hits.append((distance, number, anchor))
     hit = (
         min(hits, key=lambda item: (-spots.region(item[1]).get("z_index", 0), item[0], item[1]))
-        if hits else None
+        if hits
+        else None
     )
     return hit
 
@@ -347,12 +381,14 @@ class SpotDrag:
         self.number = None
         self.captured = False
         self.offset = (0, 0)
+        self.edit = MeasurementEdit()
 
     def cancel(self) -> None:
         """
         Cancel.
         """
         self.number = None
+        self.edit.cancel()
         # A cancelled drag's release must still not place a new spot or click a button.
 
     def update(
@@ -370,17 +406,37 @@ class SpotDrag:
         """
         if locked:
             self.cancel()
+        self.edit.size = (image_shape[1] // scale, image_shape[0] // scale)
+        self.edit.reconcile(spots)
         for event, x, y, flags in picker.consume_drag_events():
             position = image_position_at(x, y, image_shape, viewport_size, toolbar_height)
+            radius = 8 * image_shape[1] / viewport_size[0] if viewport_size else 8
+            if (
+                not locked
+                and not self.captured
+                and self.edit.pointer(event, position, flags, spots, scale, radius)
+            ):
+                if event == cv2.EVENT_LBUTTONUP:
+                    picker.discard_click(x, y)
+                continue
+            if locked and event == cv2.EVENT_LBUTTONUP and self.edit.swallow_release:
+                self.edit.swallow_release = False
+                picker.discard_click(x, y)
             if event == cv2.EVENT_LBUTTONDOWN:
                 self.number = None
                 self.captured = False
+
                 if locked or position is None:
                     continue
                 hit = spot_hit(position, spots, image_shape, scale, viewport_size)
                 if hit is not None:
                     _distance, self.number, anchor = hit
+                    self.edit.selected = EditTarget(self.number, "shape")
+                    self.edit.generation = spots.generation
                     self.offset = (anchor[0] - position[0], anchor[1] - position[1])
+                    self.captured = True
+                elif self.edit.selected is not None:
+                    self.edit.cancel()
                     self.captured = True
             elif event == cv2.EVENT_MOUSEMOVE and self.captured:
                 if not flags & cv2.EVENT_FLAG_LBUTTON:
@@ -395,6 +451,11 @@ class SpotDrag:
                         self._move(spots, position, image_shape, scale)
                 self.number = None
                 self.captured = False
+
+        nudges, self.edit.pending_nudges = self.edit.pending_nudges, []
+        if not locked:
+            for direction in nudges:
+                self.edit.nudge(spots, direction)
 
     def _move(self, spots: Any, position: Any, image_shape: Any, scale: Any) -> None:
         """

@@ -184,7 +184,8 @@ def test_main_context_menu_preserves_spots_and_graph_ids(
     assert panel.open.call_args.args[0]["spots"] == [
         {"number": number, "enabled": True, "name": f"Spot {number}", "pixel": pixel,
          "region": {"kind": "spot", "radius": 0.0, "points": [], "exclude": False,
-                    "line_color": "dynamic", "fill": False, "opacity": 1.0, "z_index": 0,
+                        "line_color": "dynamic", "fill": False, "opacity": 1.0, "z_index": 0,
+                        "label_position": None,
                     "labels": ["number", "average"]}}
         for number, pixel in ((1, [10, 20]), (2, [30, 40]))
     ]

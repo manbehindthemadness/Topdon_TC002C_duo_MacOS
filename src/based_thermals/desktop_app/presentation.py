@@ -122,7 +122,9 @@ class PresentationController(SessionState):
         processed = self.pipeline_worker.latest(self.pipeline_revision)
         result_metadata = {}
         if hasattr(self.pipeline_worker, "latest_with_metadata"):
-            processed, result_metadata = self.pipeline_worker.latest_with_metadata(self.pipeline_revision)
+            processed, result_metadata = self.pipeline_worker.latest_with_metadata(
+                self.pipeline_revision
+            )
         if processed is not None:
             previous_error = self.pipeline_error
             _, image, source, self.pipeline_elapsed_ms, self.pipeline_error = processed
@@ -135,14 +137,19 @@ class PresentationController(SessionState):
                     timestamp = cast(float, result_metadata.get("timestamp"))
                     current_time = cast(float, getattr(image_frame, "timestamp", None))
                     mapping_valid &= bool(result_metadata.get("mapping_valid")) and (
-                        isinstance(timestamp, (int, float)) and isinstance(current_time, (int, float))
-                        and abs(current_time-timestamp) <= self.camera_profile.visible_max_age
+                        isinstance(timestamp, (int, float))
+                        and isinstance(current_time, (int, float))
+                        and abs(current_time - timestamp) <= self.camera_profile.visible_max_age
                     )
                 self.rendered = self.api.replace(
-                    self.rendered, image=image, image_source=source,
+                    self.rendered,
+                    image=image,
+                    image_source=source,
                     measurement_mapping_valid=mapping_valid,
-                    streams={**self.rendered.streams,
-                             "display": result_metadata.get("streams", {})},
+                    streams={
+                        **self.rendered.streams,
+                        "display": result_metadata.get("streams", {}),
+                    },
                 )
         if (
             not self.fresh_frame
@@ -215,17 +222,16 @@ class PresentationController(SessionState):
         ):
             self.notify(self.distance_calibration.message)
         self.layout = (
-            self.api.ToolbarLayout(0, {}) if self.viewer is not None
+            self.api.ToolbarLayout(0, {})
+            if self.viewer is not None
             else self.api.toolbar_layout(self.rendered.image.shape[1])
         )
         if not self.initial_window_size_set:
             width, height = self.saved_window_size or (
-                self.rendered.image.shape[1] * (
-                    2 if self.show_graph and self.viewer_layout == "landscape" else 1
-                ),
-                (self.rendered.image.shape[0] + self.layout.height) * (
-                    2 if self.show_graph and self.viewer_layout == "portrait" else 1
-                ),
+                self.rendered.image.shape[1]
+                * (2 if self.show_graph and self.viewer_layout == "landscape" else 1),
+                (self.rendered.image.shape[0] + self.layout.height)
+                * (2 if self.show_graph and self.viewer_layout == "portrait" else 1),
             )
             self.requested_window_size = (width, height)
             if self.viewer is not None:
@@ -277,8 +283,11 @@ class PresentationController(SessionState):
             pointer_image_height = self.graph_layout.canvas_size[1] - pointer_toolbar_height
         self.display, selected = (
             (self.rendered.image, None)
-            if (self.emissivity_calibration.active or self.reflected_calibration.active
-                or not self.rendered.measurement_mapping_valid)
+            if (
+                self.emissivity_calibration.active
+                or self.reflected_calibration.active
+                or not self.rendered.measurement_mapping_valid
+            )
             else self.api.draw_picker(
                 self.rendered,
                 self.picker,
@@ -287,11 +296,12 @@ class PresentationController(SessionState):
                 toolbar_height=self.layout.height,
                 temperature_unit=self.renderer.temperature_unit,
                 spots=self.spots,
-                dragging_spot=self.spot_drag.number is not None or self.measurement_drawing.kind is not None,
-                pointer_over_image=self.viewer.over_image if self.viewer is not None
-                else self.pointer_monitor.over_image(
-                    pointer_image_height, pointer_toolbar_height
-                ),
+                dragging_spot=self.spot_drag.number is not None
+                or self.spot_drag.edit.captured
+                or self.measurement_drawing.kind is not None,
+                pointer_over_image=self.viewer.over_image
+                if self.viewer is not None
+                else self.pointer_monitor.over_image(pointer_image_height, pointer_toolbar_height),
             )
         )
         if selected is not None:
@@ -301,6 +311,15 @@ class PresentationController(SessionState):
         """
         Draw status for the current desktop session.
         """
+        edit = self.spot_drag.edit
+        self.spots.display_cache.label_preview = (
+            {edit.selected.number: edit.draft["label_position"]}
+            if edit.selected is not None
+            and edit.selected.kind == "label"
+            and edit.draft is not None
+            and edit.moved
+            else {}
+        )
         if self.rendered.measurement_status:
             self.status = self.rendered.measurement_status
         elif not self.rendered.measurement_mapping_valid:
@@ -331,6 +350,7 @@ class PresentationController(SessionState):
                 self.renderer.temperature_unit,
             )
         self.display = self.draw_measurement_draft(self.display)
+        self.display = edit.draw(self.display, self.spots, self.renderer.scale)
         if self.show_instructions:
             self.display = self.api.draw_control_instructions(self.display)
         if self.recorder.is_recording:
@@ -386,9 +406,7 @@ class PresentationController(SessionState):
         # Capture spot values in this frame's orientation, before click actions can rotate
         # coordinates or add/clear spots. The next frame supplies any changed selection.
         self.graph_spots = (
-            self.spots.graph_readings(self.rendered.temperatures_celsius)
-            if self.show_graph
-            else ()
+            self.spots.graph_readings(self.rendered.temperatures_celsius) if self.show_graph else ()
         )
         self.spots.display_cache.end_frame()
 
@@ -415,7 +433,8 @@ class PresentationController(SessionState):
                     self.notify(f"Could not open spot menu: {exc}")
         for click_x, click_y in self.picker.consume_clicks():
             if (
-                self.viewer is None and self.show_graph
+                self.viewer is None
+                and self.show_graph
                 and self.graph_layout
                 and self.graph_layout.graph_control_at(
                     click_x, click_y, self.api.graph_reset_rect, self.event_viewport
@@ -429,7 +448,8 @@ class PresentationController(SessionState):
                     self.notify("Chart data cleared")
                 continue
             if (
-                self.viewer is None and self.show_graph
+                self.viewer is None
+                and self.show_graph
                 and self.graph_layout
                 and self.graph_layout.graph_control_at(
                     click_x, click_y, self.api.graph_config_rect, self.event_viewport
@@ -442,7 +462,8 @@ class PresentationController(SessionState):
                     self.notify(f"Could not open graph configuration: {exc}")
                 continue
             if (
-                self.viewer is None and self.show_graph
+                self.viewer is None
+                and self.show_graph
                 and self.graph_layout
                 and self.graph_layout.graph_control_at(
                     click_x, click_y, self.api.graph_interval_rect, self.event_viewport
@@ -456,7 +477,8 @@ class PresentationController(SessionState):
                 continue
             self.graph_interval_editor.text = None
             if (
-                self.viewer is None and self.show_graph
+                self.viewer is None
+                and self.show_graph
                 and self.graph_layout
                 and self.graph_layout.graph_control_at(
                     click_x, click_y, self.api.graph_log_button_rect, self.event_viewport
@@ -464,12 +486,16 @@ class PresentationController(SessionState):
             ):
                 self.toggle_graph_logging()
                 continue
-            action = None if self.viewer is not None else self.api.toolbar_action_at(
-                click_x,
-                click_y,
-                self.rendered.image.shape[1],
-                viewport_size=self.viewport_size,
-                canvas_height=self.display.shape[0],
+            action = (
+                None
+                if self.viewer is not None
+                else self.api.toolbar_action_at(
+                    click_x,
+                    click_y,
+                    self.rendered.image.shape[1],
+                    viewport_size=self.viewport_size,
+                    canvas_height=self.display.shape[0],
+                )
             )
             if action == "capture":
                 self.open_capture()
@@ -487,8 +513,9 @@ class PresentationController(SessionState):
                 self.show_instructions = not self.show_instructions
             elif action == "quit":
                 quit_requested = True
-            elif action is None and (not self.rendered.measurement_mapping_valid
-                                     or self.reflected_calibration.active):
+            elif action is None and (
+                not self.rendered.measurement_mapping_valid or self.reflected_calibration.active
+            ):
                 continue
             elif action is None and self.emissivity_calibration.active:
                 if self.emissivity_calibration.selecting and self.rendered.measurements_valid:
@@ -508,7 +535,9 @@ class PresentationController(SessionState):
                             pixel,
                             self.rendered.temperatures_celsius.shape[::-1],
                             float(
-                                self.renderer.convert_counts(self.rendered.raw_counts)[pixel[1], pixel[0]]
+                                self.renderer.convert_counts(self.rendered.raw_counts)[
+                                    pixel[1], pixel[0]
+                                ]
                             ),
                         )
                         self.notify(self.emissivity_calibration.message)
@@ -608,7 +637,8 @@ class PresentationController(SessionState):
         else:
             self.api.cv2.imshow(self.api.WINDOW_NAME, self.display)
         if (
-            self.viewer is None and self.cocoa_initial_resize_pending
+            self.viewer is None
+            and self.cocoa_initial_resize_pending
             and self.requested_window_size is not None
         ):
             # Cocoa's first imshow resets the content size to its bitmap size.
@@ -623,7 +653,9 @@ class PresentationController(SessionState):
         try:
             if (
                 self.viewer is None
-                and self.api.cv2.getWindowProperty(self.api.WINDOW_NAME, self.api.cv2.WND_PROP_VISIBLE)
+                and self.api.cv2.getWindowProperty(
+                    self.api.WINDOW_NAME, self.api.cv2.WND_PROP_VISIBLE
+                )
                 == 0
             ):
                 return False
@@ -647,7 +679,9 @@ class PresentationController(SessionState):
             return True
         self.diagnostics.stage("keyboard_controls")
         if (
-            self.viewer is None and key == 27 and self.api.sys.platform == "darwin"
+            self.viewer is None
+            and key == 27
+            and self.api.sys.platform == "darwin"
             and macos_window.exit_fullscreen(self.api.WINDOW_NAME)
         ):
             self.notify("Left fullscreen")

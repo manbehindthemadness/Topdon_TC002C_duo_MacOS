@@ -72,6 +72,19 @@ available even when measurement editing is locked.
 
 Drag a spot's crosshair or an area's body in the thermal image to move the whole
 measurement. Its identity/name stays the same, and geometry stays inside the sensor.
+Click a vertex to select it, or drag it directly. A selected Bézier anchor exposes
+its incoming and outgoing control handles; moving the anchor carries both handles.
+Click or drag either handle to adjust it independently. Rectangles and ovals use
+their two opposite bounding corners. With the image focused, arrow keys nudge the
+selected point by one native pixel. Clicking empty image space clears the selection;
+the next click resumes normal spot placement when placement is enabled.
+
+Drag a label to position it manually, or click it and use arrow keys. Manual label
+positions are saved with the measurement and follow viewer rotation and movement.
+During vertex dragging, a yellow outline previews the edit while readings keep
+using the saved shape; release commits the new geometry. Label dragging changes
+only the display. Logging/calibration locks, deletion and view changes cancel edits.
+
 Uncheck a list item to disable it without deleting its configuration. Use **Delete
 selected** to remove it, or **Clear all measurements** to remove everything and reset numbering.
 

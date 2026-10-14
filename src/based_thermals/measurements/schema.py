@@ -25,6 +25,7 @@ def default_region(kind: str = "spot") -> dict:
         "fill": False,
         "opacity": 1.0,
         "z_index": 0,
+        "label_position": None,
         "labels": ["number", "average"] if kind == "spot" else ["number", "min", "max", "average"],
     }
 
@@ -36,7 +37,7 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
     Bezier points are anchor/control/control triples. The next triple supplies
     the endpoint, and the final segment wraps to the first anchor.
     """
-    appearance = {"line_color", "fill", "opacity", "z_index"}
+    appearance = {"line_color", "fill", "opacity", "z_index", "label_position"}
     required = set(default_region()) - appearance
     if (
         not isinstance(value, dict)
@@ -109,6 +110,19 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
             ):
                 raise ValueError("Geometry points must lie inside the native sensor grid")
         normalized.append([round(float(coordinate), 4) for coordinate in point])
+    label_position = value.get("label_position")
+    if label_position is not None:
+        if not isinstance(label_position, (list, tuple)) or len(label_position) != 2:
+            raise ValueError("Label position must contain native x and y coordinates")
+        for coordinate, bound in zip(label_position, native_size, strict=True):
+            if (
+                isinstance(coordinate, bool)
+                or not isinstance(coordinate, (int, float))
+                or not math.isfinite(coordinate)
+                or not 0 <= coordinate <= bound - 1
+            ):
+                raise ValueError("Label position must lie inside the native sensor grid")
+        label_position = [round(float(coordinate), 4) for coordinate in label_position]
     region = {
         "kind": kind,
         "radius": float(radius),
@@ -119,6 +133,7 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
         "fill": fill,
         "opacity": float(opacity),
         "z_index": z_index,
+        "label_position": label_position,
     }
     return region
 
@@ -142,8 +157,12 @@ def transform_region(region: dict, transform: Any) -> dict:
     """
     Transform all vertices and Bezier handles without changing radius or metadata.
     """
-    transformed = {
+    transformed: dict[str, Any] = {
         **region,
         "points": [[round(float(v), 4) for v in transform(x, y)] for x, y in region["points"]],
     }
+    if region.get("label_position") is not None:
+        transformed["label_position"] = [
+            round(float(v), 4) for v in transform(*region["label_position"])
+        ]
     return transformed

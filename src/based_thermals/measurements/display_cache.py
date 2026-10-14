@@ -51,7 +51,11 @@ class MeasurementDisplayCache:
         self.masks: OrderedDict[int, tuple[tuple, ShapeMasks]] = OrderedDict()
         self.mask_bytes = 0
         self.layout_key: tuple | None = None
+        self.layout_generation = 0
         self.layout: tuple[tuple[MeasurementLabel, ...], tuple[Rectangle, ...]] | None = None
+        self.display_labels: list[MeasurementLabel] = []
+        self.label_preview: dict[int, list[float]] = {}
+        self.positioned_labels: dict[int, tuple[tuple, MeasurementLabel]] = {}
         self._frame = False
         self._readings_key: tuple | None = None
         self._temperatures: np.ndarray | None = None
@@ -95,7 +99,7 @@ class MeasurementDisplayCache:
         Release deleted identities rather than retaining old geometry across clears.
         """
         saved = set(numbers)
-        for cache in (self.boundaries, self.masks):
+        for cache in (self.boundaries, self.masks, self.positioned_labels):
             for number in tuple(cache):
                 if number not in saved:
                     if cache is self.masks:

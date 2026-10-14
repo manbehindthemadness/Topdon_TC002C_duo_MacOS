@@ -36,6 +36,7 @@ class MeasurementLabel:
     anchor: tuple[int, int]
     origin: tuple[int, int]
     rectangle: tuple[int, int, int, int]
+    number: int = 0
 
 
 def display_boundary(region: dict, center: tuple[int, int], scale: int) -> np.ndarray:
@@ -130,7 +131,7 @@ def label_layout(
             replace(label, text=text)
             for label, (_number, text) in zip(old_labels, texts, strict=True)
         ]
-        return updated, list(old_occupied)
+        return positioned_labels(updated, list(old_occupied), spots, rendered.image.shape, scale)
     labels: list[MeasurementLabel] = []
     for number, text in texts:
         points = outlines[number]
@@ -154,11 +155,65 @@ def label_layout(
             candidates = points
         nearest = candidates[np.argmin(np.sum((candidates - midpoint) ** 2, axis=1))]
         anchor = round(float(nearest[0])), round(float(nearest[1]))
-        labels.append(MeasurementLabel(text, anchor, origin, rectangle))
+        labels.append(MeasurementLabel(text, anchor, origin, rectangle, number))
         occupied.append(rectangle)
     spots.display_cache.layout_key = key
     spots.display_cache.layout = tuple(labels), tuple(occupied)
-    return labels, occupied
+    spots.display_cache.layout_generation += 1
+    return positioned_labels(labels, occupied, spots, rendered.image.shape, scale)
+
+
+def positioned_labels(
+    labels: list[MeasurementLabel],
+    occupied: list[Rectangle],
+    spots: SampleSpots,
+    shape: tuple[int, ...],
+    scale: int,
+) -> tuple[list[MeasurementLabel], list[Rectangle]]:
+    """
+    Override only manually positioned labels without invalidating the automatic layout cache.
+    """
+    result = []
+    shape_bounds = occupied[: len(occupied) - len(labels)]
+    for label in labels:
+        position = spots.display_cache.label_preview.get(
+            label.number, spots.region(label.number).get("label_position")
+        )
+        if position is not None:
+            key = spots.display_cache.layout_generation, tuple(position), label.rectangle, scale, shape
+            cached = spots.display_cache.positioned_labels.get(label.number)
+            if cached is not None and cached[0] == key:
+                result.append(replace(cached[1], text=label.text))
+                continue
+            width = label.rectangle[2] - label.rectangle[0]
+            above = label.origin[1] - label.rectangle[1]
+            below = label.rectangle[3] - label.origin[1]
+            x = max(0, min(max(0, shape[1] - width), round(position[0] * scale) + scale // 2))
+            y = max(above, min(shape[0] - below, round(position[1] * scale) + scale // 2))
+            rectangle = x, y - above, x + width, y + below
+            center = spots.pixels[spots.numbers.index(label.number)]
+            points = spots.display_cache.boundary(
+                label.number, spots.region(label.number), center, scale
+            )
+            if len(points) == 4:
+                points = np.concatenate(
+                    [
+                        np.linspace(points[i], points[(i + 1) % len(points)], 32)
+                        for i in range(len(points))
+                    ]
+                )
+            midpoint = np.array((x + width / 2, y + (below - above) / 2))
+            nearest = points[np.argmin(np.sum((points - midpoint) ** 2, axis=1))]
+            label = replace(
+                label, origin=(x, y), rectangle=rectangle, anchor=(int(nearest[0]), int(nearest[1]))
+            )
+            spots.display_cache.positioned_labels[label.number] = key, label
+        else:
+            spots.display_cache.positioned_labels.pop(label.number, None)
+        result.append(label)
+    spots.display_cache.display_labels = result
+    rectangles = shape_bounds + [label.rectangle for label in result]
+    return result, rectangles
 
 
 def draw_boundaries(mask: np.ndarray, spots: SampleSpots, scale: int) -> None:

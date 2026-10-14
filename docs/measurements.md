@@ -19,6 +19,19 @@ Dragging an area in the image translates its whole geometry, keeping every
 vertex/control handle inside the sensor. Existing measurement and calibration
 locks apply to all mutations.
 
+In the main image, vertices can be dragged directly or clicked to select them.
+Selection exposes handles, including the two adjacent Bézier controls; moving an
+anchor translates its controls together. Arrow keys with image focus nudge the
+selected point, label or whole spot/area by one oriented native pixel. An empty
+image click clears selection and consumes that click before restoring normal
+placement. Labels can be dragged independently; their baseline positions are
+stored in native sensor coordinates and transformed with the measurement.
+Point drags use a transient outline and hold committed sampling until release.
+Consecutive pointer motion is coalesced, geometry hit tests run on press, and
+unchanged preview outlines and manual label geometry are cached. Moving a label
+reuses the automatic layout without reflowing other labels. Locks, invalid mapping,
+deletion, disabling or external edits cancel captures and suppress their release.
+
 ## Drawing on live video
 
 The viewer's **Rotate** popup selects preview rotation independently from its
@@ -139,7 +152,9 @@ CSV files keep canonical Celsius and selected-unit values. Area rows have IDs
 Preferences retain the existing `spots` key. Legacy point-only version 1 files
 remain readable. Version 2 items add a validated `region` object with `kind`,
 `radius`, `points`, `exclude` and `labels`, plus optional `line_color`, `fill`
-and `opacity`, `z_index` fields. Missing appearance fields default to Dynamic color,
+and `opacity`, `z_index`, `label_position` fields. `label_position` is null for
+automatic placement or a finite, bounded native `[x, y]` baseline position.
+Missing appearance fields default to Dynamic color,
 no fill and full opacity. Color is `dynamic` or `#RRGGBB`; stored opacity is
 0–1, displayed as 0–100%; Z index is an integer from −1,000 to 1,000 (default 0).
 Geometry is validated without running
