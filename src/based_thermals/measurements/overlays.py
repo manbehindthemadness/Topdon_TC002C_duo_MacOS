@@ -78,7 +78,11 @@ def label_layout(
         if not fields:
             continue
         if region["exclude"]:
-            text = f"Exclusion {number}"
+            if not {"number", "name"}.intersection(fields):
+                continue
+            text = "Exclusion"
+            if "number" in fields:
+                text += f" {number}"
             if "name" in fields:
                 text += f": {spots.name(number)}"
         else:

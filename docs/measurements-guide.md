@@ -119,6 +119,8 @@ distance, emissivity or reflected-temperature settings; see [calibration](calibr
 When editing an exclusion, the Min, Max and Average label controls are hidden.
 Their saved choices return when the region becomes a measurement again; Number
 and Name remain available for identifying exclusion zones.
+Number controls the exclusion's numeric identifier; Name controls its saved name.
+Unchecking both hides its label even if hidden temperature fields remain checked.
 
 ## Graphs and history
 

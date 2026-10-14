@@ -213,6 +213,37 @@ def test_edge_labels_visibility_and_shape_collision_reservations() -> None:
     np.testing.assert_array_equal(rendered.temperatures_celsius, plane)
 
 
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        (["number", "name"], "Exclusion 1: Keepout"),
+        (["number"], "Exclusion 1"),
+        (["name"], "Exclusion: Keepout"),
+        (["name", "average"], "Exclusion: Keepout"),
+        (["min", "max", "average"], None),
+        ([], None),
+    ],
+)
+def test_exclusion_labels_honor_number_and_name(fields: list[str], expected: str | None) -> None:
+    """
+    Hidden temperature selections never force an exclusion identifier to remain visible.
+    """
+    spots = SampleSpots(native_size=(8, 6))
+    number = spots.create_region(
+        (3, 2), region("rectangle", [[2, 1], [4, 3]], exclude=True, labels=["number", "name"]), (8, 6)
+    )
+    spots.rename(number, "Keepout")
+    rendered = RenderedThermalFrame(
+        np.zeros((120, 160, 3), np.uint8), TemperatureStats(0, 0, 0, 0), np.zeros((6, 8)), None,
+    )
+    # Warm the layout cache before changing the visible label fields.
+    label_layout(rendered, spots, 20, "C", place_temperature_label)
+    spots.configure_region(number, {**spots.region(number), "labels": fields}, (8, 6))
+    labels, occupied = label_layout(rendered, spots, 20, "C", place_temperature_label)
+    assert [label.text for label in labels] == ([expected] if expected is not None else [])
+    assert len(occupied) == 1 + len(labels)
+
+
 def test_area_move_clamps_whole_geometry_and_keeps_identity() -> None:
     """
     Retain vertices/handles inside the grid when an area is dragged to an edge.
