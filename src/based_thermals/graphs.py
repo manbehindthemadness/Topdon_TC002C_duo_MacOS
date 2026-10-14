@@ -15,6 +15,7 @@ import numpy as np
 
 from .graph_plotting import History, pixel_curve_samples, visible_history
 from .graph_settings import GRAPH_DEFAULTS, validate_graph_settings
+from .graph_smoothing import interpolate_samples, rolling_average
 from .measurements.series import MeasurementValue, series_labels, series_values
 
 GRAPH_INTERVAL = 0.5
@@ -79,6 +80,8 @@ class GraphSnapshot:
     spot_names: tuple[tuple[tuple[int, int], str], ...] = ()
     measurements_valid: bool = True
     history_range: float | None = None
+    averaging_samples: int = 1
+    interpolation_samples: int = 0
 
 
 def spot_title(snapshot: GraphSnapshot, key: tuple[int, int]) -> str:
@@ -173,7 +176,10 @@ class GraphWorker:
             self._reschedule = True
             self._condition.notify()
 
-    def configure(self, settings):
+    def configure(self, settings: object) -> None:
+        """
+        Apply chart preferences and redraw retained data without adding samples.
+        """
         settings = validate_graph_settings(settings)
         with self._condition:
             if self._log_file is not None:
@@ -182,7 +188,7 @@ class GraphWorker:
             for history in (self._master, *self._spots.values()):
                 self._compact(history)
             if self._latest is not None:
-                self._latest = replace(self._latest, history_range=self._history_range())
+                self._latest = self._configured_snapshot(self._latest)
                 self._redraw = True
                 self._condition.notify()
 
@@ -197,6 +203,16 @@ class GraphWorker:
             self._image = None
             self._redraw = True
             self._condition.notify()
+
+    def _configured_snapshot(self, snapshot: GraphSnapshot) -> GraphSnapshot:
+        """
+        Attach the worker's display preferences to an immutable render snapshot.
+        """
+        return replace(
+            snapshot, history_range=self._history_range(),
+            averaging_samples=self._settings["averaging_samples"],
+            interpolation_samples=self._settings["interpolation_samples"],
+        )
 
     def _history_range(self):
         return self._settings["range_seconds"] if self._settings["range_mode"] == "fixed" else None
@@ -326,7 +342,7 @@ class GraphWorker:
                     self._spots.pop(key)
                     self._history_generation += 1
                     self._redraw = True
-            self._latest = replace(snapshot, history_range=self._history_range())
+            self._latest = self._configured_snapshot(snapshot)
             if first or self._redraw:
                 self._condition.notify()
 
@@ -407,9 +423,13 @@ class GraphWorker:
                     self._sample(snapshot, now)
                     self._write_log(snapshot, now)
                 generation = self._history_generation
-                master = visible_history(self._master, now, snapshot.history_range)
+                master = visible_history(
+                    self._master, now, snapshot.history_range, snapshot.averaging_samples - 1,
+                )
                 spots = {
-                    key: visible_history(history, now, snapshot.history_range)
+                    key: visible_history(
+                        history, now, snapshot.history_range, snapshot.averaging_samples - 1,
+                    )
                     for key, history in self._spots.items()
                 }
             result = render_graphs(snapshot, master, spots, now)
@@ -455,7 +475,11 @@ def render_graphs(
     for index, (title, history, labels) in enumerate(charts):
         y0 = top + round((height - top) * index / len(charts))
         y1 = top + round((height - top) * (index + 1) / len(charts))
-        _draw_chart(canvas[y0:y1], title, history, labels, snapshot.unit, now, duration)
+        _draw_chart(
+            canvas[y0:y1], title, history, labels, snapshot.unit, now, duration,
+            averaging_samples=snapshot.averaging_samples,
+            interpolation_samples=snapshot.interpolation_samples,
+        )
     return canvas
 
 
@@ -467,6 +491,8 @@ def _draw_chart(
     unit: str,
     now: float,
     duration: float = HISTORY_SECONDS,
+    averaging_samples: int = 1,
+    interpolation_samples: int = 0,
 ) -> None:
     """
     Draw scalar histories with separate curves across unavailable measurements.
@@ -487,11 +513,16 @@ def _draw_chart(
         1,
         cv2.LINE_AA,
     )
-    samples = visible_history(history, now, duration)
+    samples = visible_history(history, now, duration, averaging_samples - 1)
     if not samples:
         return
     stamps = np.array([stamp for stamp, _ in samples])
     values = np.array([value for _, value in samples], dtype=np.float64)
+    values = rolling_average(values, averaging_samples)
+    visible = stamps >= now - duration
+    stamps, values = stamps[visible], values[visible]
+    if not len(stamps):
+        return
     if unit == "F":
         values = values * 1.8 + 32
     for column, label in enumerate(labels):
@@ -527,7 +558,10 @@ def _draw_chart(
             1,
             cv2.LINE_AA,
         )
-    _draw_history_curves(canvas, stamps, values, (left, right, top, bottom), low, high, now, duration)
+    _draw_history_curves(
+        canvas, stamps, values, (left, right, top, bottom), low, high, now, duration,
+        interpolation_samples,
+    )
     cv2.putText(
         canvas, f"-{history_duration(duration)}", (left, height - 7), font, 0.32, (155, 160, 175), 1
     )
@@ -543,6 +577,7 @@ def _draw_history_curves(
     high: float,
     now: float,
     duration: float,
+    interpolation_samples: int = 0,
 ) -> None:
     """
     Draw pixel-bounded curves with bulk coordinates and preserved extrema.
@@ -557,12 +592,21 @@ def _draw_history_curves(
         indices, boundaries = pixel_curve_samples(x, values[:, column])
         if not indices.size:
             continue
-        y = np.clip(
-            np.rint(bottom - (values[indices, column] - low) / (high - low) * (bottom - top)),
-            top, bottom,
-        ).astype(np.int32)
-        points = np.column_stack((x[indices], y))
-        runs = np.split(points, boundaries)
+        runs = []
+        for run_indices in np.split(indices, boundaries):
+            times, curve_values = interpolate_samples(
+                stamps[run_indices], values[run_indices, column], interpolation_samples,
+            )
+            curve_x = np.clip(
+                np.rint(left + (times - now + duration) / duration * (right - left)),
+                left, right,
+            ).astype(np.int32)
+            retained, _splits = pixel_curve_samples(curve_x, curve_values)
+            y = np.clip(
+                np.rint(bottom - (curve_values[retained] - low) / (high - low) * (bottom - top)),
+                top, bottom,
+            ).astype(np.int32)
+            runs.append(np.column_stack((curve_x[retained], y)))
         curves = [run for run in runs if len(run) > 1]
         if curves:
             cv2.polylines(canvas, curves, False, COLORS[column], 1, cv2.LINE_AA)

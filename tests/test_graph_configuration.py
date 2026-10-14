@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -18,9 +19,18 @@ from based_thermals.settings_preferences import load_settings, save_settings
         {"history_points": True},
         {"history_points": 255},
         {"compression": 1},
+        {"averaging_samples": 0},
+        {"averaging_samples": True},
+        {"averaging_samples": 257},
+        {"interpolation_samples": -1},
+        {"interpolation_samples": 33},
+        {"interpolation_samples": 1.5},
     ],
 )
-def test_graph_settings_validation(settings):
+def test_graph_settings_validation(settings: dict) -> None:
+    """
+    Reject malformed history and sample-based settings before applying them.
+    """
     with pytest.raises((ValueError, TypeError)):
         validate_graph_settings(settings)
 
@@ -40,7 +50,10 @@ def test_graph_configuration_resizes_history_and_locks_during_logging(tmp_path):
         worker.close()
 
 
-def test_range_change_redraws_without_an_extra_temperature_sample(monkeypatch):
+def test_range_change_redraws_without_an_extra_temperature_sample(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Changing display settings redraws history without recording an extra sample.
+    """
     real = graphs.render_graphs
     render = Mock(wraps=real)
     monkeypatch.setattr(graphs, "render_graphs", render)
@@ -51,22 +64,31 @@ def test_range_change_redraws_without_an_extra_temperature_sample(monkeypatch):
         with worker._condition:
             assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
             first = worker._image
-        worker.configure({"range_mode": "fixed", "range_seconds": 300})
+        worker.configure({"range_mode": "fixed", "range_seconds": 300,
+                          "averaging_samples": 3, "interpolation_samples": 4})
         with worker._condition:
             assert worker._condition.wait_for(lambda: worker._image is not first, timeout=2)
             assert len(worker._master) == 1
         assert render.call_args.args[0].history_range == 300
+        assert render.call_args.args[0].averaging_samples == 3
+        assert render.call_args.args[0].interpolation_samples == 4
+        assert worker._master[-1][1] == (18, 20, 24, 21)
     finally:
         worker.close()
 
 
-def test_graph_preferences_round_trip(monkeypatch, tmp_path):
+def test_graph_preferences_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """
+    Persist non-default sample controls alongside existing history preferences.
+    """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     settings = {
         **GRAPH_DEFAULTS,
         "range_mode": "fixed",
         "range_seconds": 600,
         "history_points": 8192,
+        "averaging_samples": 5,
+        "interpolation_samples": 8,
     }
     save_settings({"graph_settings": settings})
     assert load_settings()["graph_settings"] == settings
@@ -74,7 +96,19 @@ def test_graph_preferences_round_trip(monkeypatch, tmp_path):
     assert load_settings() == {"display": {}, "hardware": {}, "show_graph": True}
 
 
-def test_graph_configuration_popup_controls_and_logging_lock():
+def test_legacy_graph_preferences_default_to_unmodified_curves() -> None:
+    """
+    Old settings without sample controls retain the previous chart appearance.
+    """
+    settings = validate_graph_settings({"history_points": 8192})
+    assert settings["averaging_samples"] == 1
+    assert settings["interpolation_samples"] == 0
+
+
+def test_graph_configuration_popup_controls_and_logging_lock() -> None:
+    """
+    Sample controls publish settings and follow the shared logging lock.
+    """
     script = """
 from PySide6.QtWidgets import QApplication
 from based_thermals.graph_window import GraphWindow
@@ -90,12 +124,20 @@ window.range_mode.setCurrentIndex(1)
 window.minutes.setValue(5)
 window.compression.setChecked(False)
 window.points.setValue(8192)
+editor = window.averaging.lineEdit()
+editor.setText("5")
+editor.setModified(True)
+window.update_state({"settings": messages[-1]["settings"]})
+assert editor.text() == "5"
+window.averaging.interpretText()
+window.averaging.setValue(5)
+window.interpolation.setValue(8)
 settings = messages[-1]["settings"]
-assert settings == {"range_mode": "fixed", "range_seconds": 300, "compression": False, "history_points": 8192}
+assert settings == {**GRAPH_DEFAULTS, "range_mode": "fixed", "range_seconds": 300, "compression": False, "history_points": 8192, "averaging_samples": 5, "interpolation_samples": 8}
 count = len(messages)
 window.update_state({"settings": settings, "locked": True})
 assert len(messages) == count
-assert all(not control.isEnabled() for control in (window.range_mode, window.minutes, window.compression, window.points))
+assert all(not control.isEnabled() for control in (window.range_mode, window.minutes, window.compression, window.points, window.averaging, window.interpolation))
 window.show()
 assert window.close_button.isEnabled()
 window.close_button.click()
@@ -113,3 +155,4 @@ assert window.minutes.isEnabled()
         check=False,
     )
     assert result.returncode == 0, result.stderr
+    assert "RuntimeError" not in result.stderr, result.stderr

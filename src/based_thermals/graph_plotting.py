@@ -9,12 +9,14 @@ HistorySample = tuple[float, tuple[float, ...]]
 History = Sequence[HistorySample] | deque[HistorySample]
 
 
-def visible_history(history: History, now: float, duration: float | None) -> tuple[HistorySample, ...]:
+def visible_history(
+    history: History, now: float, duration: float | None, preceding_samples: int = 0,
+) -> tuple[HistorySample, ...]:
     """
     Select chronological visible samples without traversing older history.
 
     A missing duration selects the entire retained session. Histories are ordered
-    by timestamp; inspect the newest end and stop at the first older sample.
+    by timestamp; retain optional preceding samples to warm up a rolling average.
     """
     if not history:
         return ()
@@ -26,7 +28,9 @@ def visible_history(history: History, now: float, duration: float | None) -> tup
         if sample[0] > now:
             continue
         if cutoff is not None and sample[0] < cutoff:
-            break
+            if preceding_samples == 0:
+                break
+            preceding_samples -= 1
         samples.append(sample)
     samples.reverse()
     return tuple(samples)

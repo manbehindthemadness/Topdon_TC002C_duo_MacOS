@@ -7,10 +7,15 @@ GRAPH_DEFAULTS = {
     "range_seconds": 600.0,
     "compression": True,
     "history_points": 4096,
+    "averaging_samples": 1,
+    "interpolation_samples": 0,
 }
 
 
-def validate_graph_settings(values):
+def validate_graph_settings(values: object) -> dict:
+    """
+    Validate persisted chart settings, supplying defaults for older preferences.
+    """
     if not isinstance(values, dict):
         raise TypeError("Graph settings must be an object")
     settings = {**GRAPH_DEFAULTS, **values}
@@ -31,4 +36,10 @@ def validate_graph_settings(values):
         or not 256 <= settings["history_points"] <= 65536
     ):
         raise ValueError("History must contain between 256 and 65,536 points per chart")
+    for name, minimum, maximum in (
+        ("averaging_samples", 1, 256),
+        ("interpolation_samples", 0, 32),
+    ):
+        if type(settings[name]) is not int or not minimum <= settings[name] <= maximum:
+            raise ValueError(f"{name.replace('_', ' ').title()} must be {minimum}–{maximum}")
     return settings

@@ -135,6 +135,15 @@ graph histories are session-only. Changing a scalar spot into an area or back re
 its history. Disabling/deleting a measurement or making it an exclusion removes
 its active chart. Graph compression does not discard valid CSV samples.
 
+Chart Config also offers **Average over samples** (1–256; 1 turns it off) and
+**Extra points per sample interval** (0–32; 0 turns interpolation off). Averaging
+uses a trailing window of retained chart samples for each curve independently,
+including samples preceding the visible time window. Older compressed history
+therefore uses its retained samples rather than discarded readings. Smooth
+interpolation adds display points between samples without overshooting measured
+extrema. Both restart at gaps, affect only chart display, and leave measurements
+and CSV output unchanged. Preferences are saved and locked while logging.
+
 ## Why are controls locked?
 
 CSV logging, a pending log Save dialog, and calibration lock relevant edits so

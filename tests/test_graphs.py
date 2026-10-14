@@ -90,12 +90,12 @@ def test_graphs_share_height_and_convert_entire_history_to_selected_unit(
     charts = []
     real_chart = graphs._draw_chart
 
-    def track_chart(canvas: np.ndarray, *args: Any) -> None:
+    def track_chart(canvas: np.ndarray, *args: Any, **kwargs: Any) -> None:
         """
         Observe chart sizes while retaining the real drawing behavior.
         """
         charts.append(canvas.shape)
-        real_chart(canvas, *args)
+        real_chart(canvas, *args, **kwargs)
 
     monkeypatch.setattr(
         graphs,
