@@ -24,6 +24,28 @@ are reported as failures. A failed check returns a nonzero exit status.
 Normal application tests retain fake sessions and isolated temporary model files
 to cover pipeline behavior independently of the user's model cache.
 
+## Head Pose
+
+Preserve the upstream checkout and prepare optional pinned external weights separately:
+
+```sh
+git submodule update --init -- examples/custom_nodes/head-pose/upstream
+uv run --python .venv/bin/python --script tools/prepare_head_pose.py
+.venv/bin/python experiments/experiment_head_pose.py \
+  --images /path/to/head-image.png --backends cpu coreml --pose-backend cpu
+```
+
+Preparation uses isolated ONNX/certificate dependencies and writes into ignored
+`diagnostics/head-pose/models`. Preparation is optional for viewer use: the Custom
+node's JSON detector dropdown and empty local overrides download audited pinned
+weights automatically. The experiment measures real Custom worker cold/warm
+timings, writes annotated stills and predictions, and exports portable local-weight
+presets under `diagnostics/head-pose/results`. It does not acquire a camera or alter
+preferences. CPU-only hosts can use `--backends cpu`; unavailable GPU requests use
+the normal fallback, and the report records the registered providers. The
+[Head Pose README](../examples/custom_nodes/head-pose/README.md) documents the
+verified model schemas, measured backends, update workflow and thermal limitations.
+
 ## First-use denoiser preparation
 
 ```sh

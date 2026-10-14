@@ -27,6 +27,12 @@ when adapting an external model, session cache or detection overlay. Read only
 what applies to the requested node. Do not require those model-specific choices
 for ordinary filters.
 
+For multi-model inference and a maintained upstream checkout, consult
+[`head-pose`](../../../examples/custom_nodes/head-pose/README.md). Keep upstream
+as a pinned submodule when preserving its update history is requested, and keep
+the portable adapter separate. Saved packages embed source snapshots, not Git
+checkouts; document review of upstream/weight changes and reopening/resaving nodes.
+
 If behavior is unclear, ask about the transformation, expected inputs/outputs or
 external requirements that materially affect the implementation. Otherwise use
 the user's description and source program. Verify third-party model schemas from
@@ -98,6 +104,21 @@ name from the algorithm actually executed.
 
 ## Adapt and deliver
 
+For model-based nodes, make first use concrete: expose model variants with literal
+JSON `choice` controls and local ONNX files with optional `model` overrides.
+Prefer the shared background resolver for known, audited, checksum-pinned default
+weights; return the input while pending rather than treating an empty override as
+a missing-file error. Multi-model nodes should request each needed asset before
+waiting for readiness. Keep required graph conversion/preparation outside the
+callback, and explain it only for exports that actually need it. Do not assume
+an upstream file named "boxes-only" has removed unused graph branches; verify the
+exact release graph and normalization before accepting it by checksum.
+
+Benchmark each stage and each intended device separately when choosing defaults.
+Small pose/crop models can be faster on CPU even when their detector benefits
+from GPU execution. Report cold compilation separately from warm inference and
+do not infer thermal accuracy from an RGB preview or a frame with no visible head.
+
 Extract only the image-processing part of an existing application; replace its
 capture/UI loop with the callback. Preserve verified channel order, normalization,
 layout, output schema and coordinate mapping. Keep unfamiliar export variants
@@ -120,3 +141,15 @@ Use the existing offscreen Qt helper only when editor interactions changed.
 Keep real model/network/device experiments outside normal pytest collection and
 report separately what was and was not run. Finish with relevant tests, Ruff,
 changed-file IDE inspection and complete diff review as required by `AGENTS.md`.
+
+When controls are added or changed, exercise the actual offscreen editor while
+routine frame/state refreshes continue, not only direct programmatic selection.
+For model pickers, open the popup, highlight a local model, refresh repeatedly,
+finish selection and verify saved JSON/reload behavior. Include a model arriving
+in the cache while the popup is open: refresh must not rebuild an active popup or
+reset its highlight to Automatic. Rescan on the next opening, preserve missing
+saved paths, and honor explicit configuration replacement and pipeline locks.
+For detection limits, test filtering and requested ranking with conflicting
+confidence/box-size examples before truncation; do not assume the largest target.
+Record reusable lessons from demonstrated problems here; keep node-specific
+digests, timings and incident history in the example's documentation.

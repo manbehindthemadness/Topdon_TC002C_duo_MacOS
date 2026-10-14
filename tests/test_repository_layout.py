@@ -12,11 +12,12 @@ def test_application_python_files_stay_within_line_limit() -> None:
     Nested examples can own isolated environments containing third-party packages.
     """
     root = Path(__file__).resolve().parents[1]
+    vendored = root / "examples/custom_nodes/head-pose/upstream"
     directories = ("src", "tests", "scripts", "tools", "examples", "experiments", ".agents")
     oversized = []
     for directory in directories:
         for path in (root / directory).rglob("*.py"):
-            if ".venv" in path.relative_to(root).parts:
+            if ".venv" in path.relative_to(root).parts or path.is_relative_to(vendored):
                 continue
             count = len(path.read_text(encoding="utf-8").splitlines())
             if count > 800:

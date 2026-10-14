@@ -105,3 +105,64 @@ window.close()
 '''
     result = run_popup(script, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_model_popups_survive_frame_refreshes_and_new_downloads(tmp_path: Path) -> None:
+    """
+    Keep highlighted choices stable while viewer updates and model downloads continue.
+    """
+    result = run_popup(
+        '''
+import os, sys
+from pathlib import Path
+from PySide6.QtCore import QPersistentModelIndex, Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from based_thermals.pipeline_ui.custom_choices import ModelPicker
+root = Path(sys.argv[1])
+os.environ["BASED_THERMALS_MODEL_DIR"] = str(root)
+first = root / "first.onnx"
+first.touch()
+app = QApplication([])
+window = QWidget()
+layout = QVBoxLayout(window)
+selected = {"detector": "", "pose": ""}
+pickers = {}
+for name in selected:
+    picker = ModelPicker("", lambda value, key=name: selected.update({key: value}))
+    pickers[name] = picker
+    layout.addWidget(picker)
+window.show()
+app.processEvents()
+for name, picker in pickers.items():
+    picker.combo.showPopup()
+    app.processEvents()
+    view = picker.combo.view()
+    assert view.isVisible()
+    index = picker.combo.model().index(picker.combo.findData(str(first)), 0)
+    highlighted = QPersistentModelIndex(index)
+    view.setCurrentIndex(index)
+    for _ in range(5):
+        for key, field in pickers.items():
+            field.refresh(selected[key])
+        app.processEvents()
+    assert highlighted.isValid(), "Frame refresh discarded popup rows"
+    assert view.currentIndex() == index, "Frame refresh reset the highlighted model"
+    downloaded = root / (name + "-downloaded.onnx")
+    downloaded.touch()
+    picker.refresh(selected[name])
+    assert highlighted.isValid() and view.currentIndex() == index
+    QTest.keyClick(view, Qt.Key.Key_Return)
+    app.processEvents()
+    assert selected[name] == str(first)
+    picker.refresh(selected[name])
+    assert picker.combo.currentData() == str(first)
+    picker.combo.showPopup()
+    app.processEvents()
+    assert picker.combo.findData(str(downloaded)) >= 0
+    picker.combo.hidePopup()
+window.close()
+''',
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

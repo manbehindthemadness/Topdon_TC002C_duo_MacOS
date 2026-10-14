@@ -110,6 +110,7 @@ class ModelPicker(QWidget):
         super().__init__()
         self.changed = changed
         self.value = value
+        self.choices: list[tuple[str, str]] = []
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.combo = ModelCombo(lambda: self.refresh(self.value))
@@ -126,20 +127,30 @@ class ModelPicker(QWidget):
 
     def refresh(self, value: str) -> None:
         """
-        Discover local weights while preserving the saved selection, even if missing.
+        Preserve open popup choices and rebuild closed lists only when models change.
+
+        Routine frame updates must not discard the highlighted popup row. An explicit
+        configuration replacement still applies when its saved value changes.
         """
+        if self.combo.view().isVisible() and value == self.value:
+            return
         self.value = value
-        blocker = QSignalBlocker(self.combo)
-        self.combo.clear()
-        self.combo.addItem("Automatic download", "")
+        choices = [("Automatic download", "")]
         for path in existing_models(value):
             file = Path(path)
             label = f"{file.name} ({file.parent.name})"
             if not file.is_file():
                 label += " — missing"
-            self.combo.addItem(label, path)
-            self.combo.setItemData(self.combo.count() - 1, path, Qt.ItemDataRole.ToolTipRole)
+            choices.append((label, path))
         selected = str(Path(value).expanduser().absolute()) if value else ""
+        blocker = QSignalBlocker(self.combo)
+        if choices != self.choices:
+            self.combo.clear()
+            for label, path in choices:
+                self.combo.addItem(label, path)
+                if path:
+                    self.combo.setItemData(self.combo.count() - 1, path, Qt.ItemDataRole.ToolTipRole)
+            self.choices = choices
         self.combo.setCurrentIndex(self.combo.findData(selected))
         blocker.unblock()
 

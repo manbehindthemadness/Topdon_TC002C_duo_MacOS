@@ -1,3 +1,6 @@
 [submodule "examples/custom_nodes/based-gan"]
 	path = examples/custom_nodes/based-gan
 	url = https://github.com/manbehindthemadness/based-gan.git
+[submodule "examples/custom_nodes/head-pose/upstream"]
+	path = examples/custom_nodes/head-pose/upstream
+	url = https://github.com/PINTO0309/High-Angle_Robust_Fast_Head_Pose_Estimation.git

@@ -111,7 +111,9 @@ Model controls discover ONNX files in the shared cache, bundled models and the
 path library created by Browse (`custom-models.json` in the model cache). Browsing
 registers/selects an existing file without copying it or importing a model. The
 dropdown refreshes on opening and preserves missing saved paths visibly. Model
-compatibility is checked by the package during processing. Color controls store
+popups keep their highlighted row during routine viewer updates; models downloaded
+while a popup is open appear on its next opening. Unchanged lists are retained.
+Model compatibility is checked by the package during processing. Color controls store
 normalized RGB hex values or `dynamic`; the package decides how to render them.
 Classless YOLO reuses the measurement contrast compositor for dynamic borders
 and labels, and uses inverted pixels for its optional dynamic fill.
@@ -183,6 +185,15 @@ Validation, folder browsing, JSON imports and UI refreshes do not run probes or 
 inference sessions. No dependency installs or model downloads are added by this control.
 
 ## Additional examples and builder skill
+
+[Head Pose](../examples/custom_nodes/head-pose/README.md) preserves HFHPE's upstream
+repository as a pinned submodule and provides a separate portable detector/crop/pose
+overlay package. Select `examples/custom_nodes/head-pose/nodes/Head Pose`; its
+JSON-defined detector choice defaults to HGNet-N and downloads pinned detector/pose
+weights in the background when their local overrides are empty. Separate
+detector/pose device controls allow the tested Apple detector plus CPU pose setup.
+Its still-image experiment writes timings, predictions and importable local-weight
+presets without camera access. Thermal head-pose accuracy remains experimental.
 
 [Classless YOLO](../examples/custom_nodes/Classless%20YOLO/README.md) adapts
 Inspector's Mobile Object Localizer stage into an optional Custom package.
