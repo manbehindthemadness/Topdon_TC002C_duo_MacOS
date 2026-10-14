@@ -11,8 +11,8 @@ experimental. An included virtual camera lets you explore the UI without hardwar
 
 ![Thermal view of electronics with component measurement areas and temperature history graphs](docs/images/viewer-electronics.png)
 
-*Application screenshot showing temperature measurements for electronic components,
-with Min/Avg/Max history graphs and Fahrenheit readings.*
+*Application screenshot showing electronic component measurements, an exclusion area,
+Min/Avg/Max history graphs, Fahrenheit readings, and viewport draw time.*
 
 ## Start here
 
