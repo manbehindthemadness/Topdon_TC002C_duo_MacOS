@@ -6,8 +6,8 @@ GRAPH_DEFAULTS = {
     "range_mode": "fixed",
     "range_seconds": 600.0,
     "compression": True,
-    "history_points": 4096,
-    "averaging_samples": 1,
+    "history_points": 2048,
+    "averaging_samples": 5,
     "interpolation_samples": 0,
 }
 

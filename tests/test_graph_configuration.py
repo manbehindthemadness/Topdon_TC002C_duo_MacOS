@@ -96,12 +96,12 @@ def test_graph_preferences_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert load_settings() == {"display": {}, "hardware": {}, "show_graph": True}
 
 
-def test_legacy_graph_preferences_default_to_unmodified_curves() -> None:
+def test_legacy_graph_preferences_use_current_sample_defaults() -> None:
     """
-    Old settings without sample controls retain the previous chart appearance.
+    Old settings without sample controls receive the new chart defaults.
     """
     settings = validate_graph_settings({"history_points": 8192})
-    assert settings["averaging_samples"] == 1
+    assert settings["averaging_samples"] == 5
     assert settings["interpolation_samples"] == 0
 
 
@@ -116,6 +116,17 @@ from based_thermals.graph_settings import GRAPH_DEFAULTS
 app = QApplication([])
 messages = []
 window = GraphWindow(messages.append)
+window.show()
+app.processEvents()
+for control in (window.averaging, window.interpolation):
+    control.setValue(control.minimum())
+    editor = control.lineEdit()
+    assert editor.text() == "Off"
+    assert editor.contentsRect().width() >= editor.fontMetrics().horizontalAdvance("Off") + 10
+window.update_state({"settings": GRAPH_DEFAULTS})
+assert window.points.value() == 2048
+assert window.averaging.value() == 5 and window.interpolation.value() == 0
+assert window.averaging.specialValueText() == "Off"
 assert window.minutes.isEnabled() and window.minutes.value() == 10
 assert window.range_mode.currentData() == "fixed"
 window.range_mode.setCurrentIndex(0)

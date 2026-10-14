@@ -40,12 +40,14 @@ class GraphWindow(QWidget):
         self.averaging.setRange(1, 256)
         self.averaging.setDecimals(0)
         self.averaging.setKeyboardTracking(False)
-        self.averaging.setSpecialValueText("Off (1 sample)")
+        self.averaging.setSpecialValueText("Off")
         self.interpolation = NoWheelSpinBox()
         self.interpolation.setRange(0, 32)
         self.interpolation.setDecimals(0)
         self.interpolation.setKeyboardTracking(False)
         self.interpolation.setSpecialValueText("Off")
+        for control in (self.averaging, self.interpolation):
+            control.setMinimumWidth(max(100, control.fontMetrics().horizontalAdvance("Off") + 64))
         for control in (self.minutes, self.points, self.averaging, self.interpolation):
             control.editingFinished.connect(self._edit_finished)
         form.addRow("Average over samples", self.averaging)

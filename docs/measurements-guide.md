@@ -109,6 +109,10 @@ Switching Units (`F`) changes temperature/distance display, not stored Celsius
 values or calibration. Measurements cannot compensate for incorrect ambient,
 distance, emissivity or reflected-temperature settings; see [calibration](calibration.md).
 
+When editing an exclusion, the Min, Max and Average label controls are hidden.
+Their saved choices return when the region becomes a measurement again; Number
+and Name remain available for identifying exclusion zones.
+
 ## Graphs and history
 
 Choose **Show graph** (`G`). Landscape places charts to the right; portrait places
@@ -143,6 +147,9 @@ therefore uses its retained samples rather than discarded readings. Smooth
 interpolation adds display points between samples without overshooting measured
 extrema. Both restart at gaps, affect only chart display, and leave measurements
 and CSV output unchanged. Preferences are saved and locked while logging.
+New installations default to a 2.0-second chart update, averaging over 5 samples,
+interpolation off, and a 2,048-sample history budget.
+Existing saved choices take precedence over these defaults.
 
 ## Why are controls locked?
 

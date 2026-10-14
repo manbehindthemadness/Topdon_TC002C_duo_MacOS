@@ -282,6 +282,7 @@ class MeasurementsWindow(QWidget):
         for control in (self.radius, self.diameter, self.x, self.y):
             control.setEnabled(self.region["kind"] == "spot")
         self.exclude.setChecked(self.region["exclude"])
+        self._update_label_visibility()
         self.appearance.set_region(self.region)
         for field, control in self.label_fields.items():
             control.setChecked(field in self.region["labels"])
@@ -393,6 +394,14 @@ class MeasurementsWindow(QWidget):
         """
         if not self._loading:
             self._geometry_changed({**self.region, "exclude": value}, self.center)
+        self._update_label_visibility()
+
+    def _update_label_visibility(self) -> None:
+        """
+        Hide temperature label choices for exclusions, retaining their saved checks.
+        """
+        for field in ("min", "max", "average"):
+            self.label_fields[field].setVisible(not self.exclude.isChecked())
 
     def _appearance_changed(self, values: dict) -> None:
         """

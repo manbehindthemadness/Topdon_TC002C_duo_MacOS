@@ -305,12 +305,15 @@ def test_interval_editor_applies_valid_values_and_preserves_invalid_input():
 
 
 @pytest.mark.parametrize("value", [True, "1", 0, -1, 61, float("nan"), float("inf")])
-def test_invalid_interval_does_not_change_worker(value):
+def test_invalid_interval_does_not_change_worker(value: object) -> None:
+    """
+    Invalid edits preserve the default two-second chart update interval.
+    """
     worker = graphs.GraphWorker()
     try:
         with pytest.raises((ValueError, TypeError)):
             worker.set_interval(value)
-        assert worker._interval == 0.5
+        assert worker._interval == 2.0
     finally:
         worker.close()
 

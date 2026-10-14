@@ -111,11 +111,62 @@ window.close()
     assert result.returncode == 0, result.stderr
 
 
+def test_exclusions_hide_temperature_label_controls(tmp_path: Path) -> None:
+    """
+    Toggle and select exclusions without losing their stored label preferences.
+    """
+    script = r"""
+from copy import deepcopy
+from PySide6.QtWidgets import QApplication
+from based_thermals.measurements_window import MeasurementsWindow
+from based_thermals.measurements.paths import initial_region
+
+app = QApplication([])
+messages = []
+window = MeasurementsWindow(messages.append)
+window.show()
+center, region = initial_region("rectangle", (32, 24))
+region["labels"] = ["number", "min", "max", "average"]
+entry = {"number": 1, "name": "Area", "enabled": True,
+         "pixel": list(center), "region": region}
+excluded = deepcopy(entry)
+excluded.update(number=2, name="Exclude")
+excluded["region"]["exclude"] = True
+state = {"sensor_size": [32, 24], "spots": [entry, excluded]}
+window.update_state(deepcopy(state))
+fields = [window.label_fields[key] for key in ("min", "max", "average")]
+assert all(not control.isHidden() and control.isChecked() for control in fields)
+window.exclude.setChecked(True)
+assert all(control.isHidden() and control.isChecked() for control in fields)
+assert not window.label_fields["number"].isHidden()
+assert not window.label_fields["name"].isHidden()
+window.update_state(deepcopy(state))
+assert all(control.isHidden() for control in fields)
+window.exclude.setChecked(False)
+assert all(not control.isHidden() and control.isChecked() for control in fields)
+window.apply.click()
+assert messages[-2]["region"]["labels"] == region["labels"]
+count = len(messages)
+window.items.setCurrentRow(1)
+assert all(control.isHidden() and control.isChecked() for control in fields)
+assert len(messages) == count
+window.update_state({**deepcopy(state), "locked": True})
+assert all(control.isHidden() for control in fields)
+window.update_state(deepcopy(state))
+window.items.setCurrentRow(0)
+assert all(not control.isHidden() and control.isChecked() for control in fields)
+window.close()
+"""
+    result = run_popup(script, tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
 def test_area_graph_csv_gaps_and_independent_history_clear(tmp_path: Path) -> None:
     """
     Export min/average/max in Celsius and preserve three-column invalid-frame gaps.
     """
     worker = graphs.GraphWorker()
+    worker.set_interval(0.1)
     data = graphs.GraphSnapshot(
         (10, 20, 30, 21),
         (((0, 0), (11, 19, 27)), ((0, 1), 15)),

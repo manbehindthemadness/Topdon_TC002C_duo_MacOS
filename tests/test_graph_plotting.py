@@ -123,7 +123,7 @@ def test_worker_filters_render_snapshot_without_trimming_retained_history(
     data = graphs.GraphSnapshot((1., 2., 3., 4.), (((0, 0), 5.),), (400, 400))
     now = time.monotonic()
     try:
-        worker.configure({"range_seconds": 6.})
+        worker.configure({"range_seconds": 6., "averaging_samples": 1})
         worker._sample(data, now - 1000)
         worker._sample(data, now - 1)
         worker.submit(data)

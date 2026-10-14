@@ -465,6 +465,9 @@ def test_graph_interval_field_applies_and_remembers_value(
 def test_graph_interval_field_is_locked_during_logging(
     viewer: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """
+    Logging keeps the default update interval and blocks edits to the field.
+    """
     from based_thermals.graphs import graph_interval_rect
     from based_thermals.settings_preferences import load_settings, save_settings
 
@@ -488,8 +491,8 @@ def test_graph_interval_field_is_locked_during_logging(
 
     monkeypatch.setattr(desktop.cv2, "waitKey", wait_key)
     assert desktop.main([]) == 0
-    viewer.graphs.set_interval.assert_called_once_with(0.5)
-    assert load_settings()["graph_interval"] == 0.5
+    viewer.graphs.set_interval.assert_called_once_with(2.0)
+    assert load_settings()["graph_interval"] == 2.0
 
 
 def test_graph_interval_field_maps_resized_viewport() -> None:

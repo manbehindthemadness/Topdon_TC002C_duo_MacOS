@@ -18,11 +18,11 @@ from .graph_settings import GRAPH_DEFAULTS, validate_graph_settings
 from .graph_smoothing import interpolate_samples, rolling_average
 from .measurements.series import MeasurementValue, series_labels, series_values
 
-GRAPH_INTERVAL = 0.5
+GRAPH_INTERVAL = 2.0
 MIN_GRAPH_INTERVAL = 0.1
 MAX_GRAPH_INTERVAL = 60.0
 HISTORY_SECONDS = 60
-MAX_HISTORY_SAMPLES = 4096
+MAX_HISTORY_SAMPLES = 2048
 COLORS = ((230, 160, 80), (90, 210, 110), (90, 110, 245), (220, 190, 240))
 
 
