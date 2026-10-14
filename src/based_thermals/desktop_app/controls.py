@@ -106,6 +106,8 @@ class ControlsController(SessionState):
                     self.spots.placing = command["enabled"]
                 elif action == "enable":
                     self.spots.set_enabled(command["spot"], command["enabled"])
+                elif action == "enable_all":
+                    self.spots.set_all_enabled(command.get("enabled"))
                 elif action == "rename":
                     self.spots.rename(command["spot"], command["name"])
                 elif action == "clear":

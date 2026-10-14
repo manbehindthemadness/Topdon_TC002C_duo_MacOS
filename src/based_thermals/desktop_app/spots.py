@@ -155,6 +155,14 @@ class SampleSpots(MeasurementRegions):
         else:
             self.disabled.add(number)
 
+    def set_all_enabled(self, enabled: object) -> None:
+        """
+        Enable or disable all saved identities after validating the bulk state.
+        """
+        if type(enabled) is not bool:
+            raise ValueError("Enabled state must be a boolean")
+        self.disabled = set() if enabled else set(self.numbers)
+
     def move(self, number: Any, pixel: Any, size: tuple[int, int] | None = None) -> None:
         """
         Translate the anchor and all area handles, clamping the complete shape.

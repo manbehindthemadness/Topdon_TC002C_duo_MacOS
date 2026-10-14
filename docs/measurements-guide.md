@@ -44,6 +44,11 @@ then click positions. Press `P` again to stop placement without removing spots.
 
 ## Configure, move or disable an area
 
+The **Show all measurements** checkbox at the top enables or disables the entire
+list, including exclusions and graph sampling. A mixed check means only some
+measurements are enabled; clicking it shows all. Individual list checkboxes still
+control one measurement at a time. Logging and calibration locks disable this control.
+
 Each measurement has **Line Color**, **Fill**, and **Opacity** controls.
 Uncheck **Dynamic** to choose an RGB line color; Dynamic retains the contrasting
 outline that follows the thermal image. **Fill** uses the same color inside

@@ -39,6 +39,23 @@ from .measurements.schema import (
 )
 
 
+class AllMeasurementsCheckBox(QCheckBox):
+    """
+    Display mixed visibility while making user clicks toggle only show-all/hide-all.
+    """
+
+    def nextCheckState(self) -> None:
+        """
+        Show every measurement from a mixed state, or hide every checked measurement.
+        """
+        state = (
+            Qt.CheckState.Unchecked
+            if self.checkState() == Qt.CheckState.Checked
+            else Qt.CheckState.Checked
+        )
+        self.setCheckState(state)
+
+
 class MeasurementsWindow(QWidget):
     """
     Edit measurement data in Qt while the parent owns sampling and locks.
@@ -62,6 +79,13 @@ class MeasurementsWindow(QWidget):
         self.region = default_region()
         self.center = (128, 96)
         layout = QVBoxLayout(self)
+        self.show_all = AllMeasurementsCheckBox("Show all measurements")
+        self.show_all.setTristate(True)
+        self.show_all.setToolTip(
+            "Enable or disable every measurement, including exclusion zones and their graphs."
+        )
+        self.show_all.stateChanged.connect(self._show_all)
+        layout.addWidget(self.show_all)
         header = QHBoxLayout()
         self.kind = QComboBox()
         for kind in KINDS:
@@ -112,7 +136,9 @@ class MeasurementsWindow(QWidget):
         self.z_index = QSpinBox()
         self.z_index.setRange(-1000, 1000)
         self.z_index.setKeyboardTracking(False)
-        self.z_index.setToolTip("Higher values draw above lower values. Equal values keep their order.")
+        self.z_index.setToolTip(
+            "Higher values draw above lower values. Equal values keep their order."
+        )
         self.z_index.valueChanged.connect(self._mark_dirty)
         z_editor = self.z_index.lineEdit()
         assert z_editor is not None
@@ -209,6 +235,13 @@ class MeasurementsWindow(QWidget):
         control.setKeyboardTracking(False)
         return control
 
+    def _show_all(self, state: int) -> None:
+        """
+        Send one bulk command without changing pending geometry or label edits.
+        """
+        if self._items and not self._state.get("locked"):
+            self.send({"action": "enable_all", "enabled": state == Qt.CheckState.Checked.value})
+
     def _mark_dirty(self, *_args: object) -> None:
         """
         Keep unsaved geometry intact when live parent state arrives.
@@ -224,9 +257,14 @@ class MeasurementsWindow(QWidget):
             return
         if self._dirty and not self._apply():
             return
-        self.send({"action": "draw", "kind": self.kind.currentData(),
-                   "exclude": self.draw_exclude.isChecked(),
-                   "orientation": self._state.get("orientation")})
+        self.send(
+            {
+                "action": "draw",
+                "kind": self.kind.currentData(),
+                "exclude": self.draw_exclude.isChecked(),
+                "orientation": self._state.get("orientation"),
+            }
+        )
         self._creating = True
         if self.auto_hide.isChecked():
             self.hide()
@@ -429,8 +467,11 @@ class MeasurementsWindow(QWidget):
         if self._selected is None or self._state.get("locked"):
             return
         self.z_index.interpretText()
-        others = [entry["region"]["z_index"] for number, entry in self._items.items()
-                  if number != self._selected]
+        others = [
+            entry["region"]["z_index"]
+            for number, entry in self._items.items()
+            if number != self._selected
+        ]
         if not others:
             return
         current = self.z_index.value()
@@ -577,6 +618,17 @@ class MeasurementsWindow(QWidget):
         changed_ids = list(new_items) != list(self._items)
         self._items = deepcopy(new_items)
         locked = bool(state.get("locked"))
+        enabled_count = sum(entry["enabled"] for entry in entries)
+        all_state = (
+            Qt.CheckState.Unchecked
+            if enabled_count == 0
+            else Qt.CheckState.Checked
+            if enabled_count == len(entries)
+            else Qt.CheckState.PartiallyChecked
+        )
+        with QSignalBlocker(self.show_all):
+            self.show_all.setCheckState(all_state)
+            self.show_all.setEnabled(bool(entries) and not locked)
         self._loading = True
         if changed_ids:
             with QSignalBlocker(self.items):
