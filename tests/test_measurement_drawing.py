@@ -172,6 +172,42 @@ def test_parent_drawing_maps_resized_camera_pane_and_suppresses_placement(
     assert desktop.load_settings()["spots"]["items"][0]["region"]["points"] == expected
 
 
+@pytest.mark.parametrize("reason", ["cancel", "lock", "rotation", "layout"])
+def test_cancelled_drawing_restores_popup_without_saving(
+    viewer: Any, monkeypatch: pytest.MonkeyPatch, reason: str,
+) -> None:
+    """
+    Restore the popup on explicit and automatic cancellation while preserving saved measurements.
+    """
+    session = desktop.DesktopSession(desktop, [])
+    session.viewer = Mock(size=None)
+    panel = Mock()
+    session.spots_panel = panel
+    before = deepcopy(session.spots.saved_state())
+    start_drawing(session)
+    pointer(session, "press", 30, 30)
+    pointer(session, "move", 90, 90, flags=1)
+    if reason == "cancel":
+        session.measurement_drawing_action("draw_cancel")
+    elif reason == "lock":
+        viewer.graphs.logging = True
+        session.reconcile_measurement_drawing()
+    elif reason == "rotation":
+        session.renderer.rotation = 90
+        session.reconcile_measurement_drawing()
+    else:
+        layout = "portrait" if session.viewer_layout == "landscape" else "landscape"
+        session.set_viewer_orientation({"rotation": session.renderer.rotation, "layout": layout})
+    assert session.measurement_drawing.kind is None
+    assert session.measurement_drawing.swallow_release
+    assert session.spots.saved_state() == before
+    panel.open.assert_called_once()
+    restored = panel.open.call_args.args[0]
+    assert restored["drawing_cancelled"] and restored["spots"] == []
+    session.measurement_drawing_action("draw_cancel")
+    panel.open.assert_called_once()
+
+
 def test_graph_padding_invalid_pointers_and_lock_changes_cannot_create_measurements(
     viewer: Any,
     monkeypatch: pytest.MonkeyPatch,

@@ -118,7 +118,7 @@ class ViewerController(SessionState):
             self.rotate_view()
         if layout == self.viewer_layout:
             return
-        self.measurement_drawing.cancel()
+        self.cancel_measurement_drawing()
         self.spot_drag.cancel()
         self.picker.consume_drag_events()
         self.picker.consume_clicks()

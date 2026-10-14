@@ -35,6 +35,8 @@ Releasing a drag leaves a draft; it does not finish the measurement. Enter,
 Finish or right-click completes it (Control-click also works on macOS).
 Backspace/**Undo** removes the last anchor or cancels the current drag.
 Escape/**Cancel** discards the draft; in fullscreen it cancels drawing first.
+Cancelling reopens Measurements without saving a shape, including when Auto-hide
+hid the dialog. Drawing cancelled by a view change or an edit lock also restores it.
 Graphs, toolbar areas and image padding are not drawing targets.
 
 For quick single-pixel spots, press `P` or check **Place spots on image (P)**,

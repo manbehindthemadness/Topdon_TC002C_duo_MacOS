@@ -55,8 +55,17 @@ class MeasurementDrawingController(SessionState):
         state = self.spots_state()
         if (state["locked"] or not state.get("mapping_available", True)
                 or tuple(state["orientation"]) != draft.orientation):
-            draft.cancel()
+            self.cancel_measurement_drawing()
             self.notify("Measurement drawing cancelled because settings or view changed")
+
+    def cancel_measurement_drawing(self: DesktopSession) -> None:
+        """
+        Discard an active draft and restore its configuration popup without saving a shape.
+        """
+        if self.measurement_drawing.kind is None:
+            return
+        self.measurement_drawing.cancel()
+        self.spots_panel.open({**self.spots_state(), "drawing_cancelled": True})
 
     def measurement_drawing_action(self: DesktopSession, action: str) -> None:
         """
@@ -67,7 +76,7 @@ class MeasurementDrawingController(SessionState):
         if draft.kind is None:
             return
         if action == "draw_cancel":
-            draft.cancel()
+            self.cancel_measurement_drawing()
             self.notify("Measurement drawing cancelled")
         elif action == "draw_undo":
             draft.undo()

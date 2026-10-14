@@ -521,6 +521,8 @@ class MeasurementsWindow(QWidget):
             self.status.setText(str(exc))
             return
         changed_view = state.get("orientation") != self._state.get("orientation")
+        if state.get("drawing_cancelled"):
+            self._creating = False
         self._state = state
         self.sensor_size = sensor_size
         entries = validated
