@@ -97,6 +97,10 @@ all fields hides the label while retaining its outline. Area leaders attach to
 the outer edge; the shared placer reserves shape bounds, point markers and
 previous labels. When every candidate overlaps, it chooses the least overlap.
 Exclusions use a dashed border and an exclusion identifier without temperatures.
+**Line Color** selects Dynamic contrast or an RGB color. **Fill** shades closed
+areas using that color, and **Opacity** controls the outline and fill together.
+Labels and leaders retain their contrast styling independently. Filled exclusions
+keep their dashed borders. Appearance edits do not change native sampling or graphs.
 
 Stable numbers and graph identities survive edits, movement and orientation.
 Switching between a scalar spot and an area resets that measurement's history
@@ -111,6 +115,9 @@ CSV files keep canonical Celsius and selected-unit values. Area rows have IDs
 
 Preferences retain the existing `spots` key. Legacy point-only version 1 files
 remain readable. Version 2 items add a validated `region` object with `kind`,
-`radius`, `points`, `exclude` and `labels`. Geometry is validated without running
+`radius`, `points`, `exclude` and `labels`, plus optional `line_color`, `fill`
+and `opacity` fields. Missing appearance fields default to Dynamic color,
+no fill and full opacity. Color is `dynamic` or `#RRGGBB`; stored opacity is
+0–1, displayed as 0–100%. Geometry is validated without running
 package code or opening hardware. The Qt 6 popup receives only JSON metadata;
 the parent process owns all kernels, temperatures, persistence and lock checks.

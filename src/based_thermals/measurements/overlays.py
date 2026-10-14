@@ -129,26 +129,27 @@ def label_layout(
 
 def draw_boundaries(mask: np.ndarray, spots: SampleSpots, scale: int) -> None:
     """
-    Draw measurement outlines and dashed exclusion borders without touching radiometry.
+    Union measurement outlines without touching radiometry or inverting overlaps twice.
     """
     for number, center in spots.active:
-        region = spots.region(number)
-        if region["kind"] == "spot" and region["radius"] == 0:
-            cv2.drawMarker(
-                mask,
-                (center[0] * scale + scale // 2, center[1] * scale + scale // 2),
-                255,
-                cv2.MARKER_CROSS,
-                9,
-                1,
-                cv2.LINE_8,
-            )
-            continue
-        points = display_boundary(region, center, scale)
-        if region["exclude"]:
-            draw_dashed_boundary(mask, points)
-        else:
-            cv2.polylines(mask, [points], True, 255, 1, cv2.LINE_AA)
+        draw_boundary(mask, spots.region(number), center, scale)
+
+
+def draw_boundary(mask: np.ndarray, region: dict, center: tuple[int, int], scale: int) -> None:
+    """
+    Draw one measurement outline or a dashed exclusion border in display coordinates.
+    """
+    if region["kind"] == "spot" and region["radius"] == 0:
+        cv2.drawMarker(
+            mask, (center[0] * scale + scale // 2, center[1] * scale + scale // 2),
+            255, cv2.MARKER_CROSS, 9, 1, cv2.LINE_8,
+        )
+        return
+    points = display_boundary(region, center, scale)
+    if region["exclude"]:
+        draw_dashed_boundary(mask, points)
+    else:
+        cv2.polylines(mask, [points], True, 255, 1, cv2.LINE_AA)
 
 
 def draw_dashed_boundary(mask: np.ndarray, points: np.ndarray) -> None:

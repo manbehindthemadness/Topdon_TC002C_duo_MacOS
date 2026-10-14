@@ -5,6 +5,7 @@ Pure-data measurement validation shared with the Qt configuration window.
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 KINDS = ("spot", "rectangle", "oval", "polygon", "bezier")
@@ -20,6 +21,9 @@ def default_region(kind: str = "spot") -> dict:
         "radius": 0.0,
         "points": [],
         "exclude": False,
+        "line_color": "dynamic",
+        "fill": False,
+        "opacity": 1.0,
         "labels": ["number", "average"] if kind == "spot" else ["number", "min", "max", "average"],
     }
 
@@ -31,8 +35,28 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
     Bezier points are anchor/control/control triples. The next triple supplies
     the endpoint, and the final segment wraps to the first anchor.
     """
-    if not isinstance(value, dict) or set(value) != set(default_region()):
+    appearance = {"line_color", "fill", "opacity"}
+    required = set(default_region()) - appearance
+    if (
+        not isinstance(value, dict)
+        or not required <= set(value)
+        or not set(value) <= set(default_region())
+    ):
         raise ValueError("A measurement requires kind, radius, points, exclude and labels")
+    line_color = value.get("line_color", "dynamic")
+    if not isinstance(line_color, str) or (
+        line_color != "dynamic" and re.fullmatch(r"#[0-9a-fA-F]{6}", line_color) is None
+    ):
+        raise ValueError("Line color must be dynamic or an RGB hex color (#RRGGBB)")
+    fill = value.get("fill", False)
+    if type(fill) is not bool:
+        raise TypeError("Fill state must be a boolean")
+    opacity = value.get("opacity", 1.0)
+    if (
+        isinstance(opacity, bool) or not isinstance(opacity, (int, float))
+        or not math.isfinite(opacity) or not 0 <= opacity <= 1
+    ):
+        raise ValueError("Measurement opacity must be between 0 and 1")
     kind, radius = value.get("kind"), value.get("radius")
     if not isinstance(kind, str) or kind not in KINDS:
         raise ValueError("Choose a spot, rectangle, oval, polygon or Bezier area")
@@ -85,6 +109,9 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
         "points": normalized,
         "exclude": value["exclude"],
         "labels": list(labels),
+        "line_color": line_color.lower(),
+        "fill": fill,
+        "opacity": float(opacity),
     }
     return region
 

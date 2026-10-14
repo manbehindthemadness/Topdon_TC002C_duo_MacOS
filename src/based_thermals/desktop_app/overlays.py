@@ -10,7 +10,8 @@ from typing import Any
 import cv2
 import numpy as np
 
-from ..measurements.overlays import draw_boundaries, label_layout
+from ..measurements.appearance import styled_shapes
+from ..measurements.overlays import label_layout
 from ..render import (
     RenderedThermalFrame,
 )
@@ -144,11 +145,11 @@ def draw_sample_spots(
     temperature_unit: str = "C",
 ) -> np.ndarray:
     """
-    Draw sample spots.
+    Draw styled measurement shapes and independently readable labels without altering samples.
     """
     if not rendered.measurement_mapping_valid:
         return image
-    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    image, mask = styled_shapes(image, spots, scale, draw_contrasting_overlay)
     text_mask = np.zeros_like(mask)
     labels, _occupied = label_layout(rendered, spots, scale, temperature_unit, place_temperature_label)
     for label in labels:
@@ -164,7 +165,6 @@ def draw_sample_spots(
             cv2.LINE_AA,
         )
     # Union the markers so overlapping spots are inverted only once.
-    draw_boundaries(mask, spots, scale)
     return draw_contrasting_overlay(image, mask, text_mask)
 
 

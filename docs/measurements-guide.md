@@ -42,6 +42,15 @@ then click positions. Press `P` again to stop placement without removing spots.
 
 ## Configure, move or disable an area
 
+Each measurement has **Line Color**, **Fill**, and **Opacity** controls.
+Uncheck **Dynamic** to choose an RGB line color; Dynamic retains the contrasting
+outline that follows the thermal image. **Fill** uses the same color inside
+closed shapes and positive-radius spots. Single-pixel spots remain crosses.
+**Opacity** (0–100%) affects the shape outline and fill. Labels and their
+leader lines remain readable independently. Click **Apply configuration** to
+save the appearance with the measurement; it is restored on restart.
+These display controls do not change sampled temperatures, exclusions or graphs.
+
 Select a measurement in the dialog's list. Use **Name**, **Label fields**, native
 coordinates and the geometry editor to adjust it. Spots have linked **Spot radius**
 and **Spot diameter** controls; radius zero samples a single native pixel. Editing

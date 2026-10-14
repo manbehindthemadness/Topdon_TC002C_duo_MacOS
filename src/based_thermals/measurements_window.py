@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from .capture_window import run_window
+from .measurement_ui.appearance import AppearanceControls
 from .measurement_ui.geometry import GeometryEditor
 from .measurements.schema import (
     KINDS,
@@ -129,6 +130,8 @@ class MeasurementsWindow(QWidget):
         form.addRow("Spot position (x, y)", coordinates)
         form.addRow(self.exclude)
         right.addLayout(form)
+        self.appearance = AppearanceControls(self._appearance_changed, self._mark_dirty)
+        right.addWidget(self.appearance)
         labels = QHBoxLayout()
         labels.addWidget(QLabel("Label fields:"))
         self.label_fields: dict[str, QCheckBox] = {}
@@ -279,6 +282,7 @@ class MeasurementsWindow(QWidget):
         for control in (self.radius, self.diameter, self.x, self.y):
             control.setEnabled(self.region["kind"] == "spot")
         self.exclude.setChecked(self.region["exclude"])
+        self.appearance.set_region(self.region)
         for field, control in self.label_fields.items():
             control.setChecked(field in self.region["labels"])
         self.preview.set_geometry(self.region, self.center, self.sensor_size)
@@ -390,6 +394,13 @@ class MeasurementsWindow(QWidget):
         if not self._loading:
             self._geometry_changed({**self.region, "exclude": value}, self.center)
 
+    def _appearance_changed(self, values: dict) -> None:
+        """
+        Preview display-only styling through the same local edit boundary as geometry.
+        """
+        if not self._loading and not self._state.get("locked"):
+            self._geometry_changed({**self.region, **values}, self.center, refresh_table=False)
+
     def _add_vertex(self) -> None:
         """
         Add a polygon vertex or a full anchor/control/control cubic segment.
@@ -434,6 +445,7 @@ class MeasurementsWindow(QWidget):
             region = validate_region(
                 {
                     **self.region,
+                    **self.appearance.values(),
                     "labels": [
                         field for field, control in self.label_fields.items() if control.isChecked()
                     ],

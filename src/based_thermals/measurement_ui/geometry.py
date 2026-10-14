@@ -107,7 +107,11 @@ class GeometryEditor(QWidget):
                 self.display_point((0, y)), self.display_point((self.sensor_size[0] - 1, y))
             )
         points = boundary(self.region, self.center)
-        color = QColor("#ed7777") if self.region["exclude"] else QColor("#78c5ff")
+        line_color = self.region.get("line_color", "dynamic")
+        color = QColor(
+            ("#ed7777" if self.region["exclude"] else "#78c5ff")
+            if line_color == "dynamic" else line_color
+        )
         path = QPainterPath(self.display_point(points[0]))
         for point in points[1:]:
             path.lineTo(self.display_point(point))
@@ -117,7 +121,10 @@ class GeometryEditor(QWidget):
                 color, 2, Qt.PenStyle.DashLine if self.region["exclude"] else Qt.PenStyle.SolidLine
             )
         )
+        painter.setOpacity(self.region.get("opacity", 1.0))
+        painter.setBrush(color if self.region.get("fill", False) else Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
+        painter.setOpacity(1.0)
         controls = self.region["points"]
         if self.region["kind"] == "bezier":
             painter.setPen(QPen(QColor("#a99d74"), 1, Qt.PenStyle.DashLine))
