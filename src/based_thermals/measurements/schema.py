@@ -57,8 +57,10 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
     if type(z_index) is not int or not -1000 <= z_index <= 1000:
         raise ValueError("Measurement Z index must be an integer between -1000 and 1000")
     if (
-        isinstance(opacity, bool) or not isinstance(opacity, (int, float))
-        or not math.isfinite(opacity) or not 0 <= opacity <= 1
+        isinstance(opacity, bool)
+        or not isinstance(opacity, (int, float))
+        or not math.isfinite(opacity)
+        or not 0 <= opacity <= 1
     ):
         raise ValueError("Measurement opacity must be between 0 and 1")
     kind, radius = value.get("kind"), value.get("radius")

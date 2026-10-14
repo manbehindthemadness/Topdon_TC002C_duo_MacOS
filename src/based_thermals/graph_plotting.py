@@ -1,16 +1,21 @@
-"""Visible-history selection and pixel-bounded chart geometry."""
+"""Bounded chart history compression, visible selection and pixel geometry."""
 
 from collections import deque
 from collections.abc import Sequence
 
 import numpy as np
 
+from .graph_settings import MAX_HISTORY_SAMPLES
+
 HistorySample = tuple[float, tuple[float, ...]]
 History = Sequence[HistorySample] | deque[HistorySample]
 
 
 def visible_history(
-    history: History, now: float, duration: float | None, preceding_samples: int = 0,
+    history: History,
+    now: float,
+    duration: float | None,
+    preceding_samples: int = 0,
 ) -> tuple[HistorySample, ...]:
     """
     Select chronological visible samples without traversing older history.
@@ -36,6 +41,44 @@ def visible_history(
     return tuple(samples)
 
 
+def compress_history(history: deque, limit: int = MAX_HISTORY_SAMPLES) -> None:
+    """
+    Keep recent samples verbatim; retain extrema and gap markers in older buckets.
+    """
+    if len(history) <= limit:
+        return
+    samples = list(history)
+    split = len(samples) - limit // 2
+    older = []
+    for offset in range(0, split, 64):
+        bucket = samples[offset : min(offset + 64, split)]
+        values = np.asarray([value for _, value in bucket], dtype=float)
+        selected = {0, len(bucket) - 1}
+        for column in values.T:
+            finite = np.flatnonzero(np.isfinite(column))
+            if finite.size:
+                selected.update(
+                    (
+                        int(finite[np.argmin(column.take(finite))]),
+                        int(finite[np.argmax(column.take(finite))]),
+                    )
+                )
+        gaps = np.flatnonzero(~np.isfinite(values).all(axis=1))
+        if gaps.size:
+            selected.update((int(gaps[0]), int(gaps[-1])))
+        previous = None
+        for index in sorted(selected):
+            if previous is not None:
+                between = gaps[(gaps > previous) & (gaps < index)]
+                if between.size:
+                    older.append((bucket[int(between[0])][0], (float("nan"),) * len(bucket[0][1])))
+            older.append(bucket[index])
+            previous = index
+    history.clear()
+    history.extend(older)
+    history.extend(samples[split:])
+
+
 def pixel_curve_samples(x: np.ndarray, values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Retain first/last/extrema per pixel column and splits at measurement gaps.
@@ -57,10 +100,12 @@ def pixel_curve_samples(x: np.ndarray, values: np.ndarray) -> tuple[np.ndarray, 
     maximum = np.maximum.reduceat(valid_values, starts)
     offsets = np.arange(len(indices))
     min_offsets = np.minimum.reduceat(
-        np.where(valid_values == np.repeat(minimum, lengths), offsets, len(indices)), starts,
+        np.where(valid_values == np.repeat(minimum, lengths), offsets, len(indices)),
+        starts,
     )
     max_offsets = np.minimum.reduceat(
-        np.where(valid_values == np.repeat(maximum, lengths), offsets, len(indices)), starts,
+        np.where(valid_values == np.repeat(maximum, lengths), offsets, len(indices)),
+        starts,
     )
     selected = np.zeros(len(values), dtype=bool)
     for positions in (starts, ends - 1, min_offsets, max_offsets):

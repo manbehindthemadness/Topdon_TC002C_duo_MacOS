@@ -14,16 +14,51 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .graph_plotting import History, pixel_curve_samples, visible_history
-from .graph_settings import GRAPH_DEFAULTS, validate_graph_settings
+from .graph_controls import (
+    draw_graph_logging_control,
+    graph_config_rect,
+    graph_interval_rect,
+    graph_log_button_rect,
+    graph_reset_rect,
+)
+from .graph_plotting import History, compress_history, pixel_curve_samples, visible_history
+from .graph_settings import (
+    GRAPH_DEFAULTS,
+    GRAPH_INTERVAL,
+    MAX_HISTORY_SAMPLES,
+    validate_graph_settings,
+)
 from .graph_smoothing import interpolate_samples, rolling_average
 from .measurements.series import MeasurementValue, series_labels, series_values
 
-GRAPH_INTERVAL = 2.0
+__all__ = [
+    "COLORS",
+    "GRAPH_DEFAULTS",
+    "GRAPH_INTERVAL",
+    "HISTORY_SECONDS",
+    "MAX_GRAPH_INTERVAL",
+    "MAX_HISTORY_SAMPLES",
+    "MIN_GRAPH_INTERVAL",
+    "GraphIntervalEditor",
+    "GraphSnapshot",
+    "GraphWorker",
+    "History",
+    "compress_history",
+    "draw_graph_logging_control",
+    "graph_config_rect",
+    "graph_interval_rect",
+    "graph_log_button_rect",
+    "graph_reset_rect",
+    "history_duration",
+    "render_graphs",
+    "spot_title",
+    "validate_graph_interval",
+    "validate_graph_settings",
+]
+
 MIN_GRAPH_INTERVAL = 0.1
 MAX_GRAPH_INTERVAL = 60.0
 HISTORY_SECONDS = 60
-MAX_HISTORY_SAMPLES = 2048
 COLORS = ((230, 160, 80), (90, 210, 110), (90, 110, 245), (220, 190, 240))
 
 
@@ -41,11 +76,18 @@ def validate_graph_interval(value: object) -> float:
 
 @dataclass
 class GraphIntervalEditor:
+    """
+    Track pending edits in the legacy graph interval field.
+    """
+
     value: float = GRAPH_INTERVAL
     text: str | None = None
     replace_text: bool = False
 
-    def begin(self):
+    def begin(self) -> None:
+        """
+        Start editing the current graph interval and select its previous value.
+        """
         self.text = f"{self.value:g}"
         self.replace_text = True
 
@@ -74,6 +116,10 @@ class GraphIntervalEditor:
 
 @dataclass(frozen=True)
 class GraphSnapshot:
+    """
+    Hold immutable frame readings, chart dimensions and display preferences.
+    """
+
     stats: tuple[float, float, float, float]
     spots: tuple[tuple[tuple[int, int], MeasurementValue], ...]
     size: tuple[int, int]  # width, height of the reserved graph area
@@ -96,41 +142,6 @@ def spot_title(snapshot: GraphSnapshot, key: tuple[int, int]) -> str:
     return default if name == default else f"{name} ({default})"
 
 
-def compress_history(history: deque, limit: int = MAX_HISTORY_SAMPLES) -> None:
-    """
-    Keep recent samples verbatim; retain extrema and gap markers in older buckets.
-    """
-    if len(history) <= limit:
-        return
-    samples = list(history)
-    split = len(samples) - limit // 2
-    older = []
-    for offset in range(0, split, 64):
-        bucket = samples[offset : min(offset + 64, split)]
-        values = np.asarray([value for _, value in bucket], dtype=float)
-        selected = {0, len(bucket) - 1}
-        for column in values.T:
-            finite = np.flatnonzero(np.isfinite(column))
-            if finite.size:
-                selected.update(
-                    (int(finite[np.argmin(column.take(finite))]), int(finite[np.argmax(column.take(finite))]))
-                )
-        gaps = np.flatnonzero(~np.isfinite(values).all(axis=1))
-        if gaps.size:
-            selected.update((int(gaps[0]), int(gaps[-1])))
-        previous = None
-        for index in sorted(selected):
-            if previous is not None:
-                between = gaps[(gaps > previous) & (gaps < index)]
-                if between.size:
-                    older.append((bucket[int(between[0])][0], (float("nan"),) * len(bucket[0][1])))
-            older.append(bucket[index])
-            previous = index
-    history.clear()
-    history.extend(older)
-    history.extend(samples[split:])
-
-
 def history_duration(seconds: float) -> str:
     """
     Format the graph history span for the viewer and captured headings.
@@ -145,9 +156,14 @@ def history_duration(seconds: float) -> str:
 
 
 class GraphWorker:
-    """Sample scalar measurements at a configurable interval; never touch USB or GUI windows."""
+    """
+    Sample temperature history independently of USB capture and GUI rendering.
+    """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        Initialize bounded history, logging state and the background graph worker.
+        """
         self._condition = threading.Condition()
         self._latest = None
         self._image = None
@@ -168,7 +184,10 @@ class GraphWorker:
         self._thread = threading.Thread(target=self._run, name="temperature-graphs", daemon=True)
         self._thread.start()
 
-    def set_interval(self, value):
+    def set_interval(self, value: object) -> None:
+        """
+        Validate a new sampling interval and wake the worker to reschedule.
+        """
         value = validate_graph_interval(value)
         with self._condition:
             if self._log_file is not None:
@@ -193,7 +212,10 @@ class GraphWorker:
                 self._condition.notify()
         self._compact_histories()
 
-    def clear_history(self):
+    def clear_history(self) -> None:
+        """
+        Clear session history and invalidate in-flight renders and compaction.
+        """
         with self._condition:
             if self._log_file is not None:
                 raise ValueError("Stop logging before clearing chart data")
@@ -210,13 +232,20 @@ class GraphWorker:
         Attach the worker's display preferences to an immutable render snapshot.
         """
         return replace(
-            snapshot, history_range=self._history_range(),
+            snapshot,
+            history_range=self._history_range(),
             averaging_samples=self._settings["averaging_samples"],
             interpolation_samples=self._settings["interpolation_samples"],
         )
 
-    def _history_range(self):
-        return self._settings["range_seconds"] if self._settings["range_mode"] == "fixed" else None
+    def _history_range(self) -> float | None:
+        """
+        Return the visible fixed duration, or None for the retained session.
+        """
+        if self._settings["range_mode"] != "fixed":
+            return None
+        duration = float(self._settings["range_seconds"])
+        return duration
 
     def clear_spot_history(self, key: tuple[int, int]) -> None:
         """
@@ -284,10 +313,16 @@ class GraphWorker:
 
     @property
     def logging(self) -> bool:
+        """
+        Report whether CSV logging currently owns the settings lock.
+        """
         with self._condition:
             return self._log_file is not None
 
     def start_logging(self, path: Path) -> Path:
+        """
+        Open a CSV log after resolving its suffix without replacing an unselected file.
+        """
         with self._condition:
             if self._closed or self._log_file is not None:
                 raise ValueError("Graph logging is already active or the worker is closed")
@@ -320,6 +355,9 @@ class GraphWorker:
             return path
 
     def stop_logging(self) -> Path | None:
+        """
+        Finalize the current CSV log and return its path, if logging was active.
+        """
         with self._condition:
             if self._log_file is None:
                 return None
@@ -329,6 +367,9 @@ class GraphWorker:
             return self._log_path
 
     def take_logging_error(self) -> str | None:
+        """
+        Consume a pending logging failure so the viewer can report it once.
+        """
         with self._condition:
             error, self._log_error = self._log_error, None
             return error
@@ -349,7 +390,8 @@ class GraphWorker:
             identifier, title = f"spot.{key[0]}.{key[1] + 1}", spot_title(snapshot, key)
             for label, reading in zip(series_labels(value), series_values(value), strict=True):
                 series.append(
-                    (identifier, title, reading) if label == "Temp"
+                    (identifier, title, reading)
+                    if label == "Temp"
                     else (f"{identifier}.{label.lower()}", f"{title} {label}", reading)
                 )
         try:
@@ -391,6 +433,9 @@ class GraphWorker:
                 self._condition.notify()
 
     def pause(self) -> None:
+        """
+        Pause hidden charts and insert a history gap on the next valid submission.
+        """
         with self._condition:
             if self._log_file is not None:
                 raise ValueError("Stop logging before hiding the graphs")
@@ -400,7 +445,9 @@ class GraphWorker:
                 self._condition.notify()
 
     def image(self, size: tuple[int, int], *, resize: bool = False) -> np.ndarray:
-        """Return the cached pane; captures can resize it without resampling history."""
+        """
+        Return the cached pane, optionally resizing capture output without resampling history.
+        """
         with self._condition:
             result = self._image
         width, height = size
@@ -413,6 +460,9 @@ class GraphWorker:
         return result
 
     def close(self) -> None:
+        """
+        Join the worker before closing the current CSV log.
+        """
         with self._condition:
             self._closed = True
             self._condition.notify()
@@ -434,7 +484,9 @@ class GraphWorker:
             values = series_values(value)
             if history and len(history[-1][1]) != len(values):
                 history.clear()
-            history.append((now, values if snapshot.measurements_valid else (float("nan"),) * len(values)))
+            history.append(
+                (now, values if snapshot.measurements_valid else (float("nan"),) * len(values))
+            )
             if compact:
                 self._compact(history)
 
@@ -470,11 +522,17 @@ class GraphWorker:
                     self._write_log(snapshot, now)
                 generation = self._history_generation
                 master = visible_history(
-                    self._master, now, snapshot.history_range, snapshot.averaging_samples - 1,
+                    self._master,
+                    now,
+                    snapshot.history_range,
+                    snapshot.averaging_samples - 1,
                 )
                 spots = {
                     key: visible_history(
-                        history, now, snapshot.history_range, snapshot.averaging_samples - 1,
+                        history,
+                        now,
+                        snapshot.history_range,
+                        snapshot.averaging_samples - 1,
                     )
                     for key, history in self._spots.items()
                 }
@@ -494,7 +552,10 @@ class GraphWorker:
 
 
 def render_graphs(
-    snapshot: GraphSnapshot, master: History, spots: dict[tuple[int, int], History], now: float,
+    snapshot: GraphSnapshot,
+    master: History,
+    spots: dict[tuple[int, int], History],
+    now: float,
 ) -> np.ndarray:
     """
     Render scalar point curves or minimum/average/maximum area curves alongside scene stats.
@@ -514,16 +575,25 @@ def render_graphs(
         1,
         cv2.LINE_AA,
     )
-    charts: list[tuple[str, History, tuple[str, ...]]] = [("Master stats", master, ("Min", "Avg", "Max", "Center"))]
+    charts: list[tuple[str, History, tuple[str, ...]]] = [
+        ("Master stats", master, ("Min", "Avg", "Max", "Center"))
+    ]
     charts.extend(
-        (spot_title(snapshot, key), spots.get(key, ()), series_labels(value)) for key, value in snapshot.spots
+        (spot_title(snapshot, key), spots.get(key, ()), series_labels(value))
+        for key, value in snapshot.spots
     )
     top = min(34, height)
     for index, (title, history, labels) in enumerate(charts):
         y0 = top + round((height - top) * index / len(charts))
         y1 = top + round((height - top) * (index + 1) / len(charts))
         _draw_chart(
-            canvas[y0:y1], title, history, labels, snapshot.unit, now, duration,
+            canvas[y0:y1],
+            title,
+            history,
+            labels,
+            snapshot.unit,
+            now,
+            duration,
             averaging_samples=snapshot.averaging_samples,
             interpolation_samples=snapshot.interpolation_samples,
         )
@@ -606,7 +676,14 @@ def _draw_chart(
             cv2.LINE_AA,
         )
     _draw_history_curves(
-        canvas, stamps, values, (left, right, top, bottom), low, high, now, duration,
+        canvas,
+        stamps,
+        values,
+        (left, right, top, bottom),
+        low,
+        high,
+        now,
+        duration,
         interpolation_samples,
     )
     cv2.putText(
@@ -633,7 +710,9 @@ def _draw_history_curves(
     """
     left, right, top, bottom = bounds
     x = np.clip(
-        np.rint(left + (stamps - now + duration) / duration * (right - left)), left, right,
+        np.rint(left + (stamps - now + duration) / duration * (right - left)),
+        left,
+        right,
     ).astype(np.int32)
     for column in range(values.shape[1]):
         indices, boundaries = pixel_curve_samples(x, values[:, column])
@@ -642,7 +721,8 @@ def _draw_history_curves(
         if interpolation_samples == 0:
             y = np.clip(
                 np.rint(bottom - (values[indices, column] - low) / (high - low) * (bottom - top)),
-                top, bottom,
+                top,
+                bottom,
             ).astype(np.int32)
             points = np.column_stack((x[indices], y))
             runs = np.split(points, boundaries)
@@ -651,21 +731,27 @@ def _draw_history_curves(
                 cv2.polylines(canvas, curves, False, COLORS[column], 1, cv2.LINE_AA)
             isolated = points[np.r_[0, boundaries][np.diff(np.r_[0, boundaries, len(points)]) == 1]]
             for point in isolated:
-                cv2.circle(canvas, (int(point[0]), int(point[1])), 1, COLORS[column], -1, cv2.LINE_AA)
+                cv2.circle(
+                    canvas, (int(point[0]), int(point[1])), 1, COLORS[column], -1, cv2.LINE_AA
+                )
             continue
         runs = []
         for run_indices in np.split(indices, boundaries):
             times, curve_values = interpolate_samples(
-                stamps[run_indices], values[run_indices, column], interpolation_samples,
+                stamps[run_indices],
+                values[run_indices, column],
+                interpolation_samples,
             )
             curve_x = np.clip(
                 np.rint(left + (times - now + duration) / duration * (right - left)),
-                left, right,
+                left,
+                right,
             ).astype(np.int32)
             retained, _splits = pixel_curve_samples(curve_x, curve_values)
             y = np.clip(
                 np.rint(bottom - (curve_values[retained] - low) / (high - low) * (bottom - top)),
-                top, bottom,
+                top,
+                bottom,
             ).astype(np.int32)
             runs.append(np.column_stack((curve_x[retained], y)))
         curves = [run for run in runs if len(run) > 1]
@@ -675,74 +761,3 @@ def _draw_history_curves(
             if len(run) == 1:
                 point = (int(run[0, 0]), int(run[0, 1]))
                 cv2.circle(canvas, point, 1, COLORS[column], -1, cv2.LINE_AA)
-
-
-def graph_log_button_rect(width):
-    button_width = min(150, max(90, width // 3))
-    return max(0, width - button_width - 6), 4, width - 6, 28
-
-
-def graph_interval_rect(width):
-    left = graph_log_button_rect(width)[0]
-    return max(0, left - 88), 4, max(0, left - 8), 28
-
-
-def graph_config_rect(width):
-    left = graph_interval_rect(width)[0]
-    return max(0, left - 152), 4, max(0, left - 84), 28
-
-
-def graph_reset_rect(width):
-    left = graph_config_rect(width)[0]
-    return max(0, left - 68), 4, max(0, left - 4), 28
-
-
-def draw_graph_logging_control(
-    canvas, logging=False, pending=False, interval=GRAPH_INTERVAL, edit_text=None
-):
-    """Overlay the live button on the main thread without mutating the worker's cached image."""
-    x0, y0, x1, y1 = graph_log_button_rect(canvas.shape[1])
-    label = "Cancel logging" if pending else "Stop logging" if logging else "Log to CSV"
-    color = (65, 65, 150) if logging else (47, 51, 61)
-    cv2.rectangle(canvas, (x0, y0), (x1, y1), color, -1)
-    cv2.rectangle(canvas, (x0, y0), (x1, y1), (105, 112, 128), 1)
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    text_width = cv2.getTextSize(label, font, 0.4, 1)[0][0]
-    scale = 0.4 * min(1, max(1, x1 - x0 - 10) / text_width)
-    cv2.putText(canvas, label, (x0 + 5, y0 + 16), font, scale, (235, 238, 245), 1, cv2.LINE_AA)
-    x0, y0, x1, y1 = graph_config_rect(canvas.shape[1])
-    cv2.rectangle(canvas, (x0, y0), (x1, y1), (47, 51, 61), -1)
-    cv2.rectangle(canvas, (x0, y0), (x1, y1), (105, 112, 128), 1)
-    cv2.putText(canvas, "Config", (x0 + 5, y0 + 16), font, 0.4, (235, 238, 245), 1, cv2.LINE_AA)
-    x0, y0, x1, y1 = graph_reset_rect(canvas.shape[1])
-    cv2.rectangle(canvas, (x0, y0), (x1, y1), (47, 51, 61), -1)
-    cv2.rectangle(canvas, (x0, y0), (x1, y1), (105, 112, 128), 1)
-    cv2.putText(
-        canvas,
-        "Reset",
-        (x0 + 5, y0 + 16),
-        font,
-        0.4,
-        (125, 130, 140) if logging or pending else (235, 238, 245),
-        1,
-        cv2.LINE_AA,
-    )
-    x0, y0, x1, y1 = graph_interval_rect(canvas.shape[1])
-    border = (90, 190, 240) if edit_text is not None else (105, 112, 128)
-    cv2.rectangle(canvas, (x0, y0), (x1, y1), (35, 38, 46), -1)
-    cv2.rectangle(canvas, (x0, y0), (x1, y1), border, 1)
-    value = f"{interval:g}" if edit_text is None else edit_text + "|"
-    cv2.putText(
-        canvas,
-        value,
-        (x0 + 5, y0 + 16),
-        font,
-        0.4,
-        (125, 130, 140) if logging or pending else (235, 238, 245),
-        1,
-        cv2.LINE_AA,
-    )
-    if x0 >= 85:
-        cv2.putText(
-            canvas, "Update (s)", (x0 - 80, y0 + 16), font, 0.4, (185, 190, 205), 1, cv2.LINE_AA
-        )

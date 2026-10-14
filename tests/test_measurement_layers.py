@@ -16,8 +16,13 @@ def square(**settings: object) -> dict:
     """
     Return a label-free filled square for independent overlap pixel references.
     """
-    region = {**default_region("rectangle"), "points": [[1, 1], [8, 8]],
-              "labels": [], "fill": True, **settings}
+    region = {
+        **default_region("rectangle"),
+        "points": [[1, 1], [8, 8]],
+        "labels": [],
+        "fill": True,
+        **settings,
+    }
     return region
 
 
@@ -27,8 +32,10 @@ def display_frame() -> RenderedThermalFrame:
     """
     stats = TemperatureStats(0, 49.5, 99, 44)
     rendered = RenderedThermalFrame(
-        np.full((10, 10, 3), 100, np.uint8), stats,
-        np.arange(100, dtype=float).reshape(10, 10), None,
+        np.full((10, 10, 3), 100, np.uint8),
+        stats,
+        np.arange(100, dtype=float).reshape(10, 10),
+        None,
     )
     return rendered
 

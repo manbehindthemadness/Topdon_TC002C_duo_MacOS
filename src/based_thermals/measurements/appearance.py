@@ -58,8 +58,8 @@ def styled_shapes(
             target = blend_color(view, masks.filled, color, 1.0)
             target[masks.halo] = outlined[masks.halo]
             x, y, width, height = cv2.boundingRect(masks.coverage)
-            local = view[y:y + height, x:x + width]
-            overlay = target[y:y + height, x:x + width]
+            local = view[y : y + height, x : x + width]
+            overlay = target[y : y + height, x : x + width]
             local[:] = np.rint(local * (1 - opacity) + overlay * opacity).astype(np.uint8)
         else:
             blend_color(view, masks.combined, color, opacity, copy=False)
@@ -67,7 +67,12 @@ def styled_shapes(
 
 
 def blend_color(
-    image: np.ndarray, mask: np.ndarray, color: str, opacity: float, *, copy: bool = True,
+    image: np.ndarray,
+    mask: np.ndarray,
+    color: str,
+    opacity: float,
+    *,
+    copy: bool = True,
 ) -> np.ndarray:
     """
     Blend RGB hex colors into BGR display pixels, or invert pixels for Dynamic fill.

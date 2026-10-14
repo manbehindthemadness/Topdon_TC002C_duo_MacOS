@@ -110,14 +110,26 @@ def label_layout(
             text = " ".join(parts)
         texts.append((number, text))
     key = (
-        rendered.image.shape, scale, unit, placer, LABEL_FONT_SCALE,
-        tuple((number, geometry_key(spots.region(number), center)) for number, center in spots.active),
-        tuple((number, spots.display_cache.text_bounds(text, LABEL_FONT_SCALE)) for number, text in texts),
+        rendered.image.shape,
+        scale,
+        unit,
+        placer,
+        LABEL_FONT_SCALE,
+        tuple(
+            (number, geometry_key(spots.region(number), center)) for number, center in spots.active
+        ),
+        tuple(
+            (number, spots.display_cache.text_bounds(text, LABEL_FONT_SCALE))
+            for number, text in texts
+        ),
     )
     if key == spots.display_cache.layout_key:
         assert spots.display_cache.layout is not None
         old_labels, old_occupied = spots.display_cache.layout
-        updated = [replace(label, text=text) for label, (_number, text) in zip(old_labels, texts, strict=True)]
+        updated = [
+            replace(label, text=text)
+            for label, (_number, text) in zip(old_labels, texts, strict=True)
+        ]
         return updated, list(old_occupied)
     labels: list[MeasurementLabel] = []
     for number, text in texts:
@@ -158,17 +170,29 @@ def draw_boundaries(mask: np.ndarray, spots: SampleSpots, scale: int) -> None:
 
 
 def draw_boundary(
-    mask: np.ndarray, region: dict, center: tuple[int, int], scale: int,
-    *, points: np.ndarray | None = None, offset: tuple[int, int] = (0, 0),
+    mask: np.ndarray,
+    region: dict,
+    center: tuple[int, int],
+    scale: int,
+    *,
+    points: np.ndarray | None = None,
+    offset: tuple[int, int] = (0, 0),
 ) -> None:
     """
     Draw one measurement outline or a dashed exclusion border in display coordinates.
     """
     if region["kind"] == "spot" and region["radius"] == 0:
         cv2.drawMarker(
-            mask, (center[0] * scale + scale // 2 - offset[0],
-                   center[1] * scale + scale // 2 - offset[1]),
-            255, cv2.MARKER_CROSS, 9, 1, cv2.LINE_8,
+            mask,
+            (
+                center[0] * scale + scale // 2 - offset[0],
+                center[1] * scale + scale // 2 - offset[1],
+            ),
+            255,
+            cv2.MARKER_CROSS,
+            9,
+            1,
+            cv2.LINE_8,
         )
         return
     points = (display_boundary(region, center, scale) if points is None else points) - offset

@@ -13,7 +13,9 @@ from based_thermals.capture_panel import CapturePanel
 from based_thermals.viewer_panel import ViewerPanel
 
 
-def test_render_timing_excludes_saving_and_input(viewer: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_render_timing_excludes_saving_and_input(
+    viewer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """
     Accumulate render/overlay time without capture operations or interaction delays.
     """
@@ -36,11 +38,11 @@ def test_render_timing_excludes_saving_and_input(viewer: Any, monkeypatch: pytes
     for method in ("poll_spot_and_graph_commands", "poll_camera_commands", "poll_capture_commands"):
         monkeypatch.setattr(session, method, lambda: None)
     # noinspection PyUnresolvedReferences
-    monkeypatch.setattr(session, "render_frame", lambda: advance(.002))
+    monkeypatch.setattr(session, "render_frame", lambda: advance(0.002))
     # noinspection PyUnresolvedReferences
     monkeypatch.setattr(session, "finish_capture", lambda: advance(10))
     # noinspection PyUnresolvedReferences
-    monkeypatch.setattr(session, "draw_status", lambda: advance(.003))
+    monkeypatch.setattr(session, "draw_status", lambda: advance(0.003))
 
     def clicks() -> bool:
         """

@@ -19,19 +19,23 @@ def rolling_average(values: np.ndarray, samples: int) -> np.ndarray:
         finite = np.isfinite(values[:, column])
         cumulative = np.r_[0.0, np.cumsum(np.where(finite, values[:, column], 0.0))]
         if finite.all():
-            result[:, column] = (cumulative[stops] - cumulative[window_starts]) / (stops - window_starts)
+            result[:, column] = (cumulative[stops] - cumulative[window_starts]) / (
+                stops - window_starts
+            )
             continue
         last_gap = np.maximum.accumulate(np.where(finite, 0, stops))
         starts = np.maximum(last_gap, stops - samples)
         valid = np.flatnonzero(finite)
-        result[valid, column] = (
-            cumulative[stops[valid]] - cumulative[starts[valid]]
-        ) / (stops[valid] - starts[valid])
+        result[valid, column] = (cumulative[stops[valid]] - cumulative[starts[valid]]) / (
+            stops[valid] - starts[valid]
+        )
     return result
 
 
 def interpolate_samples(
-    stamps: np.ndarray, values: np.ndarray, samples: int,
+    stamps: np.ndarray,
+    values: np.ndarray,
+    samples: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Add N smooth intermediate points per interval within one finite curve run.
@@ -51,8 +55,7 @@ def interpolate_samples(
     second_weight = intervals[1:] + 2 * intervals[:-1]
     indices = np.flatnonzero(matching)
     tangents[indices + 1] = (first_weight[indices] + second_weight[indices]) / (
-        first_weight[indices] / secants[indices]
-        + second_weight[indices] / secants[indices + 1]
+        first_weight[indices] / secants[indices] + second_weight[indices] / secants[indices + 1]
     )
     fraction = np.arange(samples + 1) / (samples + 1)
     square, cube = fraction**2, fraction**3

@@ -11,7 +11,8 @@ from based_thermals import graphs
 
 @pytest.mark.parametrize("mutation", ["append", "reset", "settings"])
 def test_compaction_releases_ui_lock_and_rejects_stale_history(
-    monkeypatch: pytest.MonkeyPatch, mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
 ) -> None:
     """
     Permit image reads during slow compression and preserve concurrent changes.
@@ -40,6 +41,7 @@ def test_compaction_releases_ui_lock_and_rejects_stale_history(
         worker.image((20, 20))
         read_done.set()
 
+    # noinspection PyUnresolvedReferences
     monkeypatch.setattr(graphs, "compress_history", slow_compress)
     compact = threading.Thread(target=worker._compact_histories)
     reader = threading.Thread(target=read_image)

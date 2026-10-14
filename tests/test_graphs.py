@@ -17,7 +17,8 @@ from based_thermals.measurements.series import MeasurementValue
 
 def snapshot(
     spots: tuple[tuple[tuple[int, int], MeasurementValue], ...] = (),
-    unit: str = "C", size: tuple[int, int] = (600, 650),
+    unit: str = "C",
+    size: tuple[int, int] = (600, 650),
 ) -> graphs.GraphSnapshot:
     """
     Construct deterministic graph snapshots with optional spot readings.
@@ -25,12 +26,18 @@ def snapshot(
     return graphs.GraphSnapshot((18, 20, 24, 21), spots, size, unit)
 
 
-def test_worker_samples_on_own_thread_at_half_second_intervals_and_pauses(monkeypatch):
+def test_worker_samples_on_own_thread_at_half_second_intervals_and_pauses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Use an explicit half-second interval to verify background sampling and pause gaps.
+    """
     real_render = graphs.render_graphs
     render = Mock(wraps=real_render)
     monkeypatch.setattr(graphs, "render_graphs", render)
     worker = graphs.GraphWorker()
     try:
+        worker.set_interval(0.5)
         with worker._condition:
             assert worker._image is None and not worker._master
         worker.submit(snapshot())

@@ -43,12 +43,12 @@ def full_canvas_reference(image: np.ndarray, region: dict, center: tuple[int, in
         target[halo] = outlined[halo]
         coverage = cv2.dilate(cv2.max(filled, lines), np.ones((3, 3), np.uint8))
         x, y, width, height = cv2.boundingRect(coverage)
-        view = image[y:y + height, x:x + width]
-        result[y:y + height, x:x + width] = np.rint(
-            view * (1 - opacity) + target[y:y + height, x:x + width] * opacity,
+        view = image[y : y + height, x : x + width]
+        result[y : y + height, x : x + width] = np.rint(
+            view * (1 - opacity) + target[y : y + height, x : x + width] * opacity,
         ).astype(np.uint8)
     else:
-        target = np.array([int(color[i:i + 2], 16) for i in (5, 3, 1)], dtype=np.uint8)
+        target = np.array([int(color[i : i + 2], 16) for i in (5, 3, 1)], dtype=np.uint8)
         alpha = (cv2.max(lines, filled).astype(np.float32) * (opacity / 255))[..., None]
         result = np.rint(image * (1 - alpha) + target * alpha).astype(np.uint8)
     return result
@@ -57,12 +57,14 @@ def full_canvas_reference(image: np.ndarray, region: dict, center: tuple[int, in
 @pytest.mark.parametrize("kind", ["spot", "rectangle", "oval", "polygon", "bezier"])
 @pytest.mark.parametrize("color", ["dynamic", "#ab1234"])
 @pytest.mark.parametrize("exclude", [False, True])
-def test_local_compositing_matches_full_canvas_reference(kind: str, color: str, exclude: bool) -> None:
+def test_local_compositing_matches_full_canvas_reference(
+    kind: str, color: str, exclude: bool
+) -> None:
     """
     Preserve original AA borders, dashed gaps, fill and opacity on clipped sensor edges.
     """
     center, region = initial_region(kind, (32, 24))
-    region.update(fill=True, opacity=.37, line_color=color, exclude=exclude, labels=[])
+    region.update(fill=True, opacity=0.37, line_color=color, exclude=exclude, labels=[])
     if kind == "spot":
         center, region["radius"] = (0, 0), 3
     else:
@@ -75,10 +77,15 @@ def test_local_compositing_matches_full_canvas_reference(kind: str, color: str, 
     result, mask = styled_shapes(image, spots, 3, draw_contrasting_overlay)
     np.testing.assert_array_equal(result, expected)
     assert not np.any(mask)
-    assert shape_masks(spots, number, center, 3, (image.shape[0], image.shape[1])).lines.nbytes < image.size
+    assert (
+        shape_masks(spots, number, center, 3, (image.shape[0], image.shape[1])).lines.nbytes
+        < image.size
+    )
 
 
-def test_masks_reuse_invalidate_prune_and_respect_byte_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_masks_reuse_invalidate_prune_and_respect_byte_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     Bound retained raster memory and invalidate geometry, scale, fill and exclusion changes.
     """
@@ -106,7 +113,9 @@ def test_masks_reuse_invalidate_prune_and_respect_byte_budget(monkeypatch: pytes
     assert not spots.display_cache.masks and not spots.display_cache.boundaries
 
 
-def test_readings_are_shared_only_inside_one_explicit_frame(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_readings_are_shared_only_inside_one_explicit_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     Share cursor/shape/graph sampling but refresh reused temperature buffers each frame.
     """
@@ -114,7 +123,9 @@ def test_readings_are_shared_only_inside_one_explicit_frame(monkeypatch: pytest.
     center, region = initial_region("rectangle", (32, 24))
     number = spots.create_region(center, region, (32, 24))
     temperatures = np.full((24, 32), 20.0)
-    rendered = RenderedThermalFrame(np.zeros((72, 96, 3), np.uint8), TemperatureStats(20, 20, 20, 20), temperatures, None)
+    rendered = RenderedThermalFrame(
+        np.zeros((72, 96, 3), np.uint8), TemperatureStats(20, 20, 20, 20), temperatures, None
+    )
     readings = Mock(wraps=spots.readings)
     # noinspection PyUnresolvedReferences
     monkeypatch.setattr(spots, "readings", readings)
@@ -144,7 +155,9 @@ def test_label_layout_reuses_bounds_while_text_updates(monkeypatch: pytest.Monke
     center, region = initial_region("rectangle", (32, 24))
     spots.create_region(center, region, (32, 24))
     temperatures = np.full((24, 32), 20.0)
-    rendered = RenderedThermalFrame(np.zeros((72, 96, 3), np.uint8), TemperatureStats(20, 20, 20, 20), temperatures, None)
+    rendered = RenderedThermalFrame(
+        np.zeros((72, 96, 3), np.uint8), TemperatureStats(20, 20, 20, 20), temperatures, None
+    )
     placer = Mock(wraps=place_temperature_label)
     first, occupied = label_layout(rendered, spots, 3, "C", placer)
     temperatures[:] = 21
@@ -163,7 +176,7 @@ def test_label_layout_reuses_bounds_while_text_updates(monkeypatch: pytest.Monke
     label_layout(resized, spots, 4, "F", placer)
     assert placer.call_count == 5
     # noinspection PyUnresolvedReferences
-    monkeypatch.setattr(overlays, "LABEL_FONT_SCALE", .6)
+    monkeypatch.setattr(overlays, "LABEL_FONT_SCALE", 0.6)
     label_layout(resized, spots, 4, "F", placer)
     assert placer.call_count == 6
 

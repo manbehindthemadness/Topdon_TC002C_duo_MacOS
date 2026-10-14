@@ -66,9 +66,9 @@ def test_interpolation_preserves_knots_and_extrema_with_uneven_timestamps() -> N
     np.testing.assert_array_equal(curve[::8], values)
     assert np.all(np.diff(times) > 0)
     for index in range(len(stamps) - 1):
-        segment = curve[index * 8:(index + 1) * 8 + 1]
-        assert segment.min() >= min(values[index:index + 2])
-        assert segment.max() <= max(values[index:index + 2])
+        segment = curve[index * 8 : (index + 1) * 8 + 1]
+        assert segment.min() >= min(values[index : index + 2])
+        assert segment.max() <= max(values[index : index + 2])
 
 
 def test_interpolation_handles_disabled_single_and_duplicate_samples() -> None:
@@ -92,9 +92,15 @@ def test_smoothed_chart_preserves_gap_segments(monkeypatch: pytest.MonkeyPatch) 
     polylines = Mock()
     monkeypatch.setattr(graphs.cv2, "polylines", polylines)
     graphs._draw_history_curves(
-        np.zeros((200, 400, 3), dtype=np.uint8), np.arange(5, dtype=float),
+        np.zeros((200, 400, 3), dtype=np.uint8),
+        np.arange(5, dtype=float),
         np.array([[10], [20], [np.nan], [30], [40]]),
-        (0, 399, 0, 199), 0, 50, 4, 4, 8,
+        (0, 399, 0, 199),
+        0,
+        50,
+        4,
+        4,
+        8,
     )
     curves = polylines.call_args.args[1]
     assert len(curves) == 2
@@ -110,8 +116,15 @@ def test_chart_averages_before_fahrenheit_conversion(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(graphs, "_draw_history_curves", draw)
     history = ((0.0, (10.0,)), (1.0, (20.0,)), (2.0, (30.0,)))
     graphs._draw_chart(
-        np.zeros((200, 400, 3), dtype=np.uint8), "Spot", history, ("Temp",),
-        "F", 2, 1, averaging_samples=2, interpolation_samples=4,
+        np.zeros((200, 400, 3), dtype=np.uint8),
+        "Spot",
+        history,
+        ("Temp",),
+        "F",
+        2,
+        1,
+        averaging_samples=2,
+        interpolation_samples=4,
     )
     np.testing.assert_allclose(draw.call_args.args[2][:, 0], [59, 77])
     assert draw.call_args.args[-1] == 4

@@ -34,18 +34,25 @@ class ShapeMasks:
         """
         Account for all retained raster arrays in the display cache budget.
         """
-        return sum(mask.nbytes for mask in (self.lines, self.filled, self.combined, self.halo, self.coverage))
+        return sum(
+            mask.nbytes
+            for mask in (self.lines, self.filled, self.combined, self.halo, self.coverage)
+        )
 
     def view(self, image: np.ndarray) -> np.ndarray:
         """
         Select the matching image rectangle without making another full-frame copy.
         """
         height, width = self.lines.shape
-        return image[self.y:self.y + height, self.x:self.x + width]
+        return image[self.y : self.y + height, self.x : self.x + width]
 
 
 def shape_masks(
-    spots: SampleSpots, number: int, center: tuple[int, int], scale: int, shape: tuple[int, int],
+    spots: SampleSpots,
+    number: int,
+    center: tuple[int, int],
+    scale: int,
+    shape: tuple[int, int],
 ) -> ShapeMasks:
     """
     Rasterize one clipped bounding rectangle and retain it until geometry changes.

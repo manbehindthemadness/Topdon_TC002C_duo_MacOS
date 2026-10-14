@@ -121,6 +121,9 @@ compression runs outside the viewer's shared graph lock, copying one history at
 a time and rejecting results invalidated by resets or settings changes. Samples
 appended during compaction are retained. Segmented rolling averages avoid a Python
 loop per valid run; interpolation Off bypasses per-run geometry reduction.
+`graphs.py` retains the worker, snapshots and public imports. `graph_plotting.py`
+owns history selection/compression and pixel reduction; `graph_controls.py` owns
+legacy toolbar drawing and hit rectangles. Defaults live in `graph_settings.py`.
 
 Stable numbers and graph identities survive edits, movement and orientation.
 Switching between a scalar spot and an area resets that measurement's history

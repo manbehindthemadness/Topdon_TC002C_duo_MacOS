@@ -79,8 +79,10 @@ class MeasurementDisplayCache:
         """
         if not self._frame:
             return spots.readings(temperatures)
-        key = tuple((number, geometry_key(spots.region(number), center),
-                     spots.region(number)["exclude"]) for number, center in spots.active)
+        key = tuple(
+            (number, geometry_key(spots.region(number), center), spots.region(number)["exclude"])
+            for number, center in spots.active
+        )
         if self._temperatures is not temperatures or key != self._readings_key:
             self._readings = spots.readings(temperatures)
             self._temperatures = temperatures
@@ -115,7 +117,9 @@ class MeasurementDisplayCache:
         self.masks[number] = key, masks
         self.mask_bytes += masks.byte_size
 
-    def boundary(self, number: int, region: dict, center: tuple[int, int], scale: int) -> NDArray[np.int32]:
+    def boundary(
+        self, number: int, region: dict, center: tuple[int, int], scale: int
+    ) -> NDArray[np.int32]:
         """
         Reuse an oriented display boundary until its coordinates or scale change.
         """

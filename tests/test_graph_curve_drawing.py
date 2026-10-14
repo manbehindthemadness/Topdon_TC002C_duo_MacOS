@@ -20,7 +20,14 @@ def test_curves_keep_gaps_and_isolated_measurements(monkeypatch: pytest.MonkeyPa
     values = np.array([[0], [10], [np.nan], [5], [np.inf], [2], [3], [-np.inf], [10]])
 
     graphs._draw_history_curves(
-        canvas, np.arange(9), values, (0, 80, 0, 100), 0, 10, 8, 8,
+        canvas,
+        np.arange(9),
+        values,
+        (0, 80, 0, 100),
+        0,
+        10,
+        8,
+        8,
     )
 
     assert lines.call_count == 1
@@ -42,10 +49,17 @@ def test_dense_history_uses_one_native_curve_call_per_series(
     monkeypatch.setattr(graphs.cv2, "polylines", lines)
     monkeypatch.setattr(graphs.cv2, "circle", circles)
     canvas = np.zeros((101, 601, 3), np.uint8)
-    values = np.tile(np.array([1., 2., 3., 4.]), (4096, 1))
+    values = np.tile(np.array([1.0, 2.0, 3.0, 4.0]), (4096, 1))
 
     graphs._draw_history_curves(
-        canvas, np.linspace(0, 600, 4096), values, (0, 600, 0, 100), 0, 5, 600, 600,
+        canvas,
+        np.linspace(0, 600, 4096),
+        values,
+        (0, 600, 0, 100),
+        0,
+        5,
+        600,
+        600,
     )
 
     assert lines.call_count == 4
@@ -66,25 +80,40 @@ def test_invalid_series_is_not_drawn(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(graphs.cv2, "circle", circles)
 
     graphs._draw_history_curves(
-        np.zeros((101, 61, 3), np.uint8), np.arange(3),
-        np.array([[np.nan], [np.inf], [-np.inf]]), (0, 60, 0, 100), 0, 10, 2, 2,
+        np.zeros((101, 61, 3), np.uint8),
+        np.arange(3),
+        np.array([[np.nan], [np.inf], [-np.inf]]),
+        (0, 60, 0, 100),
+        0,
+        10,
+        2,
+        2,
     )
 
     lines.assert_not_called()
     circles.assert_not_called()
 
 
-def test_disabled_interpolation_reduces_pixels_once_per_series(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_disabled_interpolation_reduces_pixels_once_per_series(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     Gap-heavy curves bypass per-run reduction when interpolation is disabled.
     """
     reduce_pixels = Mock(wraps=graphs.pixel_curve_samples)
     # noinspection PyUnresolvedReferences
     monkeypatch.setattr(graphs, "pixel_curve_samples", reduce_pixels)
-    values = np.tile(np.array([1., 2., 3., 4.]), (2048, 1))
+    values = np.tile(np.array([1.0, 2.0, 3.0, 4.0]), (2048, 1))
     values[1::2] = np.nan
     graphs._draw_history_curves(
-        np.zeros((101, 601, 3), np.uint8), np.linspace(0, 600, 2048), values,
-        (0, 600, 0, 100), 0, 5, 600, 600, 0,
+        np.zeros((101, 601, 3), np.uint8),
+        np.linspace(0, 600, 2048),
+        values,
+        (0, 600, 0, 100),
+        0,
+        5,
+        600,
+        600,
+        0,
     )
     assert reduce_pixels.call_count == 4

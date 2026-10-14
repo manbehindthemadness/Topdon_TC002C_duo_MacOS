@@ -35,7 +35,10 @@ def test_graph_settings_validation(settings: dict) -> None:
         validate_graph_settings(settings)
 
 
-def test_graph_configuration_resizes_history_and_locks_during_logging(tmp_path):
+def test_graph_configuration_resizes_history_and_locks_during_logging(tmp_path: Path) -> None:
+    """
+    Apply history budgets immediately and reject configuration changes while logging.
+    """
     worker = graphs.GraphWorker()
     data = graphs.GraphSnapshot((18, 20, 24, 21), (), (600, 650))
     try:
@@ -50,7 +53,9 @@ def test_graph_configuration_resizes_history_and_locks_during_logging(tmp_path):
         worker.close()
 
 
-def test_range_change_redraws_without_an_extra_temperature_sample(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_range_change_redraws_without_an_extra_temperature_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     Changing display settings redraws history without recording an extra sample.
     """
@@ -64,8 +69,14 @@ def test_range_change_redraws_without_an_extra_temperature_sample(monkeypatch: p
         with worker._condition:
             assert worker._condition.wait_for(lambda: worker._image is not None, timeout=2)
             first = worker._image
-        worker.configure({"range_mode": "fixed", "range_seconds": 300,
-                          "averaging_samples": 3, "interpolation_samples": 4})
+        worker.configure(
+            {
+                "range_mode": "fixed",
+                "range_seconds": 300,
+                "averaging_samples": 3,
+                "interpolation_samples": 4,
+            }
+        )
         with worker._condition:
             assert worker._condition.wait_for(lambda: worker._image is not first, timeout=2)
             assert len(worker._master) == 1

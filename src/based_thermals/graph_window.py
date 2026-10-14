@@ -58,7 +58,11 @@ class GraphWindow(QWidget):
         form.addRow("Points per chart", self.points)
         layout.addLayout(form)
         description = QLabel(
-            "Compression preserves older peaks and gaps while keeping the newest half of the history budget at full detail. With compression off, older points are discarded when the budget is full. Averaging uses trailing retained samples; interpolation smooths between them. Both preserve gaps and affect only chart display. CSV logging always saves every valid sample."
+            "Compression preserves older peaks and gaps while keeping the newest half of the "
+            "history budget at full detail. With compression off, older points are discarded "
+            "when the budget is full. Averaging uses trailing retained samples; interpolation "
+            "smooths between them. Both preserve gaps and affect only chart display. "
+            "CSV logging always saves every valid sample."
         )
         description.setWordWrap(True)
         layout.addWidget(description)
@@ -145,8 +149,12 @@ class GraphWindow(QWidget):
             self.activateWindow()
 
 
-def main():
-    return run_window(GraphWindow, "Graph configuration")
+def main() -> int:
+    """
+    Run chart configuration in the isolated Qt popup process.
+    """
+    result = run_window(GraphWindow, "Graph configuration")
+    return result
 
 
 if __name__ == "__main__":
