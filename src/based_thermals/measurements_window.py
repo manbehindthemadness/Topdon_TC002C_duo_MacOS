@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -108,6 +109,22 @@ class MeasurementsWindow(QWidget):
         self.name.setMaxLength(64)
         self.name.textEdited.connect(self._mark_dirty)
         self.shape = QLabel()
+        self.z_index = QSpinBox()
+        self.z_index.setRange(-1000, 1000)
+        self.z_index.setKeyboardTracking(False)
+        self.z_index.setToolTip("Higher values draw above lower values. Equal values keep their order.")
+        self.z_index.valueChanged.connect(self._mark_dirty)
+        z_editor = self.z_index.lineEdit()
+        assert z_editor is not None
+        z_editor.textEdited.connect(self._mark_dirty)
+        self.bring_front = QPushButton("Bring to front")
+        self.send_back = QPushButton("Send to back")
+        self.bring_front.clicked.connect(lambda: self._shift_z_index(front=True))
+        self.send_back.clicked.connect(lambda: self._shift_z_index(front=False))
+        z_controls = QHBoxLayout()
+        z_controls.addWidget(self.z_index)
+        z_controls.addWidget(self.bring_front)
+        z_controls.addWidget(self.send_back)
         self.radius = self._spin(0, 256, 0.5)
         self.diameter = self._spin(0, 512, 1)
         self.radius.valueChanged.connect(self._radius_changed)
@@ -122,6 +139,7 @@ class MeasurementsWindow(QWidget):
         self.exclude.toggled.connect(self._exclusion_changed)
         form.addRow("Name", self.name)
         form.addRow("Shape", self.shape)
+        form.addRow("Z index", z_controls)
         form.addRow("Spot radius (native pixels)", self.radius)
         form.addRow("Spot diameter (native pixels)", self.diameter)
         coordinates = QHBoxLayout()
@@ -271,6 +289,7 @@ class MeasurementsWindow(QWidget):
         self.center = selected["pixel"][0], selected["pixel"][1]
         self.name.setText(selected["name"])
         self.shape.setText(self.region["kind"].title())
+        self.z_index.setValue(self.region["z_index"])
         self.radius.setMaximum(max(self.sensor_size))
         self.diameter.setMaximum(max(self.sensor_size) * 2)
         self.radius.setValue(self.region["radius"])
@@ -403,6 +422,24 @@ class MeasurementsWindow(QWidget):
         for field in ("min", "max", "average"):
             self.label_fields[field].setVisible(not self.exclude.isChecked())
 
+    def _shift_z_index(self, *, front: bool) -> None:
+        """
+        Move the pending selected layer beyond other saved measurements' Z indices.
+        """
+        if self._selected is None or self._state.get("locked"):
+            return
+        self.z_index.interpretText()
+        others = [entry["region"]["z_index"] for number, entry in self._items.items()
+                  if number != self._selected]
+        if not others:
+            return
+        current = self.z_index.value()
+        target = max(current, max(others) + 1) if front else min(current, min(others) - 1)
+        if not self.z_index.minimum() <= target <= self.z_index.maximum():
+            self.status.setText("Z index limit reached; adjust the other measurement layers first.")
+            return
+        self.z_index.setValue(target)
+
     def _appearance_changed(self, values: dict) -> None:
         """
         Preview display-only styling through the same local edit boundary as geometry.
@@ -442,7 +479,7 @@ class MeasurementsWindow(QWidget):
         """
         if self._selected is None or self._state.get("locked"):
             return False
-        for control in (self.radius, self.diameter, self.x, self.y):
+        for control in (self.radius, self.diameter, self.x, self.y, self.z_index):
             control.interpretText()
         if self.points.rowCount():
             try:
@@ -455,6 +492,7 @@ class MeasurementsWindow(QWidget):
                 {
                     **self.region,
                     **self.appearance.values(),
+                    "z_index": self.z_index.value(),
                     "labels": [
                         field for field, control in self.label_fields.items() if control.isChecked()
                     ],

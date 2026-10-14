@@ -310,9 +310,9 @@ def spot_hit(
     image_shape: Any,
     scale: Any,
     viewport_size: tuple[int, int] | None = None,
-) -> Any:
+) -> tuple[float, int, tuple[int, int]] | None:
     """
-    Find the closest enabled point or an area containing the native pixel.
+    Prefer the highest Z layer, then the closest enabled anchor within that layer.
     """
     radius = 10 * image_shape[1] / viewport_size[0] if viewport_size else 10
     hits = []
@@ -328,7 +328,11 @@ def spot_hit(
                 inside_area = bool(spots.measurement_mask(number, (sx, sy), shape)[sensor_y, sensor_x])
         if inside_area or (region["kind"] == "spot" and distance <= radius**2):
             hits.append((distance, number, anchor))
-    return min(hits) if hits else None
+    hit = (
+        min(hits, key=lambda item: (-spots.region(item[1]).get("z_index", 0), item[0], item[1]))
+        if hits else None
+    )
+    return hit
 
 
 class SpotDrag:

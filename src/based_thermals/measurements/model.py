@@ -24,6 +24,14 @@ class MeasurementRegions:
     regions: dict[int, dict]
     region_masks: dict[int, tuple[tuple, np.ndarray]]
 
+    @property
+    def display_active(self: SampleSpots) -> list[tuple[int, tuple[int, int]]]:
+        """
+        Order enabled display shapes by Z index, preserving existing order for ties.
+        """
+        ordered = sorted(self.active, key=lambda item: self.region(item[0]).get("z_index", 0))
+        return ordered
+
     def region(self: SampleSpots, number: int) -> dict:
         """
         Return a fresh default for legacy points or the configured geometry.

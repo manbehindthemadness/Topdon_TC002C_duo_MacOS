@@ -25,12 +25,18 @@ def styled_shapes(
     contrast: Contrast,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Composite styled shapes and union legacy dynamic outlines for their existing renderer.
+    Composite Z layers, unioning legacy dynamic outlines within each layer.
     """
     result = image.copy()
     default_mask = np.zeros(image.shape[:2], np.uint8)
-    for number, center in spots.active:
+    current_z = None
+    for number, center in spots.display_active:
         region = spots.region(number)
+        z_index = region.get("z_index", 0)
+        if current_z is not None and z_index != current_z:
+            result = contrast(result, default_mask, np.zeros_like(default_mask))
+            default_mask.fill(0)
+        current_z = z_index
         color = region.get("line_color", "dynamic")
         fill, opacity = region.get("fill", False), region.get("opacity", 1.0)
         if color == "dynamic" and not fill and opacity == 1:

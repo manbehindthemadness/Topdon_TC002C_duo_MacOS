@@ -101,6 +101,12 @@ Exclusions use a dashed border and an exclusion identifier without temperatures.
 areas using that color, and **Opacity** controls the outline and fill together.
 Labels and leaders retain their contrast styling independently. Filled exclusions
 keep their dashed borders. Appearance edits do not change native sampling or graphs.
+**Z index** orders shape layers from low to high; ties keep their existing drawing
+order. **Bring to front** / **Send to back** choose an index beyond the other saved
+measurements and commit through Apply configuration. Dynamic outline masks are
+unioned within each Z layer and composited before higher layers, while labels and
+leaders remain readable above the shapes. Hit testing prefers the highest enabled
+Z layer and then the nearest anchor, retaining the existing tie behavior.
 
 Stable numbers and graph identities survive edits, movement and orientation.
 Switching between a scalar spot and an area resets that measurement's history
@@ -116,8 +122,9 @@ CSV files keep canonical Celsius and selected-unit values. Area rows have IDs
 Preferences retain the existing `spots` key. Legacy point-only version 1 files
 remain readable. Version 2 items add a validated `region` object with `kind`,
 `radius`, `points`, `exclude` and `labels`, plus optional `line_color`, `fill`
-and `opacity` fields. Missing appearance fields default to Dynamic color,
+and `opacity`, `z_index` fields. Missing appearance fields default to Dynamic color,
 no fill and full opacity. Color is `dynamic` or `#RRGGBB`; stored opacity is
-0–1, displayed as 0–100%. Geometry is validated without running
+0–1, displayed as 0–100%; Z index is an integer from −1,000 to 1,000 (default 0).
+Geometry is validated without running
 package code or opening hardware. The Qt 6 popup receives only JSON metadata;
 the parent process owns all kernels, temperatures, persistence and lock checks.

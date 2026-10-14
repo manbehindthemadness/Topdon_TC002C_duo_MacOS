@@ -24,6 +24,7 @@ def default_region(kind: str = "spot") -> dict:
         "line_color": "dynamic",
         "fill": False,
         "opacity": 1.0,
+        "z_index": 0,
         "labels": ["number", "average"] if kind == "spot" else ["number", "min", "max", "average"],
     }
 
@@ -35,7 +36,7 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
     Bezier points are anchor/control/control triples. The next triple supplies
     the endpoint, and the final segment wraps to the first anchor.
     """
-    appearance = {"line_color", "fill", "opacity"}
+    appearance = {"line_color", "fill", "opacity", "z_index"}
     required = set(default_region()) - appearance
     if (
         not isinstance(value, dict)
@@ -52,6 +53,9 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
     if type(fill) is not bool:
         raise TypeError("Fill state must be a boolean")
     opacity = value.get("opacity", 1.0)
+    z_index = value.get("z_index", 0)
+    if type(z_index) is not int or not -1000 <= z_index <= 1000:
+        raise ValueError("Measurement Z index must be an integer between -1000 and 1000")
     if (
         isinstance(opacity, bool) or not isinstance(opacity, (int, float))
         or not math.isfinite(opacity) or not 0 <= opacity <= 1
@@ -112,6 +116,7 @@ def validate_region(value: object, native_size: tuple[int, int]) -> dict:
         "line_color": line_color.lower(),
         "fill": fill,
         "opacity": float(opacity),
+        "z_index": z_index,
     }
     return region
 

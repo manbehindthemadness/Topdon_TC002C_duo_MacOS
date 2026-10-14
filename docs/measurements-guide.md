@@ -53,6 +53,13 @@ leader lines remain readable independently. Click **Apply configuration** to
 save the appearance with the measurement; it is restored on restart.
 These display controls do not change sampled temperatures, exclusions or graphs.
 
+**Z index** sets the selected shape's overlay layer (−1,000 to 1,000). Higher values
+draw above lower values. **Bring to front** and **Send to back** choose a value
+above or below all other saved measurements, including exclusions and disabled
+ones. Click **Apply configuration** to save the change. Equal indices retain the
+existing drawing order; labels remain readable above shapes. Clicking overlapping
+measurements selects the highest Z layer, then the nearest anchor within that layer.
+
 Select a measurement in the dialog's list. Use **Name**, **Label fields**, native
 coordinates and the geometry editor to adjust it. Spots have linked **Spot radius**
 and **Spot diameter** controls; radius zero samples a single native pixel. Editing

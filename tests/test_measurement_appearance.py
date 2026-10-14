@@ -49,7 +49,7 @@ def test_legacy_styles_and_saved_color_survive_restore() -> None:
     Supply defaults to old regions and preserve appearance through native coordinate transforms.
     """
     old = rectangle()
-    for key in ("line_color", "fill", "opacity"):
+    for key in ("line_color", "fill", "opacity", "z_index"):
         old.pop(key)
     assert validate_region(old, (10, 10)) == rectangle()
     spots = SampleSpots(native_size=(10, 10))
