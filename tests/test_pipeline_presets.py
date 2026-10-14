@@ -146,6 +146,22 @@ def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
     name = "Detail Enhanced GPU Upscale"
     original = predefined_presets()[name]
     assert load_presets()[name] == original
+    assert [(item["type"], item["params"], item["bypass"]) for item in original["hardware"]] == [
+        ("preset", {"value": "balanced"}, False),
+        ("detail", {"enabled": True, "amount": 91.0, "fixed": False}, False),
+        (
+            "noise",
+            {
+                "noise_mode": 2.0,
+                "noise_general": 100.0,
+                "noise_spatial": 100.0,
+                "noise_temporal": 100.0,
+            },
+            False,
+        ),
+        ("boost", {"value": 3}, False),
+        ("camera_colors", {"palette": 10}, False),
+    ]
     assert not any(n["type"] == "onnx_superresolution" for n in original["software"])
     upscale = next(n for n in original["software"] if n["type"] == "enhance")
     assert upscale["params"] == {
@@ -161,6 +177,9 @@ def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
     combine = next(n for n in original["software"] if n["type"] == "combine")
     assert combine["params"]["tab"] == "B"
     assert original["branches"]["B"][0]["params"]["source"] == "raw"
+    edges = next(n for n in original["branches"]["B"] if n["type"] == "filter")
+    assert edges["params"]["filter"] == "scharr"
+    assert edges["params"]["gain"] == 1.08 and edges["params"]["mix"] == 1.0
     preview = next(n for n in original["branches"]["B"] if n["type"] == "preview")
     assert not preview["expanded"]
     save_presets(load_presets())
@@ -174,7 +193,8 @@ def test_predefined_detail_pipeline_retains_gpu_and_edge_branch(
 
 
 def test_corrupt_user_presets_do_not_hide_predefined_pipeline(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """
     Retain bundled pipelines when the current user preset file is corrupt.
@@ -351,8 +371,8 @@ assert editor.current_preset_name is None
 assert load_presets() == before
 editor.select_preset(editor.preset_combo.findText("Detail Enhanced GPU Upscale"))
 bundled = deepcopy(predefined_presets()["Detail Enhanced GPU Upscale"])
-colors = next(n for n in editor.document["software"] if n["type"] == "colors")
-editor.change(colors, "palette", "white_hot")
+colors = next(n for n in editor.document["hardware"] if n["type"] == "camera_colors")
+editor.change(colors, "palette", 11)
 editor.save_preset_button.click()
 assert editor.preset_combo.currentText() == "Detail Enhanced GPU Upscale"
 assert load_presets()["Detail Enhanced GPU Upscale"] == editor.document
@@ -367,7 +387,7 @@ def failed_save(_candidate: dict) -> None:
 editor_module.save_presets = failed_save
 warnings = []
 QMessageBox.warning = lambda *args: warnings.append(args)
-editor.change(colors, "palette", "inferno")
+editor.change(colors, "palette", 12)
 editor.save_preset_button.click()
 assert warnings and load_presets() == persisted
 assert editor.current_preset_name == "Detail Enhanced GPU Upscale"
