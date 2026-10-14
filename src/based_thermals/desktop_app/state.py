@@ -14,6 +14,10 @@ if TYPE_CHECKING:
 
     from .. import desktop as api_types
     from ..camera_backends import CameraFrame
+    from ..maintenance import MaintenancePaths, MaintenancePlan
+    from ..maintenance.export import SupportExport
+    from ..maintenance.logging import SupportLogging
+    from ..maintenance_panel import MaintenancePanel
     from ..measurements.drawing import MeasurementDrawing
 
 
@@ -67,6 +71,13 @@ class SessionState:
     last_selected: tuple[int, int] | None = None
     last_window_size: tuple[int, int] | None = None
     measurement_drawing: MeasurementDrawing = field(init=False)
+    maintenance_panel: MaintenancePanel = field(init=False)
+    maintenance_paths: MaintenancePaths = field(init=False)
+    maintenance_plan: MaintenancePlan | None = None
+    debug_logs: bool = False
+    support_logging: SupportLogging = field(init=False)
+    support_export: SupportExport = field(init=False)
+    support_status: str = ""
     layout: api_types.ToolbarLayout = field(init=False)
     next_hardware_retry: float = 0.0
     nvidia_capability: dict[str, Any] = field(default_factory=dict)

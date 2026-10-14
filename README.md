@@ -28,6 +28,7 @@ Min/Avg/Max history graphs, Fahrenheit readings, and viewport draw time.*
 | Change camera settings, build pipelines, or combine images     | [Imaging and pipelines how-to](docs/imaging-guide.md) |
 | Draw spots/areas, exclude regions, configure labels and graphs | [Measurements how-to](docs/measurements-guide.md)     |
 | Use the supplied Codex skills                                  | [Skills guide](docs/skills.md)                        |
+| Clear caches/settings or recreate first-install conditions     | [Maintenance](docs/maintenance.md)                  |
 | Create a Python/JSON processing package                        | [Custom nodes](docs/custom-nodes.md)                  |
 | Understand temperature corrections and calibration             | [Calibration](docs/calibration.md)                    |
 
@@ -95,6 +96,7 @@ images. Saved temperatures remain Celsius when the UI displays Fahrenheit.
 | Units        | `F`                                    | °C/cm or °F/in                                    |
 | Show graph   | `G`                                    | Show/hide chart pane                              |
 | Log to CSV   | `L`                                    | Start/stop temperature logging; show graphs first |
+| Maintenance  | Far right of graph toolbar             | Debug logs, support exports, cleanup/factory reset |
 | Help         | Space                                  | On-screen control help                            |
 | Fullscreen   | Escape leaves fullscreen               | Restore the previous window size on exit          |
 | Quit         | `Q`; Escape outside drawing/fullscreen | Close the viewer                                  |

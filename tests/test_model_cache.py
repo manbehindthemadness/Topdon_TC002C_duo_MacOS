@@ -4,7 +4,6 @@ Explicit cache maintenance preserves user models and avoids active installations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock
 
@@ -21,32 +20,31 @@ viewer = viewer_fixture
 
 @pytest.mark.usefixtures("viewer")
 @pytest.mark.parametrize("logging", [False, True])
-def test_cache_command_reports_space_and_honors_logging_lock(logging: bool) -> None:
+def test_cache_maintenance_is_deferred_and_honors_logging_lock(logging: bool) -> None:
     """
     Dispatch maintenance without applying a pipeline or touching camera controls.
     """
     session = DesktopSession(desktop, [])
-    session.view_panel = Mock()
-    session.view_panel.poll.return_value = [{"action": "clear_model_cache"}]
+    session.maintenance_panel = Mock()
+    session.maintenance_panel.poll.return_value = [{"action": "cleanup", "categories": ["models"]}]
     graphs = cast(Mock, session.graphs)
     graphs.logging = logging
-    clear = Mock(return_value=(2, 3_000_000))
-    session.api = SimpleNamespace(**{**vars(desktop), "MODEL_DOWNLOADS": Mock(clear_cache=clear)})
     pipeline = session.pipeline
     revision = session.pipeline_revision
-    session.poll_camera_commands()
-    assert clear.call_count == (0 if logging else 1)
+    assert session.poll_maintenance_commands() is logging
+    assert (session.maintenance_plan is None) is logging
     assert session.pipeline is pipeline and session.pipeline_revision == revision
     if logging:
-        assert "Stop logging" in session.status_message
+        assert "Stop recording/logging" in session.status_message
     else:
-        assert session.status_message == "Model cache cleared: 2 files, 3.0 MB freed"
+        assert session.status_message == "Closing the viewer for maintenance…"
     hardware = cast(Mock, session.hardware)
     hardware.set.assert_not_called()
 
 
 def test_clear_cache_removes_only_downloaded_models(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """
     Remove catalog/custom downloads and checksums, preserving other cache contents.
@@ -62,7 +60,9 @@ def test_clear_cache_removes_only_downloaded_models(
     registered.write_bytes(b"local choice")
     registry = tmp_path / "custom-models.json"
     registry.write_text(json.dumps([str(registered)]))
-    export_name = next(name for name, spec in onnx_models.MODELS.items() if spec.get("local_export"))
+    export_name = next(
+        name for name, spec in onnx_models.MODELS.items() if spec.get("local_export")
+    )
     exported = onnx_models.model_path(export_name)
     exported.write_bytes(b"expensive local export")
     unknown = tmp_path / "my-model.onnx"
@@ -81,7 +81,8 @@ def test_clear_cache_removes_only_downloaded_models(
 
 
 def test_clear_cache_refuses_active_downloads(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """
     A pending job excludes clearing without losing its progress or cached files.
@@ -98,7 +99,8 @@ def test_clear_cache_refuses_active_downloads(
 
 
 def test_clear_cache_fails_safely_on_invalid_local_index(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """
     Do not remove files when local-model protections cannot be read reliably.
@@ -106,13 +108,13 @@ def test_clear_cache_fails_safely_on_invalid_local_index(
     monkeypatch.setenv("BASED_THERMALS_MODEL_DIR", str(tmp_path))
     path = onnx_models.model_path("espcn")
     path.write_bytes(b"keep")
-    (tmp_path / "custom-models.json").write_text('{}')
+    (tmp_path / "custom-models.json").write_text("{}")
     with pytest.raises(ValueError, match="local model index"):
         ModelDownloads().clear_cache()
     assert path.read_bytes() == b"keep"
 
 
-def test_preset_selector_requests_cache_clear_without_pipeline_edits(tmp_path: Path) -> None:
+def test_cache_clear_moves_to_maintenance_without_pipeline_edits(tmp_path: Path) -> None:
     """
     Confirmation and locking control the action without mutating pipeline or presets.
     """
@@ -120,6 +122,7 @@ def test_preset_selector_requests_cache_clear_without_pipeline_edits(tmp_path: P
 from copy import deepcopy
 from PySide6.QtWidgets import QApplication, QMessageBox
 from based_thermals.view_window import ViewWindow
+from based_thermals.maintenance_window import MaintenanceWindow
 app = QApplication([])
 messages = []
 window = ViewWindow(messages.append)
@@ -127,17 +130,20 @@ editor = window.pipeline_editor
 before = deepcopy(editor.document)
 presets = deepcopy(editor.presets)
 serial = editor.edit_serial
-index = next(i for i in range(editor.preset_combo.count())
-             if editor.preset_combo.itemData(i) == ("clear_cache", ""))
-QMessageBox.question = lambda *args: QMessageBox.StandardButton.No
-editor.select_preset(index)
+assert all(editor.preset_combo.itemData(i) != ("clear_cache", "")
+           for i in range(editor.preset_combo.count()))
+maintenance = MaintenanceWindow(messages.append)
+maintenance.update_state({'locked': False, 'paths': {'models': ['/temporary/models']}})
+maintenance.choices['models'].setChecked(True)
+QMessageBox.warning = lambda *args: QMessageBox.StandardButton.Cancel
+maintenance.clear_selected()
 assert messages == []
-QMessageBox.question = lambda *args: QMessageBox.StandardButton.Yes
-editor.select_preset(index)
-assert messages == [{"action": "clear_model_cache"}]
+QMessageBox.warning = lambda *args: QMessageBox.StandardButton.Yes
+maintenance.clear_selected()
+assert messages == [{"action": "cleanup", "categories": ["models"]}]
 assert editor.document == before and editor.presets == presets and editor.edit_serial == serial
-editor.locked = True
-editor.select_preset(index)
+maintenance.update_state({'locked': True})
+maintenance.clear_selected()
 assert len(messages) == 1
 """
     result = run_popup(script, tmp_path)

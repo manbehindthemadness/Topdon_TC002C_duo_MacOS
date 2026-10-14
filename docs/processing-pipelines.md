@@ -37,13 +37,14 @@ While dragging, a highlighted placement bar marks the insertion boundary. The
 bar appears only for valid moves within the same stack; Source and Output remain
 fixed. It clears when the drag leaves the stack, is cancelled, or is dropped.
 
-The pipeline presets dropdown beside Import, Export, and Restore defaults
-also offers **Clear downloaded model cache…**. After confirmation, this removes
-recognized catalog/custom downloads and their checksum files from the shared
-model cache, reporting the file count and disk space freed. Bundled models,
-local exports, registered local files, unknown files, and symlinks are retained.
-Clearing is unavailable during model downloads, logging, or calibration. Active
-pipelines can download missing models again; saved pipelines are unchanged.
+Downloaded-model cleanup lives in **Maintenance** at the far right of the graph
+toolbar. A confirmed cleanup closes the viewer and stops installers/processing
+before removing recognized catalog/custom downloads and checksums. The targeted
+model action retains bundled models, converted exports, registered original files
+and unknown/linked files. Settings and factory reset also remove saved pipeline
+entries after explicit warnings, preserving original custom-node folders and
+user-added camera backend source. See [Maintenance](maintenance.md) for scope,
+shutdown ordering and first-install testing.
 
 The dropdown
 offers bundled and user-saved presets. Choose **Save current pipeline as…** to

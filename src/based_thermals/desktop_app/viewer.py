@@ -81,6 +81,8 @@ class ViewerController(SessionState):
                     self.viewer_pointer(command)
                 elif action == "spots":
                     self.spots_panel.open(self.spots_state())
+                elif action == "maintenance":
+                    self.open_maintenance()
                 elif action == "orientation":
                     self.set_viewer_orientation(command)
                 elif action in ("draw_finish", "draw_cancel", "draw_undo"):

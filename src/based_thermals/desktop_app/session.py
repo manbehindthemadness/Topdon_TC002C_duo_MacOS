@@ -3,9 +3,14 @@ from __future__ import annotations
 from typing import Any, cast
 
 from ..camera_backends import CameraProfile
+from ..maintenance import MaintenancePaths
+from ..maintenance.export import SupportExport
+from ..maintenance.logging import SupportLogging, debug_enabled
+from ..maintenance_panel import MaintenancePanel
 from ..measurements.drawing import MeasurementDrawing
 from .capture import CaptureController
 from .controls import ControlsController
+from .maintenance import MaintenanceController
 from .measurement_drawing import MeasurementDrawingController
 from .presentation import PresentationController
 from .settings import SettingsController
@@ -13,8 +18,13 @@ from .viewer import ViewerController
 
 
 class DesktopSession(
-    SettingsController, CaptureController, ControlsController, PresentationController,
-    ViewerController, MeasurementDrawingController,
+    SettingsController,
+    CaptureController,
+    ControlsController,
+    PresentationController,
+    ViewerController,
+    MeasurementDrawingController,
+    MaintenanceController,
 ):
     """
     Coordinate one viewer session while controllers own individual responsibilities.
@@ -26,18 +36,27 @@ class DesktopSession(
         """
         super().__init__(api=api)
         self.api.EXPORT_JOBS.begin()
+        self.api.MODEL_DOWNLOADS.begin()
+        self.maintenance_panel = MaintenancePanel()
+        self.maintenance_plan = None
         self.args = self.api.parse_args(argv)
+        self.maintenance_paths = MaintenancePaths.discover(self.args.output)
+        self.debug_logs = debug_enabled()
+        self.support_logging = SupportLogging(self.maintenance_paths.state / "debug-logs")
+        self.support_export = SupportExport()
+        self.support_status = ""
         self.api.logging.basicConfig(
             level=self.api.logging.DEBUG if self.args.verbose else self.api.logging.INFO,
             format="%(levelname)s %(message)s",
         )
         self.api.ensure_runtime()
         self.camera = self.api.create_camera(
-            self.args.camera, duo_factory=self.api.TC002CDuoCamera,
+            self.args.camera,
+            duo_factory=self.api.TC002CDuoCamera,
         )
         profile = getattr(self.camera, "profile", None)
-        self.camera_profile = profile if isinstance(profile, CameraProfile) else (
-            self.api.DUO_PROFILE
+        self.camera_profile = (
+            profile if isinstance(profile, CameraProfile) else self.api.DUO_PROFILE
         )
         if self.args.timelapse_fpm is not None and self.args.timelapse_fpm > (
             self.camera_profile.frame_rate * 60
@@ -55,8 +74,10 @@ class DesktopSession(
         self.visible_hardware: Any = None
         if self.camera_profile.visible and hasattr(self.camera, "create_visible_controls"):
             self.visible_hardware = self.camera.create_visible_controls()
-            if (self.visible_hardware is self.hardware
-                    or self.visible_hardware.profile != self.camera_profile):
+            if (
+                self.visible_hardware is self.hardware
+                or self.visible_hardware.profile != self.camera_profile
+            ):
                 raise ValueError("Visible-light controls require an independent matching owner")
         self.remembered_hardware = self.saved_settings.get("hardware", {}).copy()
         self.remembered_spot_hardware = self.saved_settings.get("spot_hardware", {}).copy()
@@ -175,7 +196,8 @@ class DesktopSession(
         self.pipeline_hardware = self.api.PipelineHardware(self.hardware)
         self.visible_pipeline_hardware = (
             self.api.PipelineHardware(self.visible_hardware, source="visible")
-            if self.visible_hardware is not None else None
+            if self.visible_hardware is not None
+            else None
         )
         self.emissivity_calibration = self.api.EmissivityCalibrator(
             self.hardware, self.saved_settings.get("emissivity_calibration")
@@ -218,21 +240,25 @@ class DesktopSession(
             "g: show/hide graph | l: log temperatures | Space: controls | q/Esc: quit"
         )
         try:
-            self.diagnostics = self.api.ViewerDiagnostics(self.args.diagnostics)
+            self.support_logging.start(self.debug_logs or self.args.verbose)
+        except OSError as exc:
+            self.api.LOG.warning("Support file logging unavailable: %s", exc)
+        try:
+            path = self.args.diagnostics
+            if path is None and self.debug_logs:
+                path = self.support_logging.directory / "viewer.jsonl"
+            self.diagnostics = self.api.ViewerDiagnostics(path)
         except OSError as exc:
             self.api.LOG.error("Could not open diagnostic log: %s", exc)
+            self.support_logging.close()
             return 2
         self.frame_pump = None
         try:
             self.diagnostics.stage("camera_open")
             if hasattr(self.camera, "stream_observer"):
-                self.camera.stream_observer = (
-                    self.diagnostics.stream if self.args.diagnostics else None
-                )
+                self.camera.stream_observer = self.diagnostics.stream
             if hasattr(self.camera, "rejected_frame_observer"):
-                self.camera.rejected_frame_observer = (
-                    self.diagnostics.rejected_frame if self.args.diagnostics else None
-                )
+                self.camera.rejected_frame_observer = self.diagnostics.rejected_frame
             self.camera.open()
             # Submit bulk reads immediately after UVC COMMIT. In particular, macOS
             # can stop delivering this mode if the SDK/settings handshake occupies
@@ -250,7 +276,8 @@ class DesktopSession(
             else:
                 # Retain the injectable HighGUI presentation boundary for existing callers.
                 self.api.cv2.namedWindow(
-                    self.api.WINDOW_NAME, self.api.cv2.WINDOW_NORMAL | self.api.cv2.WINDOW_GUI_NORMAL
+                    self.api.WINDOW_NAME,
+                    self.api.cv2.WINDOW_NORMAL | self.api.cv2.WINDOW_GUI_NORMAL,
                 )
                 self.api.cv2.setMouseCallback(self.api.WINDOW_NAME, self.picker.callback)
                 self.api.set_black_window_backgrounds(self.api.WINDOW_NAME)
@@ -267,15 +294,21 @@ class DesktopSession(
         except (self.api.CameraError, OSError) as exc:
             self.api.LOG.error("Unable to run desktop viewer: %s", exc)
             return 2
+        except Exception:
+            # Preserve unexpected failure evidence in the support log, then propagate normally.
+            self.api.LOG.exception("Unexpected viewer failure")
+            raise
         finally:
             self.shutdown()
-        return 0
+        return self.finish_maintenance()
 
     def tick(self) -> bool:
         """
         Process the latest frame and return whether the viewer should keep running.
         """
         if not self.poll_viewer_commands():
+            return False
+        if not self.poll_maintenance_commands():
             return False
         received = self.receive_frame()
         if received is not None:
@@ -333,6 +366,7 @@ class DesktopSession(
         self.view_panel.close()
         self.graph_panel.close()
         self.spots_panel.close()
+        self.maintenance_panel.close()
         self.pointer_monitor.close()
         self.save_dialog.close()
         try:
@@ -355,3 +389,5 @@ class DesktopSession(
         self.camera.close()
         self.api.cv2.destroyAllWindows()
         self.diagnostics.close()
+        self.support_export.close()
+        self.support_logging.close()

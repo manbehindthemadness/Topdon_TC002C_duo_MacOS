@@ -181,12 +181,13 @@ Restored working edits and saved preset contents remain separate until you updat
 
 ## Manage model downloads
 
-Choose **Clear downloaded model cache…** from the preset dropdown and confirm.
-The operation reports file count and freed space. It removes recognized downloads
-and checksum files while preserving bundled models, local exports, registered local
-files, unknown files and symlinks. It is unavailable during downloads, logging or calibration.
-Active nodes can download missing models again; bypass/remove them first if you
-want the reclaimed space to remain free. Saved presets and native runtime caches remain intact.
+Open **Maintenance** at the far right of the graph toolbar, select **Downloaded
+model cache**, then choose **Clear selected items and close**. Confirm the listed
+scope. The viewer closes before clearing recognized downloads and checksums;
+bundled models, converted local exports, registered original files and unknown
+files are preserved by this targeted action. Models can download again when you
+restart. See [Maintenance](maintenance.md) for runtime/bytecode cleanup, settings
+warnings and factory reset for first-install testing.
 
 ## If the result looks wrong
 

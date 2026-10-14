@@ -14,7 +14,10 @@ from .camera_backends.duo.camera import FRAME_BYTES, FRAME_MAGIC
 
 
 class ViewerDiagnostics:
-    def __init__(self, path: Path | None):
+    def __init__(self, path: Path | None) -> None:
+        """
+        Initialize optional diagnostics that can be enabled during a running session.
+        """
         self._output = None
         self._stacks = None
         self._thread = None
@@ -28,10 +31,27 @@ class ViewerDiagnostics:
         self._path = path
         self._rejected_captures = 0
         self._last_rejected_capture = float("-inf")
+        self.configure(path)
+
+    def configure(self, path: Path | None) -> None:
+        """
+        Switch output after joining the watchdog, preserving the live frame iterator.
+        """
+        self.close()
+        self._path = path
+        self._stop.clear()
+        self._thread = None
+        self._stacks = None
+        self._since = time.monotonic()
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
             self._output = path.open("a", buffering=1)
-            self._stacks = path.with_suffix(".stacks.log").open("a", buffering=1)
+            try:
+                self._stacks = path.with_suffix(".stacks.log").open("a", buffering=1)
+            except OSError:
+                self._output.close()
+                self._output = None
+                raise
             self._write("start")
             self._thread = threading.Thread(target=self._watch, name="ui-diagnostics", daemon=True)
             self._thread.start()

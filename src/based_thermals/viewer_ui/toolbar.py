@@ -55,6 +55,7 @@ class ViewerToolbar(QToolBar):
             lambda value: send({"action": "graph_interval", "value": value})
         )
         self._button("graph_log", "Log to CSV", send, graph=True)
+        self._button("maintenance", "Maintenance", send, graph=True)
 
     def _button(
         self, action: str, label: str, send: Callable[[dict], None], *, graph: bool = False

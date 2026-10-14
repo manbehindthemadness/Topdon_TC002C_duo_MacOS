@@ -24,46 +24,50 @@ class SettingsController(SessionState):
         """
         Persist settings.
         """
-        self.last_saved_spots = self.spots.saved_state(
-            self.renderer.rotation, self.renderer.mirror_horizontal, self.renderer.mirror_vertical
-        )
         try:
             self.api.save_settings(
-                {
-                    "pipeline": self.pipeline,
-                    "display": {
-                        name: getattr(self.renderer, name) for name in self.api.VIEW_DEFAULTS
-                    },
-                    "hardware": self.remembered_hardware,
-                    "spot_hardware": self.remembered_spot_hardware,
-                    "ambient_input_celsius": self.ambient_input_celsius,
-                    "spots": self.last_saved_spots,
-                    "rotation": self.renderer.rotation,
-                    "viewer_layout": self.viewer_layout,
-                    "advanced_auto": self.advanced_auto,
-                    "auto_calibrate": self.auto_calibrate,
-                    "fixed_range": self.remembered_fixed_range,
-                    "processing_preset": self.remembered_processing_preset,
-                    "camera_gamma": self.remembered_gamma,
-                    "camera_boost": self.remembered_boost,
-                    "show_graph": self.show_graph,
-                    "graph_interval": self.graph_interval,
-                    "graph_settings": self.graph_settings,
-                    "capture_cursor": self.capture_cursor,
-                    "capture_graphs": self.capture_graphs,
-                    "timelapse_fpm": self.timelapse_fpm,
-                    "distance_calibration": (
-                        self.distance_calibration.reference.as_dict()
-                        if self.distance_calibration.reference
-                        else None
-                    ),
-                    "emissivity_calibration": self.emissivity_calibration.reference,
-                    "reflected_calibration": self.reflected_calibration.reference,
-                },
+                self.settings_snapshot(),
                 **({"profile": self.camera_profile} if self.camera_profile.id != "duo" else {}),
             )
         except OSError as exc:
             self.api.LOG.warning("Could not save Camera settings: %s", exc)
+
+    def settings_snapshot(self: DesktopSession) -> dict[str, Any]:
+        """
+        Snapshot current configuration without overwriting saved evidence during support export.
+        """
+        self.last_saved_spots = self.spots.saved_state(
+            self.renderer.rotation, self.renderer.mirror_horizontal, self.renderer.mirror_vertical
+        )
+        return {
+            "pipeline": self.pipeline,
+            "display": {name: getattr(self.renderer, name) for name in self.api.VIEW_DEFAULTS},
+            "hardware": self.remembered_hardware,
+            "spot_hardware": self.remembered_spot_hardware,
+            "ambient_input_celsius": self.ambient_input_celsius,
+            "spots": self.last_saved_spots,
+            "rotation": self.renderer.rotation,
+            "viewer_layout": self.viewer_layout,
+            "advanced_auto": self.advanced_auto,
+            "auto_calibrate": self.auto_calibrate,
+            "fixed_range": self.remembered_fixed_range,
+            "processing_preset": self.remembered_processing_preset,
+            "camera_gamma": self.remembered_gamma,
+            "camera_boost": self.remembered_boost,
+            "show_graph": self.show_graph,
+            "graph_interval": self.graph_interval,
+            "graph_settings": self.graph_settings,
+            "capture_cursor": self.capture_cursor,
+            "capture_graphs": self.capture_graphs,
+            "timelapse_fpm": self.timelapse_fpm,
+            "distance_calibration": (
+                self.distance_calibration.reference.as_dict()
+                if self.distance_calibration.reference
+                else None
+            ),
+            "emissivity_calibration": self.emissivity_calibration.reference,
+            "reflected_calibration": self.reflected_calibration.reference,
+        }
 
     def current_window_size(self: DesktopSession) -> tuple[int, int] | None:
         """
