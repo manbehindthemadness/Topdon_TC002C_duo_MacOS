@@ -5,6 +5,7 @@ Aspect-preserving Qt image display and image-coordinate pointer events.
 from __future__ import annotations
 
 from collections.abc import Callable
+from time import perf_counter
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QImage, QMouseEvent, QPainter, QPaintEvent
@@ -16,12 +17,15 @@ class ImageCanvas(QWidget):
     Paint pixels separately from controls and exclude letterboxing from sampling.
     """
 
-    def __init__(self, send: Callable[[dict], None]) -> None:
+    def __init__(
+        self, send: Callable[[dict], None], painted: Callable[[float], None] | None = None,
+    ) -> None:
         """
         Enable tracking and keyboard focus for the live image area.
         """
         super().__init__()
         self.send = send
+        self.painted = painted
         self.image = QImage()
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -57,11 +61,15 @@ class ImageCanvas(QWidget):
         Paint a black background and the current owned image.
         """
         del event
+        started = perf_counter()
         painter = QPainter(self)
         painter.fillRect(self.rect(), Qt.GlobalColor.black)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         if not self.image.isNull():
             painter.drawImage(self.image_rect(), self.image)
+        painter.end()
+        if self.painted is not None and not self.image.isNull():
+            self.painted((perf_counter() - started) * 1000)
 
     def _pointer(self, event: QMouseEvent, kind: str) -> None:
         """

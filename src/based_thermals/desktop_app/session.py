@@ -283,9 +283,13 @@ class DesktopSession(
         self.poll_spot_and_graph_commands()
         self.poll_camera_commands()
         self.poll_capture_commands()
+        draw_started = self.api.time.perf_counter()
         self.render_frame()
+        self.viewport_draw_ms = (self.api.time.perf_counter() - draw_started) * 1000
         self.finish_capture()
+        draw_started = self.api.time.perf_counter()
         self.draw_status()
+        self.viewport_draw_ms += (self.api.time.perf_counter() - draw_started) * 1000
         if not self.handle_clicks():
             return False
         result = self.present_and_handle_keys()

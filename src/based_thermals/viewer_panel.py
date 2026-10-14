@@ -7,6 +7,7 @@ from __future__ import annotations
 import mmap
 import tempfile
 from contextlib import ExitStack
+from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -70,6 +71,7 @@ class ViewerPanel(CapturePanel):
         if self._resize is not None:
             message["resize"] = list(self._resize)
         if self._pending_frame is None and self._mapping is not None:
+            copy_started = perf_counter()
             frame = np.ascontiguousarray(image)
             self._mapping[:frame.nbytes] = frame.tobytes()
             self._serial += 1
@@ -79,6 +81,8 @@ class ViewerPanel(CapturePanel):
                 "serial": self._serial,
                 "width": frame.shape[1],
                 "height": frame.shape[0],
+                "viewport_draw_ms": state.get("viewport_draw_ms"),
+                "viewport_copy_ms": (perf_counter() - copy_started) * 1000,
             }
         # Never replace an unsent frame descriptor with a state-only update.
         if "frame" in message or not self._outgoing:

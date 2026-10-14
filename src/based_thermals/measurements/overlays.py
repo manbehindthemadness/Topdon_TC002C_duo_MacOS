@@ -5,12 +5,14 @@ Area boundaries and configurable edge-attached labels using the shared label pla
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
+from ..desktop_app.typography import LABEL_FONT_SCALE
+from .display_cache import geometry_key
 from .paths import boundary
 
 if TYPE_CHECKING:
@@ -54,12 +56,13 @@ def label_layout(
     """
     Reserve points/shapes first, then place each enabled label outside occupied bounds.
     """
-    readings = spots.readings(rendered.temperatures_celsius)
+    readings = spots.display_cache.readings(spots, rendered.temperatures_celsius)
+    spots.display_cache.prune(spots.numbers)
     outlines: dict[int, np.ndarray] = {}
     occupied: list[Rectangle] = []
     for number, center in spots.active:
         region = spots.region(number)
-        points = display_boundary(region, center, scale)
+        points = spots.display_cache.boundary(number, region, center, scale)
         outlines[number] = points
         if region["kind"] == "spot" and region["radius"] == 0:
             x, y = points[0]
@@ -68,7 +71,7 @@ def label_layout(
             left, top = points.min(axis=0)
             right, bottom = points.max(axis=0)
             occupied.append((int(left - 3), int(top - 3), int(right + 4), int(bottom + 4)))
-    labels: list[MeasurementLabel] = []
+    texts: list[tuple[int, str]] = []
     for number, _center in spots.active:
         region = spots.region(number)
         fields = region["labels"]
@@ -101,6 +104,19 @@ def label_layout(
                 )
                 parts.append(prefix + formatted + " " + unit)
             text = " ".join(parts)
+        texts.append((number, text))
+    key = (
+        rendered.image.shape, scale, unit, placer, LABEL_FONT_SCALE,
+        tuple((number, geometry_key(spots.region(number), center)) for number, center in spots.active),
+        tuple((number, spots.display_cache.text_bounds(text, LABEL_FONT_SCALE)) for number, text in texts),
+    )
+    if key == spots.display_cache.layout_key:
+        assert spots.display_cache.layout is not None
+        old_labels, old_occupied = spots.display_cache.layout
+        updated = [replace(label, text=text) for label, (_number, text) in zip(old_labels, texts, strict=True)]
+        return updated, list(old_occupied)
+    labels: list[MeasurementLabel] = []
+    for number, text in texts:
         points = outlines[number]
         # Start above the outside edge. After placement, attach the leader to
         # whichever boundary point is nearest its text rectangle.
@@ -124,6 +140,8 @@ def label_layout(
         anchor = round(float(nearest[0])), round(float(nearest[1]))
         labels.append(MeasurementLabel(text, anchor, origin, rectangle))
         occupied.append(rectangle)
+    spots.display_cache.layout_key = key
+    spots.display_cache.layout = tuple(labels), tuple(occupied)
     return labels, occupied
 
 
@@ -135,17 +153,21 @@ def draw_boundaries(mask: np.ndarray, spots: SampleSpots, scale: int) -> None:
         draw_boundary(mask, spots.region(number), center, scale)
 
 
-def draw_boundary(mask: np.ndarray, region: dict, center: tuple[int, int], scale: int) -> None:
+def draw_boundary(
+    mask: np.ndarray, region: dict, center: tuple[int, int], scale: int,
+    *, points: np.ndarray | None = None, offset: tuple[int, int] = (0, 0),
+) -> None:
     """
     Draw one measurement outline or a dashed exclusion border in display coordinates.
     """
     if region["kind"] == "spot" and region["radius"] == 0:
         cv2.drawMarker(
-            mask, (center[0] * scale + scale // 2, center[1] * scale + scale // 2),
+            mask, (center[0] * scale + scale // 2 - offset[0],
+                   center[1] * scale + scale // 2 - offset[1]),
             255, cv2.MARKER_CROSS, 9, 1, cv2.LINE_8,
         )
         return
-    points = display_boundary(region, center, scale)
+    points = (display_boundary(region, center, scale) if points is None else points) - offset
     if region["exclude"]:
         draw_dashed_boundary(mask, points)
     else:

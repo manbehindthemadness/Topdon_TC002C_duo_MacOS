@@ -72,3 +72,19 @@ def test_invalid_series_is_not_drawn(monkeypatch: pytest.MonkeyPatch) -> None:
 
     lines.assert_not_called()
     circles.assert_not_called()
+
+
+def test_disabled_interpolation_reduces_pixels_once_per_series(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Gap-heavy curves bypass per-run reduction when interpolation is disabled.
+    """
+    reduce_pixels = Mock(wraps=graphs.pixel_curve_samples)
+    # noinspection PyUnresolvedReferences
+    monkeypatch.setattr(graphs, "pixel_curve_samples", reduce_pixels)
+    values = np.tile(np.array([1., 2., 3., 4.]), (2048, 1))
+    values[1::2] = np.nan
+    graphs._draw_history_curves(
+        np.zeros((101, 601, 3), np.uint8), np.linspace(0, 600, 2048), values,
+        (0, 600, 0, 100), 0, 5, 600, 600, 0,
+    )
+    assert reduce_pixels.call_count == 4

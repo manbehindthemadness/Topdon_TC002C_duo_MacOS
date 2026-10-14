@@ -113,3 +113,4 @@ class SessionState:
     viewer: api_types.ViewerPanel | None = None
     viewer_keys: list[int] = field(default_factory=list)
     viewport_size: tuple[int, int] | None = None
+    viewport_draw_ms: float | None = None

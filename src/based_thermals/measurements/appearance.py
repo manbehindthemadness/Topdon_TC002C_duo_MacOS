@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import cv2
 import numpy as np
 
-from .overlays import display_boundary, draw_boundary
+from .display_masks import shape_masks
 
 if TYPE_CHECKING:
     from ..desktop_app.spots import SampleSpots
@@ -30,50 +30,49 @@ def styled_shapes(
     result = image.copy()
     default_mask = np.zeros(image.shape[:2], np.uint8)
     current_z = None
+    pending_lines = False
+    spots.display_cache.prune(spots.numbers)
     for number, center in spots.display_active:
         region = spots.region(number)
         z_index = region.get("z_index", 0)
-        if current_z is not None and z_index != current_z:
+        if current_z is not None and z_index != current_z and pending_lines:
             result = contrast(result, default_mask, np.zeros_like(default_mask))
             default_mask.fill(0)
+            pending_lines = False
         current_z = z_index
         color = region.get("line_color", "dynamic")
         fill, opacity = region.get("fill", False), region.get("opacity", 1.0)
-        if color == "dynamic" and not fill and opacity == 1:
-            draw_boundary(default_mask, region, center, scale)
-            continue
         if opacity == 0:
             continue
-        lines = np.zeros_like(default_mask)
-        draw_boundary(lines, region, center, scale)
-        filled = np.zeros_like(default_mask)
-        if fill and not (region["kind"] == "spot" and region["radius"] == 0):
-            points = display_boundary(region, center, scale)
-            cv2.fillPoly(filled, [points], 255, lineType=cv2.LINE_AA)
-            if region["exclude"]:
-                perimeter = np.zeros_like(default_mask)
-                cv2.polylines(perimeter, [points], True, 255, 1, cv2.LINE_AA)
-                filled[perimeter > 0] = 0
+        masks = shape_masks(spots, number, center, scale, image.shape[:2])
+        if not masks.lines.size:
+            continue
+        if color == "dynamic" and not fill and opacity == 1:
+            view = masks.view(default_mask)
+            cv2.max(view, masks.lines, dst=view)
+            pending_lines = True
+            continue
+        view = masks.view(result)
         if color == "dynamic":
-            outlined = contrast(result, lines, np.zeros_like(lines))
-            target = blend_color(result, filled, color, 1.0)
-            halo = cv2.dilate(lines, np.ones((3, 3), np.uint8)) > 0
-            target[halo] = outlined[halo]
-            coverage = cv2.dilate(cv2.max(filled, lines), np.ones((3, 3), np.uint8))
-            x, y, width, height = cv2.boundingRect(coverage)
-            view = result[y : y + height, x : x + width]
-            overlay = target[y : y + height, x : x + width]
-            view[:] = np.rint(view * (1 - opacity) + overlay * opacity).astype(np.uint8)
+            outlined = contrast(view, masks.lines, np.zeros_like(masks.lines))
+            target = blend_color(view, masks.filled, color, 1.0)
+            target[masks.halo] = outlined[masks.halo]
+            x, y, width, height = cv2.boundingRect(masks.coverage)
+            local = view[y:y + height, x:x + width]
+            overlay = target[y:y + height, x:x + width]
+            local[:] = np.rint(local * (1 - opacity) + overlay * opacity).astype(np.uint8)
         else:
-            result = blend_color(result, cv2.max(lines, filled), color, opacity)
+            blend_color(view, masks.combined, color, opacity, copy=False)
     return result, default_mask
 
 
-def blend_color(image: np.ndarray, mask: np.ndarray, color: str, opacity: float) -> np.ndarray:
+def blend_color(
+    image: np.ndarray, mask: np.ndarray, color: str, opacity: float, *, copy: bool = True,
+) -> np.ndarray:
     """
     Blend RGB hex colors into BGR display pixels, or invert pixels for Dynamic fill.
     """
-    result = image.copy()
+    result = image.copy() if copy else image
     x, y, width, height = cv2.boundingRect(mask)
     if width == 0 or height == 0:
         return result

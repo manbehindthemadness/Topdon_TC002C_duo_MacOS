@@ -147,7 +147,7 @@ class MeasurementRegions:
         Retain scalar legacy point histories and give every area three scalar curves.
         """
         samples = []
-        for number, reading in self.readings(temperatures).items():
+        for number, reading in self.display_cache.readings(self, temperatures).items():
             region = self.region(number)
             values = (
                 reading.average

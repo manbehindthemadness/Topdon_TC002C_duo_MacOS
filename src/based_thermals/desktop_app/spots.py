@@ -15,6 +15,7 @@ from ..camera_backends.duo.camera import (
     SENSOR_HEIGHT,
     SENSOR_WIDTH,
 )
+from ..measurements.display_cache import MeasurementDisplayCache
 from ..measurements.model import MeasurementRegions
 from ..measurements.schema import transform_region
 from ..spot_preferences import validate_spots
@@ -96,6 +97,7 @@ class SampleSpots(MeasurementRegions):
     names: dict[int, str] = field(default_factory=dict, init=False)
     regions: dict[int, dict] = field(default_factory=dict, init=False)
     region_masks: dict[int, tuple[tuple, np.ndarray]] = field(default_factory=dict, init=False)
+    display_cache: MeasurementDisplayCache = field(default_factory=MeasurementDisplayCache, init=False)
 
     def __post_init__(self) -> None:
         """

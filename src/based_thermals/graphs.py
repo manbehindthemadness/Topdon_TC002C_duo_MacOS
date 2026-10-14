@@ -8,6 +8,7 @@ from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 
 import cv2
@@ -185,12 +186,12 @@ class GraphWorker:
             if self._log_file is not None:
                 raise ValueError("Stop logging before changing graph settings")
             self._settings = settings
-            for history in (self._master, *self._spots.values()):
-                self._compact(history)
+            self._history_generation += 1
             if self._latest is not None:
                 self._latest = self._configured_snapshot(self._latest)
                 self._redraw = True
                 self._condition.notify()
+        self._compact_histories()
 
     def clear_history(self):
         with self._condition:
@@ -230,13 +231,56 @@ class GraphWorker:
             self._redraw = True
             self._condition.notify()
 
-    def _compact(self, history):
-        limit = self._settings["history_points"]
-        if self._settings["compression"]:
+    def _compact(self, history: deque, settings: dict | None = None) -> None:
+        """
+        Compact private history with a captured preference snapshot.
+        """
+        settings = self._settings if settings is None else settings
+        limit = settings["history_points"]
+        if settings["compression"]:
             compress_history(history, limit)
         else:
             while len(history) > limit:
                 history.popleft()
+
+    def _compact_histories(self) -> None:
+        """
+        Compact copies outside the UI lock, then publish only current generations.
+
+        Copy one history per short lock acquisition. Preserve samples appended by
+        the worker during a concurrent settings change and reject reset histories.
+        """
+        with self._condition:
+            generation = self._history_generation
+            settings = self._settings.copy()
+            histories = [(None, self._master), *self._spots.items()]
+        for key, original in histories:
+            with self._condition:
+                current = self._master if key is None else self._spots.get(key)
+                if self._closed or generation != self._history_generation:
+                    return
+                if current is not original or len(original) <= settings["history_points"]:
+                    continue
+                copied_count = len(original)
+                compacted = deque(original)
+            self._compact(compacted, settings)
+            with self._condition:
+                current = self._master if key is None else self._spots.get(key)
+                if self._closed or generation != self._history_generation:
+                    return
+                if current is not original:
+                    continue
+                compacted.extend(islice(original, copied_count, None))
+                # A settings change can race sampling; never lose the newer tail.
+                if len(compacted) > settings["history_points"]:
+                    if settings["compression"]:
+                        continue
+                    while len(compacted) > settings["history_points"]:
+                        compacted.popleft()
+                if key is None:
+                    self._master = compacted
+                else:
+                    self._spots[key] = compacted
 
     @property
     def logging(self) -> bool:
@@ -375,13 +419,14 @@ class GraphWorker:
         self._thread.join()
         self.stop_logging()
 
-    def _sample(self, snapshot: GraphSnapshot, now: float) -> None:
+    def _sample(self, snapshot: GraphSnapshot, now: float, *, compact: bool = True) -> None:
         """
         Add point/area statistics or correctly sized gaps to active histories.
         """
         values = snapshot.stats if snapshot.measurements_valid else (float("nan"),) * 4
         self._master.append((now, values))
-        self._compact(self._master)
+        if compact:
+            self._compact(self._master)
         current = dict(snapshot.spots)
         self._spots = {key: history for key, history in self._spots.items() if key in current}
         for key, value in snapshot.spots:
@@ -390,7 +435,8 @@ class GraphWorker:
             if history and len(history[-1][1]) != len(values):
                 history.clear()
             history.append((now, values if snapshot.measurements_valid else (float("nan"),) * len(values)))
-            self._compact(history)
+            if compact:
+                self._compact(history)
 
     def _run(self) -> None:
         """
@@ -420,7 +466,7 @@ class GraphWorker:
                         history.append((now, (float("nan"),) * columns))
                     self._history_paused = False
                 if sample_due:
-                    self._sample(snapshot, now)
+                    self._sample(snapshot, now, compact=False)
                     self._write_log(snapshot, now)
                 generation = self._history_generation
                 master = visible_history(
@@ -432,6 +478,7 @@ class GraphWorker:
                     )
                     for key, history in self._spots.items()
                 }
+            self._compact_histories()
             result = render_graphs(snapshot, master, spots, now)
             with self._condition:
                 if (
@@ -591,6 +638,20 @@ def _draw_history_curves(
     for column in range(values.shape[1]):
         indices, boundaries = pixel_curve_samples(x, values[:, column])
         if not indices.size:
+            continue
+        if interpolation_samples == 0:
+            y = np.clip(
+                np.rint(bottom - (values[indices, column] - low) / (high - low) * (bottom - top)),
+                top, bottom,
+            ).astype(np.int32)
+            points = np.column_stack((x[indices], y))
+            runs = np.split(points, boundaries)
+            curves = [run for run in runs if len(run) > 1]
+            if curves:
+                cv2.polylines(canvas, curves, False, COLORS[column], 1, cv2.LINE_AA)
+            isolated = points[np.r_[0, boundaries][np.diff(np.r_[0, boundaries, len(points)]) == 1]]
+            for point in isolated:
+                cv2.circle(canvas, (int(point[0]), int(point[1])), 1, COLORS[column], -1, cv2.LINE_AA)
             continue
         runs = []
         for run_indices in np.split(indices, boundaries):

@@ -266,6 +266,7 @@ class PresentationController(SessionState):
             locked=self.spots_state()["locked"] or not self.rendered.measurement_mapping_valid,
         )
         pointer_toolbar_height = self.layout.height
+        self.spots.display_cache.begin_frame()
         pointer_image_height = self.rendered.image.shape[0]
         if self.graph_layout:
             pointer_toolbar_height = round(
@@ -389,6 +390,7 @@ class PresentationController(SessionState):
             if self.show_graph
             else ()
         )
+        self.spots.display_cache.end_frame()
 
     def handle_clicks(self: DesktopSession) -> bool:
         """
@@ -550,6 +552,7 @@ class PresentationController(SessionState):
         """
         Present and handle keys for the current desktop session.
         """
+        draw_started = self.api.time.perf_counter()
         if self.show_graph:
             self.diagnostics.stage("graphs")
             if self.graph_layout is None:
@@ -596,6 +599,9 @@ class PresentationController(SessionState):
             self.display = graph_layout.compose(self.display, self.graph_image)
         else:
             self.graphs.pause()
+        self.viewport_draw_ms = (self.viewport_draw_ms or 0.0) + (
+            self.api.time.perf_counter() - draw_started
+        ) * 1000
         self.diagnostics.stage("imshow")
         if self.viewer is not None:
             self.viewer.present(self.display, self.viewer_state())

@@ -46,6 +46,7 @@ class ViewerController(SessionState):
                 if self.graph_settings["range_mode"] == "fixed" else "Entire session"
             ),
             "status": self.status,
+            "viewport_draw_ms": self.viewport_draw_ms,
         }
 
     def poll_viewer_commands(self: DesktopSession) -> bool:

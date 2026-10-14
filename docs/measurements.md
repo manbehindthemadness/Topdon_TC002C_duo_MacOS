@@ -108,6 +108,20 @@ unioned within each Z layer and composited before higher layers, while labels an
 leaders remain readable above the shapes. Hit testing prefers the highest enabled
 Z layer and then the nearest anchor, retaining the existing tie behavior.
 
+Display geometry and local raster masks are cached by stable measurement identity,
+coordinates, scale, canvas size, fill and exclusion state. Raster caches have a
+64 MiB budget and discard deleted shapes. Only the affected rectangle is composited;
+empty Dynamic masks do no work between Z layers. Label positions reuse compatible
+geometry and text bounds while their temperature text updates each frame. Cursor,
+shape labels and graphs share native readings within one explicit viewer-frame
+scope; reused temperature buffers are sampled again on the next frame.
+
+Graph drawing preserves gaps and bounds curve detail by chart pixels. Older-history
+compression runs outside the viewer's shared graph lock, copying one history at
+a time and rejecting results invalidated by resets or settings changes. Samples
+appended during compaction are retained. Segmented rolling averages avoid a Python
+loop per valid run; interpolation Off bypasses per-run geometry reduction.
+
 Stable numbers and graph identities survive edits, movement and orientation.
 Switching between a scalar spot and an area resets that measurement's history
 to avoid mixing one- and three-column samples. Disabling, deleting or converting

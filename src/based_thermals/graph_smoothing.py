@@ -13,15 +13,20 @@ def rolling_average(values: np.ndarray, samples: int) -> np.ndarray:
     if samples == 1:
         return values
     result = np.full_like(values, np.nan, dtype=np.float64)
+    stops = np.arange(1, len(values) + 1)
+    window_starts = np.maximum(0, stops - samples)
     for column in range(values.shape[1]):
         finite = np.isfinite(values[:, column])
-        edges = np.diff(np.r_[False, finite, False].astype(np.int8))
-        for start, end in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
-            run = values[start:end, column]
-            cumulative = np.r_[0.0, np.cumsum(run)]
-            stops = np.arange(1, len(run) + 1)
-            starts = np.maximum(0, stops - samples)
-            result[start:end, column] = (cumulative[stops] - cumulative[starts]) / (stops - starts)
+        cumulative = np.r_[0.0, np.cumsum(np.where(finite, values[:, column], 0.0))]
+        if finite.all():
+            result[:, column] = (cumulative[stops] - cumulative[window_starts]) / (stops - window_starts)
+            continue
+        last_gap = np.maximum.accumulate(np.where(finite, 0, stops))
+        starts = np.maximum(last_gap, stops - samples)
+        valid = np.flatnonzero(finite)
+        result[valid, column] = (
+            cumulative[stops[valid]] - cumulative[starts[valid]]
+        ) / (stops[valid] - starts[valid])
     return result
 
 

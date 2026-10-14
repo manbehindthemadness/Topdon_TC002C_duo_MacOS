@@ -4,8 +4,10 @@ Qt main viewer in a separate process, with controls outside the image canvas.
 
 from __future__ import annotations
 
+import math
 import mmap
 from collections.abc import Callable
+from time import perf_counter
 
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QImage, QKeyEvent, QResizeEvent
@@ -18,6 +20,19 @@ from .viewer_ui.canvas import ImageCanvas
 from .viewer_ui.drawing_toolbar import DrawingToolbar
 from .viewer_ui.orientation import OrientationDialog
 from .viewer_ui.toolbar import ViewerToolbar
+
+
+def validated_draw_time(value: object) -> float | None:
+    """
+    Accept finite nonnegative elapsed milliseconds from a frame descriptor.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        duration = float(value)
+    except OverflowError:
+        return None
+    return duration if math.isfinite(duration) and duration >= 0 else None
 
 
 class ViewerWindow(QMainWindow):
@@ -35,7 +50,11 @@ class ViewerWindow(QMainWindow):
         self._path = ""
         self._windowed_size: list[int] | None = None
         self._geometry_pending = False
-        self.canvas = ImageCanvas(send)
+        self._frame_draw_ms: float | None = None
+        self._frame_copy_ms = 0.0
+        self._viewport_draw_ms: float | None = None
+        self._status_text = "Waiting for camera…"
+        self.canvas = ImageCanvas(send, self._viewport_painted)
         self.setCentralWidget(self.canvas)
         self.toolbar = ViewerToolbar(self._command, self)
         self.addToolBar(self.toolbar)
@@ -48,7 +67,27 @@ class ViewerWindow(QMainWindow):
         self.orientation_dialog = OrientationDialog(self.send, self)
         self.setWindowTitle(APP_NAME)
         self.resize(1024, 800)
-        self.statusBar().showMessage("Waiting for camera…")
+        self.statusBar().setToolTip(
+            "Time preparing and painting the viewport; excludes camera waits, saving and input."
+        )
+        self._update_status()
+
+    def _viewport_painted(self, elapsed_ms: float) -> None:
+        """
+        Combine matched frame preparation/copy and completed Qt paint durations.
+        """
+        self._viewport_draw_ms = (
+            self._frame_draw_ms + self._frame_copy_ms + elapsed_ms
+            if self._frame_draw_ms is not None else None
+        )
+        self._update_status()
+
+    def _update_status(self) -> None:
+        """
+        Keep the current status visible alongside the most recent viewport draw time.
+        """
+        draw = f"{self._viewport_draw_ms:.1f}" if self._viewport_draw_ms is not None else "--"
+        self.statusBar().showMessage(f"{self._status_text} | {draw} ms")
 
     def _command(self, message: dict) -> None:
         """
@@ -70,6 +109,7 @@ class ViewerWindow(QMainWindow):
         """
         Copy a validated BGR frame before acknowledging reuse of its shared storage.
         """
+        started = perf_counter()
         width, height, path = frame.get("width"), frame.get("height"), frame.get("path")
         if (
             not isinstance(width, int) or isinstance(width, bool)
@@ -88,6 +128,10 @@ class ViewerWindow(QMainWindow):
         assert self._mapping is not None
         pixels = self._mapping[:width * height * 3]
         self.canvas.image = QImage(pixels, width, height, width * 3, QImage.Format.Format_BGR888).copy()
+        self._frame_draw_ms = validated_draw_time(frame.get("viewport_draw_ms"))
+        self._frame_copy_ms = (perf_counter() - started) * 1000 + (
+            validated_draw_time(frame.get("viewport_copy_ms")) or 0.0
+        )
         self.canvas.update()
         self.send({"action": "frame_read", "serial": frame.get("serial")})
 
@@ -113,7 +157,8 @@ class ViewerWindow(QMainWindow):
                 self.raise_()
                 self.activateWindow()
                 self.canvas.setFocus()
-            self.statusBar().showMessage(str(state.get("status", "Ready")))
+            self._status_text = str(state.get("status", "Ready"))
+            self._update_status()
         size = state.get("resize")
         if (
             isinstance(size, list) and len(size) == 2

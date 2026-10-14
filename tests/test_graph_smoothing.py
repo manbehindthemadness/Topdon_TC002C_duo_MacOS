@@ -22,6 +22,27 @@ def test_average_restarts_independently_at_gaps_and_preserves_input() -> None:
     assert rolling_average(values, 1) is values
 
 
+@pytest.mark.parametrize("window", [2, 5, 256])
+def test_average_matches_independent_segment_reference(window: int) -> None:
+    """
+    Compare vectorized results with a direct trailing-list definition across many gaps.
+    """
+    values = np.random.default_rng(28).uniform(-40, 100, (512, 3))
+    values[1::2, 0] = np.nan
+    values[::7, 1] = np.inf
+    values[200:300, 2] = np.nan
+    expected = np.full_like(values, np.nan)
+    for column in range(3):
+        trailing = []
+        for index, value in enumerate(values[:, column]):
+            if not np.isfinite(value):
+                trailing.clear()
+                continue
+            trailing.append(float(value))
+            expected[index, column] = np.mean(trailing[-window:])
+    np.testing.assert_allclose(rolling_average(values, window), expected, atol=1e-10)
+
+
 def test_visible_average_uses_samples_before_the_time_window() -> None:
     """
     Preserve preceding context so a moving time window does not reset averaging.
