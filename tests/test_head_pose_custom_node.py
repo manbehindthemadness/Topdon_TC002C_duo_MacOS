@@ -35,6 +35,7 @@ class FakeSession:
         Identify the fake detector by its filename, with no real model access.
         """
         self.detector = "detector" in Path(path).name
+        self.pose_size = 128 if "128" in Path(path).name else 64
         self.providers = [entry if isinstance(entry, str) else entry[0] for entry in providers]
         self.tensors: list[np.ndarray] = []
         assert options.intra_op_num_threads == 4
@@ -55,7 +56,7 @@ class FakeSession:
         """
         Advertise static float32 batch-1 tensors or an unsupported dynamic batch.
         """
-        size = 32 if self.detector else 64
+        size = 32 if self.detector else self.pose_size
         batch = "N" if self.bad == "schema" else 1
         return [SimpleNamespace(name="images", type="tensor(float)", shape=[batch, 3, size, size])]
 
@@ -276,6 +277,7 @@ def test_unsupported_models_and_malformed_predictions(
 @pytest.mark.parametrize("changes", [
     {"max_heads": True}, {"score_threshold": None}, {"input_rotation": 90},
     {"show_axes": 1}, {"pose_path": []}, {"detector_path": []}, {"detector_model": "unknown"},
+    {"pose_model": "unknown"}, {"pose_model": []},
 ])
 def test_invalid_configuration(setup_node: tuple[Any, ...], changes: dict[str, Any]) -> None:
     """
@@ -382,6 +384,58 @@ def test_downloaded_detector_runs_and_choice_rebuilds_only_detector(
     processor.apply(image, item)
     assert len(FakeSession.instances) == 3
     assert len(FakeSession.instances[1].tensors) == 2
+
+
+@pytest.mark.parametrize("choice, digest, filename", [
+    ("ViT-T/16 128×128 (v11)",
+     "02136d0746d0acad26c0bea6d405826d028c780d0ec6a81d43b93e33004946a7",
+     "hfhpe_vitt_1x3x128x128.onnx"),
+    ("ViT-T/16 128×128 (rollgate v11)",
+     "0f4311d7cf8560d2c04a2d40e7f166a8195ad50107d0a6b64336fc8fad517db8",
+     "hfhpe_vitt_rollgate_1x3x128x128.onnx"),
+])
+def test_pose_choice_download_crop_size_and_independent_session_change(
+    setup_node: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    choice: str, digest: str, filename: str,
+) -> None:
+    """
+    Switch from 64 to each pinned 128 export without rebuilding the detector session.
+    """
+    processor, item, config = setup_node
+    image = np.full((80, 100, 3), (20, 80, 180), np.float32)
+    processor.apply(image, item)
+    downloaded = tmp_path / filename
+    downloaded.write_bytes(b"fake 128 pose boundary")
+    requests = []
+
+    def resolve(_resolver: Any, source: dict[str, Any]) -> Path | None:
+        """
+        Simulate a pending first request and a completed next-frame download.
+        """
+        requests.append(source)
+        return downloaded if len(requests) > 1 else None
+
+    monkeypatch.setattr("based_thermals.custom_nodes.models.ModelResolver.resolve", resolve)
+    config.update(pose_path="", pose_model=choice)
+    item["params"]["config"] = json.dumps(config)
+    np.testing.assert_array_equal(processor.apply(image, item), image)
+    assert len(FakeSession.instances) == 2
+    processor.apply(image, item)
+    assert len(FakeSession.instances) == 3
+    assert len(FakeSession.instances[0].tensors) == 2
+    assert len(FakeSession.instances[1].tensors) == 1
+    tensor = FakeSession.instances[2].tensors[0]
+    assert tensor.shape == (1, 3, 128, 128)
+    np.testing.assert_allclose(tensor[0, :, 64, 64],
+                               np.array([180, 80, 20]) / 127.5 - 1, atol=1e-6)
+    assert requests[0]["sha256"] == digest
+    assert requests[0]["archive_member"].endswith("/" + filename)
+    assert requests[0]["archive_sha256"] == (
+        "74a50a5c1cc6e85c2393bd61bf3d96f30a6049f398081f3d00b36b8640c17b31"
+    )
+    controls = json.loads(item["params"]["controls"])
+    selector = next(control for control in controls if control["key"] == "pose_model")
+    assert choice in selector["options"]
 
 
 def test_raw_detector_requires_exact_audited_checksum(

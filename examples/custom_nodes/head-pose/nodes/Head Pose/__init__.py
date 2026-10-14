@@ -38,11 +38,12 @@ from based_thermals.custom_nodes.models import ModelResolver
 from .geometry import Pose, draw_axes, original_anchor
 from .inference import Detector, Estimator
 from .settings import Settings
-from .sources import detector_source
+from .sources import detector_source, pose_source
 
 CONFIG_JSON = {
     "defaults": {
         "detector_model": "HGNet-N (fast)",
+        "pose_model": "ViT-T/16 64×64 (rollgate v10)",
         "detector_path": "",
         "pose_path": "",
         "detector_device": {"backend": "coreml", "apple_compute": "CPUAndGPU"},
@@ -66,11 +67,20 @@ CONFIG_JSON = {
               "sha256": "9b64e68cd6cf2e085613ae1dd06a42941fc0b7fce57cd80441dfb45ce90a1323",
               "filenames": ["deimv2_dinov3_s_wholebody49_boxes_only.onnx"]},
          ]},
+        {"key": "pose_model", "label": "Head pose model", "type": "choice",
+         "options": ["ViT-T/16 64×64 (rollgate v10)", "ViT-T/16 128×128 (v11)",
+                     "ViT-T/16 128×128 (rollgate v11)"]},
         {"key": "pose_path", "label": "Pose ONNX override (empty = download)", "type": "model",
          "models": [
              {"name": "HFHPE ViT-T 64×64 (rollgate v10)",
               "sha256": "be054658797c1610f8ac82a2ec0a4a5b5aff6df7c9efb459120133b1fd4a6895",
               "filenames": ["hfhpe_vitt_rollgate_1x3x64x64.onnx"]},
+             {"name": "HFHPE ViT-T/16 128×128 (v11)",
+              "sha256": "02136d0746d0acad26c0bea6d405826d028c780d0ec6a81d43b93e33004946a7",
+              "filenames": ["hfhpe_vitt_1x3x128x128.onnx"]},
+             {"name": "HFHPE ViT-T/16 128×128 (rollgate v11)",
+              "sha256": "0f4311d7cf8560d2c04a2d40e7f166a8195ad50107d0a6b64336fc8fad517db8",
+              "filenames": ["hfhpe_vitt_rollgate_1x3x128x128.onnx"]},
          ]},
         {"key": "detector_device", "label": "Detector device", "type": "device"},
         {"key": "pose_device", "label": "Pose device", "type": "device"},
@@ -134,6 +144,10 @@ def process(image: np.ndarray, config: dict[str, Any]) -> np.ndarray:
     frame_settings = Settings.read(config)
     last_poses, last_timings = [], {}
     source = detector_source(config.get("detector_model", "HGNet-N (fast)"))
+    pose_choice = config.get("pose_model", "ViT-T/16 64×64 (rollgate v10)")
+    pose_release = pose_source(pose_choice, MODEL_SOURCE)
+    if pose_choice == "ViT-T/16 64×64 (rollgate v10)":
+        pose_release = config.get("model", pose_release)
     detector_override = config.get("detector_path", "")
     if not isinstance(detector_override, str):
         raise TypeError("Detector ONNX override must be a path string")
@@ -143,7 +157,7 @@ def process(image: np.ndarray, config: dict[str, Any]) -> np.ndarray:
     detector_path = (local_model(detector_override, "detector ONNX") if detector_override
                      else _models.resolve(source))
     pose_path = (local_model(override, "pose ONNX") if override
-                 else _models.resolve(config.get("model", MODEL_SOURCE)))
+                 else _models.resolve(pose_release))
     if detector_path is None or pose_path is None:
         return image
     detector_key = session_key(detector_path, config["detector_device"])

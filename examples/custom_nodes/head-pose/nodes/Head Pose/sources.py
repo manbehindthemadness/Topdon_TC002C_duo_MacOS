@@ -24,6 +24,37 @@ NORMALIZATIONS = {
     "9b64e68cd6cf2e085613ae1dd06a42941fc0b7fce57cd80441dfb45ce90a1323": "imagenet",
 }
 
+POSES = {
+    "ViT-T/16 128×128 (v11)": {
+        "name": "HFHPE ViT-T/16 128 v11",
+        "url": "https://github.com/PINTO0309/High-Angle_Robust_Fast_Head_Pose_Estimation/releases/download/weights/vitt_distill_128_yp_unified_v11.tar.gz",
+        "archive_member": "vitt_distill_128_yp_unified_v11/hfhpe_vitt_1x3x128x128.onnx",
+        "archive_sha256": "74a50a5c1cc6e85c2393bd61bf3d96f30a6049f398081f3d00b36b8640c17b31",
+        "sha256": "02136d0746d0acad26c0bea6d405826d028c780d0ec6a81d43b93e33004946a7",
+        "max_bytes": 200_000_000,
+    },
+    "ViT-T/16 128×128 (rollgate v11)": {
+        "name": "HFHPE ViT-T/16 128 rollgate v11",
+        "url": "https://github.com/PINTO0309/High-Angle_Robust_Fast_Head_Pose_Estimation/releases/download/weights/vitt_distill_128_yp_unified_v11.tar.gz",
+        "archive_member": "vitt_distill_128_yp_unified_v11/hfhpe_vitt_rollgate_1x3x128x128.onnx",
+        "archive_sha256": "74a50a5c1cc6e85c2393bd61bf3d96f30a6049f398081f3d00b36b8640c17b31",
+        "sha256": "0f4311d7cf8560d2c04a2d40e7f166a8195ad50107d0a6b64336fc8fad517db8",
+        "max_bytes": 200_000_000,
+    },
+}
+
+
+def pose_source(choice: object, default: dict[str, Any]) -> dict[str, Any]:
+    """
+    Select an audited integrated pose export, retaining the original 64-pixel default.
+    """
+    if choice == "ViT-T/16 64×64 (rollgate v10)":
+        return dict(default)
+    if not isinstance(choice, str) or choice not in POSES:
+        raise ValueError("Select a supported ViT-T/16 pose model")
+    source = dict(POSES[choice])
+    return source
+
 
 def detector_source(choice: object) -> dict[str, Any]:
     """

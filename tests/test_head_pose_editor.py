@@ -55,6 +55,21 @@ assert pose.combo.findData(str(detector_file)) == -1
 assert detector.combo.findData(str(unrelated)) == pose.combo.findData(str(unrelated)) == -1
 assert detector.combo.itemText(detector.combo.findData(str(detector_file))) == "HGNet-N head detector"
 assert pose.combo.itemText(pose.combo.findData(str(pose_file))) == "HFHPE ViT-T 64×64 (rollgate v10)"
+pose_selector = controls.fields.fields["pose_model"]
+assert [pose_selector.itemText(i) for i in range(pose_selector.count())] == [
+    "ViT-T/16 64×64 (rollgate v10)", "ViT-T/16 128×128 (v11)",
+    "ViT-T/16 128×128 (rollgate v11)"]
+pose_selector.setCurrentText("ViT-T/16 128×128 (v11)")
+for _ in range(3):
+    editor.update_state({"pipeline_serial": editor.edit_serial}, False)
+    app.processEvents()
+assert json.loads(item["params"]["config"])["pose_model"] == "ViT-T/16 128×128 (v11)"
+pose_download = root / "custom-new-pose-02136d0746d0.onnx"
+pose_download.touch()
+pose.combo.showPopup()
+assert pose.combo.itemText(pose.combo.findData(str(pose_download))) == "HFHPE ViT-T/16 128×128 (v11)"
+assert detector.combo.findData(str(pose_download)) == -1
+pose.combo.hidePopup()
 downloaded = root / "custom-future-source-9b64e68cd6cf.onnx"
 downloaded.touch()
 detector.combo.showPopup()

@@ -32,6 +32,21 @@ ARCHIVE_FILE = "vitt_distill_064_yp_unified_v10.tar.gz"
 ARCHIVE_SHA = "ac06a442b9a0d9e308250ff7792a2cd3819c8597dfe3031c931bacd0b1379f39"
 POSE_MEMBER = "vitt_distill_064_yp_unified_v10/hfhpe_vitt_rollgate_1x3x64x64.onnx"
 POSE_SHA = "be054658797c1610f8ac82a2ec0a4a5b5aff6df7c9efb459120133b1fd4a6895"
+POSES = {
+    "vitt-64-rollgate": (ARCHIVE_FILE, ARCHIVE_SHA, POSE_MEMBER, POSE_SHA),
+    "vitt-128": (
+        "vitt_distill_128_yp_unified_v11.tar.gz",
+        "74a50a5c1cc6e85c2393bd61bf3d96f30a6049f398081f3d00b36b8640c17b31",
+        "vitt_distill_128_yp_unified_v11/hfhpe_vitt_1x3x128x128.onnx",
+        "02136d0746d0acad26c0bea6d405826d028c780d0ec6a81d43b93e33004946a7",
+    ),
+    "vitt-128-rollgate": (
+        "vitt_distill_128_yp_unified_v11.tar.gz",
+        "74a50a5c1cc6e85c2393bd61bf3d96f30a6049f398081f3d00b36b8640c17b31",
+        "vitt_distill_128_yp_unified_v11/hfhpe_vitt_rollgate_1x3x128x128.onnx",
+        "0f4311d7cf8560d2c04a2d40e7f166a8195ad50107d0a6b64336fc8fad517db8",
+    ),
+}
 
 
 def checksum(path: Path) -> str:
@@ -108,16 +123,18 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("diagnostics/head-pose/models"))
     parser.add_argument("--offline", action="store_true", help="Require existing pinned downloads")
     parser.add_argument("--detector", choices=tuple(DETECTORS), default="hgnet-n")
+    parser.add_argument("--pose", choices=tuple(POSES), default="vitt-64-rollgate")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     detector = args.output / "detector-original.onnx"
     archive = args.output / "pose.tar.gz"
     detector_file, detector_sha, normalization = DETECTORS[args.detector]
+    archive_file, archive_sha, pose_member, pose_sha = POSES[args.pose]
     download(detector, detector_file, detector_sha, args.offline)
-    download(archive, ARCHIVE_FILE, ARCHIVE_SHA, args.offline)
+    download(archive, archive_file, archive_sha, args.offline)
     pose_path = args.output / "pose.onnx"
     with tarfile.open(archive, "r:gz") as bundle:
-        member = bundle.getmember(POSE_MEMBER)
+        member = bundle.getmember(pose_member)
         if not member.isfile() or member.size > 70_000_000:
             raise ValueError("Pose archive member must be a bounded regular file")
         stream = bundle.extractfile(member)
@@ -125,13 +142,13 @@ def main() -> None:
             raise ValueError("Pose archive member is missing")
         with stream:
             pose = stream.read()
-    if hashlib.sha256(pose).hexdigest() != POSE_SHA:
+    if hashlib.sha256(pose).hexdigest() != pose_sha:
         raise ValueError("Pose model checksum changed")
     pose_path.write_bytes(pose)
     report = prepare_detector(detector, args.output / "detector.onnx", detector_sha, normalization)
     report.update(detector_source=BASE_URL + detector_file, detector_source_sha256=detector_sha,
-                  pose_source=BASE_URL + ARCHIVE_FILE, pose_archive_sha256=ARCHIVE_SHA,
-                  pose_member=POSE_MEMBER, pose_sha256=POSE_SHA)
+                  pose_source=BASE_URL + archive_file, pose_archive_sha256=archive_sha,
+                  pose_member=pose_member, pose_sha256=pose_sha)
     (args.output / "provenance.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

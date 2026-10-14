@@ -113,8 +113,12 @@ For model-based nodes, make first use concrete: expose model variants with liter
 JSON `choice` controls and local ONNX files with optional `model` overrides.
 Prefer the shared background resolver for known, audited, checksum-pinned default
 weights; return the input while pending rather than treating an empty override as
-a missing-file error. Multi-model nodes should request each needed asset before
-waiting for readiness. Keep required graph conversion/preparation outside the
+a missing-file error. `load_folder` injects `MODEL_SOURCE` into the configuration's
+`model` key; test variant selection with that real loaded configuration so the
+injected default cannot silently override an explicit model choice. Preserve
+documented legacy overrides with explicit precedence. Multi-model nodes should
+request each needed asset before waiting for readiness. Keep required graph
+conversion/preparation outside the
 callback, and explain it only for exports that actually need it. Do not assume
 an upstream file named "boxes-only" has removed unused graph branches; verify the
 exact release graph and normalization before accepting it by checksum.

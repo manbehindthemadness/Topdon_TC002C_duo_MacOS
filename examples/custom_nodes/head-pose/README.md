@@ -16,12 +16,23 @@ and cache. No preparation command is needed for these exact audited releases.
 If updating an existing node, reopen this folder and save the pipeline again to
 replace its embedded code and add the new JSON-defined dropdown.
 The Detector override lists HGNet-N/DINOv3-S head detectors by readable name;
-the Pose override lists HFHPE ViT-T 64×64 rollgate. Their JSON discovery hints
+the Pose override lists HFHPE ViT-T 64×64 rollgate and both ViT-T/16 128×128 v11
+exports. **Head pose model** selects the automatic download: the existing 64×64
+rollgate default, **ViT-T/16 128×128 (v11)** (`hfhpe_vitt`), or
+**ViT-T/16 128×128 (rollgate v11)**. Both 128 choices come from
+`vitt_distill_128_yp_unified_v11.tar.gz`, with separately pinned ONNX checksums.
+The standard export always derotates by its predicted roll; rollgate reduces
+derotation when roll confidence is low (κ gate τ=95). Both estimate yaw, pitch
+and roll. Crops resize automatically to the selected model's 64 or 128 input.
+Their JSON discovery hints
 hide unrelated cached models, including ACNet image enhancers. Known downloads
 that arrive later receive the same names on the next dropdown opening. Browse
 remains available for other compatible exports; unlisted saved selections stay
 visible as explicit local overrides, and the worker validates them as usual.
-Local overrides take precedence over the detector dropdown. First-use automatic
+Local overrides take precedence over their corresponding model dropdowns.
+The legacy JSON `model` descriptor remains supported for the 64×64 default;
+an explicit 128 choice selects its pinned release instead of that injected default.
+First-use automatic
 downloads and subsequent inference were verified in an initially empty diagnostics
 cache; both models became ready in about 5.6 seconds on this connection. Download
 time depends on network speed, and Apple compilation happens separately afterward.
@@ -47,6 +58,10 @@ the preparation step verifies that contract rather than assuming every upstream
 Use `--detector dinov3-s --output diagnostics/head-pose/dinov3-models` for the larger
 reference detector; `hgnet-n` is the preparation default. Do not mix model files
 from different preparation runs without checking provenance.
+For the requested ViT-T/16 128×128 release, add
+`--pose vitt-128 --output diagnostics/head-pose/vitt128-models` to the preparation
+command; `--pose vitt-128-rollgate` selects its gated version. The pose default
+remains `vitt-64-rollgate`.
 
 Browse to a prepared `detector.onnx` and `pose.onnx` to override automatic models.
 Alternatively, import a generated
@@ -56,7 +71,7 @@ raw source; adjust the source and any desired display processing for your experi
 They are diagnostic starting points, not replacements for tuned hardware presets.
 
 Empty overrides use the shared `ModelResolver` to download the selected pinned
-detector and ViT-T 64 archive in the background. Both requests start before
+detector and selected ViT-T pose archive in the background. Both requests start before
 waiting for readiness; the normal viewer model progress/error display applies. Verified
 weights are reused offline. Failure does not trigger downloads every frame;
 reload or bypass/re-enable to retry. The two exact detector release checksums
@@ -70,7 +85,7 @@ and recreated when its model file or effective device changes. Apple compilation
 can take seconds on first use. CUDA is exposed through the existing device helper
 but was not tested for this experiment. Neither CPU nor GPU runs need Torch.
 
-Controls include a detector choice, two model override pickers, separate device pickers,
+Controls include detector/pose choices, two model override pickers, separate device pickers,
 confidence threshold,
 maximum heads (highest confidence first, default one), input rotation, and boxes/axes/angle
 switches. No frame skipping, independent background inference or stale box reuse
@@ -115,6 +130,21 @@ These timings include worker copies/validation but exclude camera capture, other
 pipeline nodes, viewer rendering and USB waits. Registered providers do not mean
 every graph operation executes on the GPU.
 
+The same preview with the new 128×128 v11 exports, CPU detector/pose, ten warm
+runs, produced pose medians of **6.48 ms** (standard) and **6.34 ms** (rollgate),
+one head per frame. Whole-node medians were 88.5 and 90.8 ms in that run; the
+detector alone took 71.6–72.9 ms. These are separate runs from the 64-pixel table,
+not a controlled speed comparison. Both actual graphs were checked for RGB
+center05 input `[1,3,128,128]` and integrated yaw/pitch/roll outputs. The upstream
+accuracy charts use merged training/validation data and do not establish accuracy
+on unseen thermal images. 128-model Core ML/CUDA and live-camera accuracy remain
+unverified.
+First-use downloads of both 128 exports were also verified through the real Custom
+worker in a fresh, isolated diagnostics cache: frames passed through while pending,
+checksums were verified, and each model then produced a head-pose result. The
+standard and rollgate choices became ready in about 5.4 and 4.5 seconds respectively
+on this connection, using a local detector override.
+
 The saved 576×768 thermal capture in this checkout shows a torso without a visible
 head. Neither detector found a head at confidence 0.7. HGNet-N Core ML processed it
 in 39.0 ms median; this is not evidence of thermal head-pose accuracy. Use a new
@@ -129,9 +159,11 @@ experiment output directory. No camera access or user-preference writes occur.
 
 Adapter reference: upstream commit `526439eafbaadfa2e8bc5d85020a3e1e72149788`.
 Upstream: <https://github.com/PINTO0309/High-Angle_Robust_Fast_Head_Pose_Estimation>.
-Weights: its `weights` release, ViT-T 64 v10 rollgate and HGNet-N/DINOv3-S detectors.
+Weights: its `weights` release, ViT-T 64 v10 rollgate, ViT-T/16 128 v11 standard
+and rollgate, and HGNet-N/DINOv3-S detectors.
 Exact release SHA-256 pins are in `tools/prepare_head_pose.py` and the node's literal
-`MODEL_SOURCE`. The prepared detector digest is recorded locally after conversion.
+`MODEL_SOURCE` / `sources.py`. The prepared detector digest is recorded locally
+after conversion.
 
 To review an update without advancing the working pin immediately:
 
