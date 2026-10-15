@@ -79,6 +79,7 @@ class DeviceControls:
         self.original: dict[str, ControlValue] = {}
         self.values: dict[str, ControlValue] = {}
         self.enabled: set[str] = set()
+        self._pipeline_defaults: dict[str, ControlValue] = {}
         self._spot_original: dict[tuple[str, str], ControlValue] = {}
         self._spot_enabled: set[tuple[str, str]] = set()
         self.spot_ids = spot_ids
@@ -153,7 +154,7 @@ class DeviceControls:
         spec.validate(value)
         self.load()
         previous = self._read(name, None)
-        target = value if enabled else self.original[name]
+        target = value if enabled else self._pipeline_defaults.get(name, self.original[name])
         try:
             self._write(name, target, None)
             if self._read(name, None) != target:
@@ -167,11 +168,26 @@ class DeviceControls:
                 self.enabled.add(name)
                 raise CameraError(f"{exc}; rollback failed: {rollback}") from exc
             raise
-        self.values[name] = value if enabled else self.original[name]
+        self.values[name] = target
         if enabled:
             self.enabled.add(name)
         else:
             self.enabled.discard(name)
+
+    def set_pipeline(self, name: str, value: ControlValue, enabled: bool) -> None:
+        """
+        Apply a display target without replacing the connection-time restoration baseline.
+        """
+        spec = self.specs.get(name)
+        if spec is None or spec.scope != "device" or spec.effect != "preview":
+            raise ValueError("Only whole-device display controls belong to pipelines")
+        previous = self._pipeline_defaults.copy()
+        self._pipeline_defaults[name] = spec.default if enabled else value
+        try:
+            self.set(name, value, enabled)
+        except (CameraError, ValueError, TypeError):
+            self._pipeline_defaults = previous
+            raise
 
     def set_spot(self, name: str, value: ControlValue, spot_id: str, enabled: bool) -> None:
         """
@@ -219,7 +235,7 @@ class DeviceControls:
         """
         Forget baselines after an unowned device replacement, requiring fresh reads.
         """
-        if self.enabled or self._spot_enabled:
+        if self.enabled or self._spot_enabled or self._pipeline_defaults:
             raise CameraError("Restore owned settings before replacing the camera")
         self.original.clear()
         self.values.clear()
@@ -232,7 +248,8 @@ class DeviceControls:
         """
         Identify owned settings affecting display pixels.
         """
-        return any(self.specs[name].effect == "preview" for name in self.enabled)
+        return bool(self._pipeline_defaults) or any(
+            self.specs[name].effect == "preview" for name in self.enabled)
 
     @property
     def measurement_active(self) -> bool:
@@ -247,10 +264,13 @@ class DeviceControls:
         Attempt every owned restoration and retain failed fields for a later retry.
         """
         failures = []
-        for name in sorted(self.enabled):
+        for name in sorted(self.enabled | self._pipeline_defaults.keys()):
+            default = self._pipeline_defaults.pop(name, None)
             try:
                 self.set(name, self.original[name], False)
             except CameraError as exc:
+                if default is not None:
+                    self._pipeline_defaults[name] = default
                 failures.append((name, exc))
         for name, spot_id in sorted(self._spot_enabled):
             try:

@@ -21,6 +21,27 @@ PIPELINE_FIELDS = {
 }
 
 
+def display_defaults(hardware: Any, state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Select available, backend-declared defaults without touching calibration or spot controls.
+    """
+    defaults = {name: spec.default for name, spec in hardware.specs.items()
+                if spec.supported and spec.scope == "device" and spec.effect == "preview"
+                and state.get(name, {}).get("available", False)}
+    return defaults
+
+
+def targets_match(state: dict[str, Any], controls: dict[str, Any],
+                  defaults: dict[str, Any]) -> bool:
+    """
+    Compare effective values and explicit ownership, including inactive defaults.
+    """
+    matches = all(state[name]["value"] == controls.get(name, default)
+                  and state[name].get("enabled", False) == (name in controls)
+                  for name, default in defaults.items())
+    return matches
+
+
 def desired_hardware(
     document: dict[str, Any], source: str = "preview",
 ) -> tuple[dict[str, Any], str, int, int, bool]:
@@ -113,7 +134,11 @@ class PipelineHardware:
             and any(item["type"] == "preset" for item in active_nodes(self.document, "hardware"))
         )
         verify_preset = preset_active and (self._desired is None or not previous_preset_active)
-        if desired == self._desired and not verify_preset:
+        state = self.hardware.state()
+        if (desired == self._desired and not verify_preset
+                and desired[1:] == (self.hardware.processing_preset, self.hardware.gamma,
+                                    self.hardware.boost, self.hardware.fixed_range)
+                and targets_match(state, desired[0], display_defaults(self.hardware, state))):
             self.document = candidate
             return  # Reordering/collapse/software edits perform no USB operations.
         if not self.hardware.original and desired == ({}, "balanced", 50, 0, False):
@@ -121,12 +146,20 @@ class PipelineHardware:
             self.document = candidate
             self._desired = desired
             return
-        previous = self._desired
+        if not self.hardware.original:
+            self.hardware.load()
+            state = self.hardware.state()
+        previous = ({name: setting["value"] for name, setting in state.items()
+                     if name in PIPELINE_FIELDS and setting.get("enabled", False)},
+                    self.hardware.processing_preset, self.hardware.gamma,
+                    self.hardware.boost, self.hardware.fixed_range)
         try:
             self._apply(desired, verify_preset=verify_preset)
         except (CameraError, ValueError, TypeError) as exc:
             try:
-                self._apply(previous or ({}, "balanced", 50, 0, False), force=True)
+                self._apply(previous, force=True, defaults={
+                    name: setting["value"] for name, setting in state.items()
+                    if name in PIPELINE_FIELDS and setting.get("available", False)})
             except (CameraError, ValueError, TypeError) as rollback:
                 raise CameraError(
                     f"Pipeline rejected: {exc}; restoration failed: {rollback}"
@@ -155,21 +188,33 @@ class PipelineHardware:
             raise ValueError("Measurement corrections belong to Camera settings, outside pipelines")
         for name, value in selected.items():
             specs[name].validate(value)
-        if desired == self._desired:
+        state = hw.state()
+        defaults = display_defaults(hw, state)
+        effective = ({**selected}, *desired[1:])
+        if effective == self._desired and targets_match(state, selected, defaults):
             self.document = deepcopy(document)
             return
-        previous = self._desired[0] if self._desired is not None else {}
+        if not hw.original and not selected:
+            self.document = deepcopy(document)
+            return
         try:
-            for name in set(previous) - set(selected):
-                if name in hw.enabled:
-                    hw.set(name, hw.original[name], False)
-            for name, value in selected.items():
-                if name not in hw.enabled or hw.values[name] != value:
-                    hw.set(name, value, True)
-        except CameraError:
-            for name in set(selected) | set(previous):
-                if name in specs and name in hw.original:
-                    hw.set(name, previous.get(name, hw.original[name]), name in previous)
+            if selected and not hw.original:
+                hw.load()
+                state = hw.state()
+                defaults = display_defaults(hw, state)
+            for name, default in defaults.items():
+                value = selected.get(name, default)
+                if (state[name]["value"] != value
+                        or state[name]["enabled"] != (name in selected)):
+                    hw.set_pipeline(name, value, name in selected)
+        except (CameraError, ValueError, TypeError) as exc:
+            try:
+                for name in defaults:
+                    hw.set_pipeline(name, state[name]["value"], state[name]["enabled"])
+            except (CameraError, ValueError, TypeError) as rollback:
+                raise CameraError(
+                    f"Pipeline rejected: {exc}; restoration failed: {rollback}"
+                ) from exc
             raise
         self.document = deepcopy(document)
         self._desired = ({**selected}, *desired[1:])
@@ -177,6 +222,7 @@ class PipelineHardware:
     def _apply(
         self, desired: tuple[dict[str, Any], str, int, int, bool], force: bool = False,
         verify_preset: bool = False,
+        defaults: dict[str, Any] | None = None,
     ) -> None:
         """
         Apply only pipeline-owned fields, preserving standalone calibration settings.
@@ -188,19 +234,17 @@ class PipelineHardware:
         if not hw.original:
             hw.load()
         current = hw.state()
+        defaults = display_defaults(hw, current) if defaults is None else defaults
         unavailable = set(controls) - set(current)
         if unavailable:
             raise CameraError(f"Unavailable camera controls: {sorted(unavailable)}")
         changed = [
             name
-            for name in PIPELINE_FIELDS
-            if (
-                name in controls
-                and (not current[name]["enabled"] or current[name]["value"] != controls[name])
-            )
-            or (name not in controls and current.get(name, {}).get("enabled", False))
+            for name in defaults
+            if current[name]["value"] != controls.get(name, defaults[name])
+            or current[name].get("enabled", False) != (name in controls)
         ]
-        preset_changes = force or verify_preset or hw.processing_preset != preset
+        preset_changes = verify_preset or hw.processing_preset != preset
         if hw.fixed_range and (
             force
             or verify_preset
@@ -236,7 +280,7 @@ class PipelineHardware:
         )
         for name in order:
             if name in changed:
-                hw.set(name, controls.get(name, current[name]["value"]), name in controls)
+                hw.set_pipeline(name, controls.get(name, defaults[name]), name in controls)
         if preset_changes:
             hw.set_processing_preset(preset)
         if tone_changes and (gamma != 50 or boost):

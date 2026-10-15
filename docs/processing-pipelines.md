@@ -33,6 +33,18 @@ Clear all nodes clears hardware and every existing software tab. Right-click a n
 to insert above/below or remove it. Image source stays first in every tab and
 cannot be removed or bypassed. A also has a fixed Output → viewer node at the
 bottom. Hardware controls can appear once; processing and Combine nodes repeat.
+
+Inactive hardware settings use the selected camera backend's declared app defaults,
+including White hot for Duo camera colors, Balanced processing, gamma 50, boost Off,
+and fixed detail Off. Deleting or bypassing a hardware node, clearing its stack,
+loading a pipeline without that node, and creating a new pipeline all apply those
+defaults. Clearing only software nodes retains the hardware stack. An empty stack
+also resets a palette already present when the camera connected. Permanent
+measurement/calibration settings remain unchanged. The connection-time hardware
+snapshot is kept separately and restored when the viewer closes; it is not the
+pipeline default. Thermal and visible-camera hardware stacks apply their own
+backend defaults independently.
+
 While dragging, a highlighted placement bar marks the insertion boundary. The
 bar appears only for valid moves within the same stack; Source and Output remain
 fixed. It clears when the drag leaves the stack, is cancelled, or is dropped.

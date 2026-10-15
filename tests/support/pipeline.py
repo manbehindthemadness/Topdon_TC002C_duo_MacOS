@@ -75,6 +75,9 @@ def fake_hardware() -> Any:
         name: {"value": spec.minimum, "enabled": False, "available": True}
         for name, spec in HARDWARE_CONTROLS.items()
     }
+    from based_thermals.camera_backends.duo import control_specs
+
+    hw.specs = control_specs()
 
     def set_value(name: Any, value: Any, enabled: Any) -> None:
         """
@@ -83,6 +86,7 @@ def fake_hardware() -> Any:
         hw.state.return_value[name].update(value=value, enabled=enabled)
 
     hw.set.side_effect = set_value
+    hw.set_pipeline.side_effect = lambda name, value, enabled: hw.set(name, value, enabled)
     hw.set_processing_preset.side_effect = lambda value: setattr(hw, "processing_preset", value)
     def set_tone(gamma: float, boost: int) -> None:
         """

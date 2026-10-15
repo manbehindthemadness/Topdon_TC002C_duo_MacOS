@@ -33,7 +33,7 @@ def test_hardware_reorder_makes_no_usb_writes_and_bypass_restores_only_owned_fie
     hw.reset_mock()
     document["hardware"].reverse()
     controller.apply(document)
-    assert not hw.mock_calls
+    assert [call[0] for call in hw.mock_calls] == ["state"]
     document["hardware"][0]["bypass"] = True
     controller.apply(document)
     assert hw.set.call_args.args[0] == "contrast" and hw.set.call_args.args[2] is False
@@ -70,7 +70,7 @@ def test_hardware_failure_rolls_back_without_clearing_calibration_fields() -> No
     )
 
 
-def test_pipeline_fields_preserve_sdk_calibration_bytes_and_restore_original(
+def test_pipeline_fields_preserve_calibration_and_restore_original_only_on_shutdown(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from test_hardware_controls import Device
@@ -100,6 +100,12 @@ def test_pipeline_fields_preserve_sdk_calibration_bytes_and_restore_original(
         item["bypass"] = True
     controller.apply(document)
     assert hw.read(3, 1) == calibration
+    assert hw.state()["palette"]["value"] == 1
+    assert hw.state()["contrast"]["value"] == 0
+    assert hw.state()["detail_enabled"]["value"] == 0
+    assert all(not setting["enabled"] for name, setting in hw.state().items()
+               if name in ("palette", "contrast", "detail", "detail_enabled"))
+    hw.restore()
     assert {key: hw.read(*key) for key in original_preview} == original_preview
 
 

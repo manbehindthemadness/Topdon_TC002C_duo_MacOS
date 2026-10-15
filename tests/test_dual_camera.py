@@ -150,6 +150,7 @@ def test_hardware_settings_do_not_cross_camera_owners() -> None:
     Apply same-name settings, bypass one stream, and restore both independent baselines.
     """
     camera = VirtualDualCamera()
+    camera._brightness.update(thermal=63, visible=27)
     thermal, optical = camera.create_controls(), camera.create_visible_controls()
     session = SimpleNamespace(
         pipeline_hardware=PipelineHardware(thermal),
@@ -177,7 +178,7 @@ def test_hardware_settings_do_not_cross_camera_owners() -> None:
     assert thermal.values["brightness"] == 70 and optical.values["brightness"] == 50
     thermal.restore()
     optical.restore()
-    assert thermal.values["brightness"] == optical.values["brightness"] == 50
+    assert thermal.values["brightness"] == 63 and optical.values["brightness"] == 27
 
 
 def test_dual_camera_editor_hides_secondary_stack_and_uses_own_metadata(tmp_path: Path) -> None:

@@ -183,11 +183,15 @@ class HardwareControls:
             "host_reflected_calibration": True,
         })
 
-    def __init__(self, camera) -> None:
+    def __init__(self, camera: Any) -> None:
+        """
+        Keep pipeline defaults separate from the complete original camera snapshot.
+        """
         self.camera = camera
         self.original: dict[tuple[int, int], bytes] = {}
         self.enabled: set[str] = set()
         self.values: dict[str, float] = {}
+        self._pipeline_defaults: dict[str, float] = {}
         self.error = ""
         self.snapshot_path: Path | None = None
         self.auto_calibrate: bool | None = None
@@ -666,8 +670,11 @@ class HardwareControls:
                 for offset, _ in control.extra:
                     target[offset] = self.original[key][offset]
         for other_name, control in HARDWARE_CONTROLS.items():
-            if other_name in proposed and (control.selector, control.command) == key:
-                control.apply(target, values[other_name])
+            if (control.selector, control.command) == key:
+                if other_name in proposed:
+                    control.apply(target, values[other_name])
+                elif other_name in self._pipeline_defaults:
+                    control.apply(target, self._pipeline_defaults[other_name])
         # Also validate disabled row values before retaining them for re-enabling.
         spec.apply(bytearray(self.original[key]), value)
         try:
@@ -686,14 +693,34 @@ class HardwareControls:
         if spec.selector == 2 and self._tone_owned:
             self.set_tone(self.gamma, self.boost)
 
+    def set_pipeline(self, name: str, value: float, enabled: bool) -> None:
+        """
+        Apply a display target while keeping inactive defaults separate from the snapshot.
+        """
+        if name not in HARDWARE_CONTROLS or HARDWARE_CONTROLS[name].selector != 2:
+            raise ValueError("Only display controls belong to pipelines")
+        previous = self._pipeline_defaults.copy()
+        self._pipeline_defaults[name] = cast(float, self.specs[name].default) if enabled else value
+        try:
+            self.set(name, value, enabled)
+        except (CameraError, ValueError, TypeError):
+            self._pipeline_defaults = previous
+            raise
+
     def restore(self) -> None:
         """
         Restore SDK controls before the live preset, since SDK writes can reload its bank.
         """
         self.restore_tone()
         self.restore_fixed_range()
-        for name in tuple(self.enabled):
-            self.set(name, self.values[name], False)
+        for name in tuple(self.enabled | self._pipeline_defaults.keys()):
+            default = self._pipeline_defaults.pop(name, None)
+            try:
+                self.set(name, self.values[name], False)
+            except (CameraError, ValueError, TypeError):
+                if default is not None:
+                    self._pipeline_defaults[name] = default
+                raise
         self.restore_processing_preset()
 
     @property
@@ -704,13 +731,17 @@ class HardwareControls:
         progress = round(self._tone_sent * 100 / 257)
         return progress
 
-    def state(self) -> dict:
+    def state(self) -> dict[str, Any]:
+        """
+        Report effective display defaults without presenting inactive nodes as enabled.
+        """
         return {
             name: {
                 "value": (
                     self.values[name]
                     if name in self.enabled
-                    else spec.decode(self.original[spec.selector, spec.command])
+                    else self._pipeline_defaults.get(
+                        name, spec.decode(self.original[spec.selector, spec.command]))
                     if self.original
                     else spec.minimum
                 ),
@@ -726,6 +757,9 @@ class HardwareControls:
 
     @property
     def preview_active(self) -> bool:
-        return self._tone_owned or self._processing_preset_owned or any(
+        """
+        Include inactive pipeline defaults that still require restoration on shutdown.
+        """
+        return bool(self._pipeline_defaults) or self._tone_owned or self._processing_preset_owned or any(
             HARDWARE_CONTROLS[name].selector == 2 for name in self.enabled
         )

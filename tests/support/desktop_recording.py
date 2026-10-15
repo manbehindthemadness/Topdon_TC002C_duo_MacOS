@@ -36,7 +36,10 @@ def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     hardware.tone_busy = False
     hardware._tone_sent = 0
     hardware.fixed_range = False
+    from based_thermals.camera_backends.duo import control_specs
     from based_thermals.hardware_controls import HARDWARE_CONTROLS
+
+    hardware.specs = control_specs()
 
     hardware.state.return_value = {
         name: {"value": spec.minimum, "enabled": False, "available": True}
@@ -58,6 +61,7 @@ def viewer_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
             hardware.enabled.discard(name)
 
     hardware.set.side_effect = set_hardware
+    hardware.set_pipeline.side_effect = lambda name, value, enabled: hardware.set(name, value, enabled)
     baseline = {name: value["value"] for name, value in hardware.state.return_value.items()}
 
     def restore_hardware() -> None:
