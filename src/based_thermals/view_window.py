@@ -423,6 +423,14 @@ class ViewWindow(QWidget):
         """
         self._send(command)
 
+    def _set_calibrations_expanded(self, expanded: bool) -> None:
+        """
+        Show calibration tools and remember their disclosure state independently of Environment.
+        """
+        self.calibrations_content.setVisible(expanded)
+        self.calibrations_button.setText(("▾ " if expanded else "▸ ") + "Calibrations")
+        self._settings.setValue("camera/calibrations_expanded", expanded)
+
     def __init__(self, send: Any) -> None:
         """
         Build pipeline and permanent calibration controls with the viewer message callback.
@@ -493,11 +501,26 @@ class ViewWindow(QWidget):
             self.hardware_rows[name] = row
             self.hardware_layout.addWidget(row)
         self.hardware_layout.addStretch()
+        self.calibrations_button = QPushButton()
+        self.calibrations_button.setAccessibleName("Calibrations")
+        self.calibrations_button.setStyleSheet("text-align: left; font-weight: bold")
+        self.calibrations_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.calibrations_button.setCheckable(True)
+        calibrations_expanded = cast(
+            bool, self._settings.value("camera/calibrations_expanded", False, type=bool))
+        self.calibrations_button.setChecked(calibrations_expanded)
+        self.calibrations_content = QWidget()
+        calibrations_layout = QVBoxLayout(self.calibrations_content)
+        calibrations_layout.setContentsMargins(12, 0, 0, 0)
+        self.calibrations_button.toggled.connect(self._set_calibrations_expanded)
+        rows.addWidget(self.calibrations_button)
+        rows.addWidget(self.calibrations_content)
+        self._set_calibrations_expanded(calibrations_expanded)
         self.distance_calibration = DistanceCalibrationControls(self._send)
         self.emissivity_calibration = EmissivityCalibrationControls(self._send)
         self.reflected_calibration = ReflectedCalibrationControls(self._send)
         for tool in (self.distance_calibration, self.emissivity_calibration, self.reflected_calibration):
-            rows.addWidget(tool)
+            calibrations_layout.addWidget(tool)
         rows.addStretch()
         self.reported_readings = QLabel()
         self.reported_readings.setWordWrap(True)

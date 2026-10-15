@@ -12,7 +12,11 @@ ambient/reflected temperature, distance, emissivity, optical transmission, or
 relative humidity. Its full-width header matches the pipeline node headers. The
 section starts collapsed on first use and remembers its last expanded or collapsed
 state across window openings and application restarts. Live camera updates preserve
-your expansion choice. Calibration tools remain below it.
+your expansion choice.
+
+The matching **Calibrations** section below it contains distance, emissivity, and
+reflected-temperature calibration tools. It also starts collapsed on first use and
+remembers its last state independently of Environment.
 
 ## Start with a preset
 
