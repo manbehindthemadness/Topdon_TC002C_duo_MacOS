@@ -22,6 +22,7 @@ from ..pipeline import (
     LEGACY_SOFTWARE_NODES,
 )
 from .dual import stack_state
+from .outputs import HardwareOutputs
 
 
 def decode_preview(payload: str | None) -> QPixmap:
@@ -211,6 +212,9 @@ class StackList(QListWidget):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._fitting = False
+        self.output_footer = HardwareOutputs(self.viewport()) if stack != "software" else None
+        if self.output_footer is not None:
+            self.output_footer.update_sources(editor.last_state, stack)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.context_menu)
         self.model().rowsMoved.connect(lambda *_: QTimer.singleShot(0, self.reordered))
@@ -242,10 +246,22 @@ class StackList(QListWidget):
                 self.item(i).sizeHint().height() + 2 * self.spacing() for i in range(self.count())
             )
             # Keep a little empty space for the stack's Add/Clear context menu.
-            self.setFixedHeight(max(64, height + chrome + 24))
+            footer_height = self.output_footer.sizeHint().height() if self.output_footer else 0
+            self.setFixedHeight(max(64, height + chrome + 24 + footer_height))
+            if self.output_footer is not None:
+                self.output_footer.setGeometry(
+                    self.spacing(), self.viewport().height() - footer_height - self.spacing(),
+                    max(1, self.viewport().width() - 2 * self.spacing()), footer_height)
             self.verticalScrollBar().setValue(0)
         finally:
             self._fitting = False
+
+    def update_output_sources(self, state: dict[str, Any]) -> None:
+        """
+        Keep the hardware footer current without adding entries to the draggable list model.
+        """
+        if self.output_footer is not None:
+            self.output_footer.update_sources(state, self.stack)
 
     def resizeEvent(self, event: Any) -> None:
         """

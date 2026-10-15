@@ -34,6 +34,14 @@ to insert above/below or remove it. Image source stays first in every tab and
 cannot be removed or bypassed. A also has a fixed Output → viewer node at the
 bottom. Hardware controls can appear once; processing and Combine nodes repeat.
 
+Each camera hardware stack ends with a fixed **Output sources →** row listing
+that camera's available source types. The thermal stack can show **Thermal upsample**
+and **Raw thermal**; a supported visible-camera stack shows **Color camera**.
+This is an informational footer: it cannot be dragged, bypassed, or removed and
+survives Clear and New. It is not included in saved pipelines and does not perform
+processing. Source types follow camera capabilities rather than the current pipeline
+selection or temporary frame availability.
+
 Inactive hardware settings use the selected camera backend's declared app defaults,
 including White hot for Duo camera colors, Balanced processing, gamma 50, boost Off,
 and fixed detail Off. Deleting or bypassing a hardware node, clearing its stack,

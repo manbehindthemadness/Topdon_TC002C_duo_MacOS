@@ -261,6 +261,7 @@ def update_editor_state(self: PipelineEditor, state: Any, locked: Any) -> None:
                     row.update_state(value, available)
             # Child size changes (badges) need a refreshed item height.
     for listing in self.stacks.values():
+        listing.update_output_sources(state)
         listing.setDragEnabled(not locked)
         listing.fit_contents()
     for button in (self.import_button, self.export_button, self.defaults_button):
