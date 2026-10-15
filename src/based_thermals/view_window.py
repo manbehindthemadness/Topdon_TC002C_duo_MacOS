@@ -409,6 +409,14 @@ class ReflectedCalibrationControls(QWidget):
 
 
 class ViewWindow(QWidget):
+    def _set_environment_expanded(self, expanded: bool) -> None:
+        """
+        Show environmental controls and remember the disclosure state independently of hardware.
+        """
+        self.environment_content.setVisible(expanded)
+        self.environment_button.setText(("▾ " if expanded else "▸ ") + "Environment")
+        self._settings.setValue("camera/environment_expanded", expanded)
+
     def send_hardware_command(self, command: dict[str, Any]) -> None:
         """
         Publish a capability-derived control edit through the existing JSON boundary.
@@ -449,16 +457,30 @@ class ViewWindow(QWidget):
         scroll.setWidgetResizable(True)
         body = QWidget()
         rows = QVBoxLayout(body)
-        self.hardware_layout = rows
         self.pipeline_editor = PipelineEditor(self._send, ControlRow)
         rows.addWidget(self.pipeline_editor)
+        self.environment_button = QPushButton()
+        self.environment_button.setAccessibleName("Environment")
+        self.environment_button.setStyleSheet("text-align: left; font-weight: bold")
+        self.environment_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.environment_button.setCheckable(True)
+        environment_expanded = cast(
+            bool, self._settings.value("camera/environment_expanded", False, type=bool))
+        self.environment_button.setChecked(environment_expanded)
+        self.environment_content = QWidget()
+        self.hardware_layout = QVBoxLayout(self.environment_content)
+        self.hardware_layout.setContentsMargins(12, 0, 0, 0)
+        self.environment_button.toggled.connect(self._set_environment_expanded)
+        rows.addWidget(self.environment_button)
+        rows.addWidget(self.environment_content)
+        self._set_environment_expanded(environment_expanded)
         self.rows = {}
         self.hardware_rows = {}
         self.hardware_descriptions = {}
         units = ControlRow("Measurement units", lambda value: self._send({"action": "setting", "name": "temperature_unit", "value": value}), options=tuple(TEMPERATURE_UNITS.items()))
         self.rows["temperature_unit"] = units
         self.controls = {"temperature_unit": units.input}
-        rows.addWidget(units)
+        self.hardware_layout.addWidget(units)
         for name in ("ambient", "distance", "emissivity", "reflected", "transmission", "humidity"):
             spec = HARDWARE_CONTROLS[name]
             row = ControlRow(
@@ -469,7 +491,8 @@ class ViewWindow(QWidget):
                 release_only=True,
             )
             self.hardware_rows[name] = row
-            rows.addWidget(row)
+            self.hardware_layout.addWidget(row)
+        self.hardware_layout.addStretch()
         self.distance_calibration = DistanceCalibrationControls(self._send)
         self.emissivity_calibration = EmissivityCalibrationControls(self._send)
         self.reflected_calibration = ReflectedCalibrationControls(self._send)

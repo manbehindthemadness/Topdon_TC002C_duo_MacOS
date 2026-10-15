@@ -7,6 +7,13 @@ display-processing pipelines are configured. It replaces the older Camera label.
 Hardware settings can affect camera-corrected measurements; software image
 operations affect display pixels while measurements continue using native thermal data.
 
+Expand **Environment**, below the pipeline editor, to change measurement units,
+ambient/reflected temperature, distance, emissivity, optical transmission, or
+relative humidity. Its full-width header matches the pipeline node headers. The
+section starts collapsed on first use and remembers its last expanded or collapsed
+state across window openings and application restarts. Live camera updates preserve
+your expansion choice. Calibration tools remain below it.
+
 ## Start with a preset
 
 1. Open Imaging and select a bundled pipeline from the preset dropdown.
