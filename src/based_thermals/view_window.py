@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -26,6 +25,7 @@ from .view_controls import (
     NoWheelSpinBox,
 )
 from .view_settings import DISTANCE_METERS_PER_UNIT, TEMPERATURE_UNITS, VIEW_DEFAULTS
+from .view_sizing import ImagingScrollArea
 
 __all__ = [
     "ControlRow",
@@ -441,7 +441,6 @@ class ViewWindow(QWidget):
         self._settings_locked = False
         self._anchor_top_right = None
         self.setWindowTitle("Imaging")
-        self.setMinimumWidth(650)
         self._settings = QSettings(
             QSettings.Format.IniFormat, QSettings.Scope.UserScope, "based-thermals", "desktop"
         )
@@ -461,7 +460,7 @@ class ViewWindow(QWidget):
         self.cancel_tone.clicked.connect(lambda: self._send({"action": "cancel_tone"}))
         self.cancel_tone.hide()
         layout.addWidget(self.cancel_tone)
-        scroll = QScrollArea()
+        scroll = ImagingScrollArea()
         scroll.setWidgetResizable(True)
         body = QWidget()
         rows = QVBoxLayout(body)

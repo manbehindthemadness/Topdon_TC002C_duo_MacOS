@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
@@ -265,7 +266,10 @@ def test_emissivity_calibration_commands_are_rejected_while_logging(
     assert not panel.update.call_args.args[0]["emissivity_calibration"]["active"]
 
 
-def test_view_popup_emits_settings_and_syncs_without_feedback(tmp_path):
+def test_view_popup_emits_settings_and_syncs_without_feedback(tmp_path: Path) -> None:
+    """
+    Preserve control behavior and a saved window size wide enough for the Imaging layout.
+    """
     script = """
 import sys
 from pathlib import Path
@@ -435,12 +439,12 @@ assert em.known.value() == 104 and "Saved emissivity: 0.50" in em.status.text()
 
 app.processEvents()
 window.grab().save(sys.argv[1])
-window.resize(760, 880)
+window.resize(960, 880)
 app.processEvents()
 saved_size = window.size()
 window.close()
 reopened = ViewWindow(messages.append)
-assert reopened.size() == saved_size == QSize(760, 880)
+assert reopened.size() == saved_size == QSize(960, 880)
 reopened.close()
 """
     result = subprocess.run(

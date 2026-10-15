@@ -4,6 +4,9 @@
 
 Open **Imaging** or press `V`. This is where supported camera controls and
 display-processing pipelines are configured. It replaces the older Camera label.
+The panel opens wide enough for its controls, widening older saved window sizes
+when needed. Expanding sections or nodes reserves room for the vertical scrollbar
+without introducing horizontal scrolling; taller content remains vertically scrollable.
 Hardware settings can affect camera-corrected measurements; software image
 operations affect display pixels while measurements continue using native thermal data.
 
