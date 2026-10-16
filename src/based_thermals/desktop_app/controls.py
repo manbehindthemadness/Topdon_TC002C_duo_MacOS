@@ -18,6 +18,34 @@ class ControlsController(SessionState):
     Own desktop controls operations and transitions.
     """
 
+    def refresh_camera_measurements(self: DesktopSession, command: dict[str, Any]) -> None:
+        """
+        Recalibrate after committed corrections while retaining held measurements.
+
+        Calibration failures leave the successfully applied setting and preference intact.
+        Temporary calibration probes do not pass through this command dispatcher.
+        """
+        action = command.get("action")
+        name = command.get("name")
+        correction = False
+        if action == "hardware" and isinstance(name, str) and name in self.hardware.specs:
+            correction = self.hardware.specs[name].effect == "measurement"
+        applied = action in (
+            "distance_calibration", "emissivity_calibration", "reflected_calibration",
+        ) and command.get("operation") == "apply"
+        if not (correction or applied or action == "restore_hardware"):
+            self.renderer.reset_measurement_average()
+            return
+        self.renderer.request_measurement_restart()
+        if not self.hardware.capabilities().get("features", {}).get("calibrate_now"):
+            return
+        try:
+            self.hardware.calibrate_now()
+        except self.api.CameraError as exc:
+            self.hardware.error = f"Setting applied, but camera recalibration failed: {exc}"
+            self.api.LOG.warning("%s", self.hardware.error)
+            self.notify(self.hardware.error)
+
     def initialize_hardware(self: DesktopSession) -> bool:
         """
         Initialize hardware.
@@ -304,8 +332,8 @@ class ControlsController(SessionState):
                         else:
                             values.pop(command["name"], None)
                         self.persist_settings()
-                        self.renderer.reset_measurement_average()
                         self.hardware.error = ""
+                        self.refresh_camera_measurements(command)
                         continue
                     if self.emissivity_calibration.active:
                         self.emissivity_calibration.cancel()
@@ -339,7 +367,7 @@ class ControlsController(SessionState):
                         self.remembered_hardware.pop(command["name"], None)
                     self.persist_settings()
                     self.hardware.error = ""
-                    self.renderer.reset_measurement_average()
+                    self.refresh_camera_measurements(command)
                 elif command.get("action") == "distance_calibration":
                     if self.emissivity_calibration.active:
                         self.emissivity_calibration.cancel()
@@ -369,10 +397,10 @@ class ControlsController(SessionState):
                         self.remembered_hardware["distance"] = self.hardware.state()["distance"][
                             "value"
                         ]
-                        self.renderer.reset_measurement_average()
                         self.hardware.error = ""
                         self.persist_settings()
                         self.notify("Estimated distance applied to the camera")
+                        self.refresh_camera_measurements(command)
                     elif operation == "clear":
                         self.distance_calibration.clear()
                         self.persist_settings()
@@ -402,8 +430,8 @@ class ControlsController(SessionState):
                         self.persist_settings()
                     else:
                         raise ValueError("Unknown reflected-temperature calibration operation")
-                    self.renderer.reset_measurement_average()
                     self.notify(self.reflected_calibration.message)
+                    self.refresh_camera_measurements(command)
                 elif command.get("action") == "emissivity_calibration":
                     operation = command["operation"]
                     if operation == "cancel":
@@ -425,9 +453,9 @@ class ControlsController(SessionState):
                         self.persist_settings()
                     else:
                         raise ValueError("Unknown emissivity calibration operation")
-                    self.renderer.reset_measurement_average()
                     self.hardware.error = ""
                     self.notify(self.emissivity_calibration.message)
+                    self.refresh_camera_measurements(command)
                 elif command.get("action") == "advanced_auto":
                     if not isinstance(command["value"], bool):
                         raise ValueError("Advanced / Auto must be a boolean")
@@ -450,7 +478,7 @@ class ControlsController(SessionState):
                     self.ambient_input_celsius = None
                     self.persist_settings()
                     self.hardware.error = ""
-                    self.renderer.reset_measurement_average()
+                    self.refresh_camera_measurements(command)
                 elif command.get("action") == "reset":
                     self.set_pipeline(self.api.default_pipeline())
                     for name, value in self.api.VIEW_DEFAULTS.items():

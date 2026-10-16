@@ -60,6 +60,15 @@ settings preserve saved calibration references; Restore camera settings clears
 applied hardware preferences until you apply them again. Repeat calibration when
 the camera, target material, or relevant measurement conditions change.
 
+Applying or disabling an Environment correction (ambient temperature, distance,
+emissivity, reflected temperature, optical transmission or humidity), applying a
+calibration result, or restoring camera settings requests a camera recalibration
+when the backend supports it. Measurement averaging restarts while holding the
+last readings through calibration. Saving a reference and temporary fitting or
+reflector-measurement probes do not trigger this extra recalibration. If the
+recalibration request fails, the applied setting remains saved and the viewer
+reports the failure.
+
 ## Distance calibration with a square
 
 Imaging → Distance calibration uses a **76 × 76 mm Post-it** by default. You can
