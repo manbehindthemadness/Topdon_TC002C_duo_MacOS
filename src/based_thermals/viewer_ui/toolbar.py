@@ -6,9 +6,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QSignalBlocker, Qt
+from PySide6.QtCore import QSignalBlocker, QSize, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QDoubleSpinBox, QLabel, QPushButton, QToolBar, QWidget
+
+
+class CompactViewerButton(QPushButton):
+    """
+    Trim horizontal space while retaining the platform's native button appearance.
+    """
+
+    def sizeHint(self) -> QSize:
+        """
+        Keep the native height and enough room for the complete current label.
+        """
+        size = super().sizeHint()
+        text_width = self.fontMetrics().horizontalAdvance(self.text())
+        size.setWidth(max(text_width + 16, size.width() - 4))
+        return size
 
 
 class ViewerToolbar(QToolBar):
@@ -63,7 +78,7 @@ class ViewerToolbar(QToolBar):
         """
         Add a keyboard-accessible button and retain its toolbar action for visibility.
         """
-        button = QPushButton(label)
+        button: QPushButton = QPushButton(label) if graph else CompactViewerButton(label)
         button.setAccessibleName(label)
         button.clicked.connect(lambda: send({"action": action}))
         widget_action = self.addWidget(button)

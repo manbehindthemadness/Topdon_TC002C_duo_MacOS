@@ -112,8 +112,9 @@ on release. See the [measurement editing guide](docs/measurements-guide.md#edit-
 exclusions and graph sampling. Its mixed state means only some are enabled;
 clicking mixed shows all. This control follows the existing logging/calibration locks.
 
-In portrait layout, charts and their controls move below the image. Smaller
-windows use Qt's toolbar overflow menu.
+In portrait layout, charts and their controls move below the image. The main
+toolbar uses slightly narrower native buttons to fit the default rotated image
+width with graphs hidden. Smaller windows use Qt's toolbar overflow menu.
 Watch the status bar for download progress, camera errors, and rejected settings.
 The number beside the status is elapsed viewport draw time in milliseconds:
 image preparation, measurement overlays, graph composition, frame copying and Qt
