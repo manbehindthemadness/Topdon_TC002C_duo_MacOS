@@ -125,6 +125,8 @@ def camera_operation_title(command: dict) -> str | None:
     if command.get("action") == "hardware":
         spec = HARDWARE_CONTROLS.get(command.get("name"))
         return spec.title if spec else "Camera settings"
+    if action == "environment_preset" and command.get("operation") == "load":
+        return "Environment + calibration preset"
     return {
         "pipeline": "Camera pipeline",
         "tone": "Camera gamma / boost",

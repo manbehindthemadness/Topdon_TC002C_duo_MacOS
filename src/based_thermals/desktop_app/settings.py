@@ -45,6 +45,7 @@ class SettingsController(SessionState):
             "hardware": self.remembered_hardware,
             "spot_hardware": self.remembered_spot_hardware,
             "ambient_input_celsius": self.ambient_input_celsius,
+            "environment_preset": self.environment_presets.current_name,
             "spots": self.last_saved_spots,
             "rotation": self.renderer.rotation,
             "viewer_layout": self.viewer_layout,
@@ -362,6 +363,7 @@ class SettingsController(SessionState):
             if self.pipeline_worker is not None
             else {},
             "hardware": ui_hardware,
+            "environment_presets": self.environment_presets.state(),
             "color_source": (
                 "camera"
                 if self.actual_image_source == "preview"

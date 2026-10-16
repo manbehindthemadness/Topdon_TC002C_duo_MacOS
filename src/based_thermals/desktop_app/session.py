@@ -10,6 +10,7 @@ from ..maintenance_panel import MaintenancePanel
 from ..measurements.drawing import MeasurementDrawing
 from .capture import CaptureController
 from .controls import ControlsController
+from .environment import EnvironmentPresets
 from .maintenance import MaintenanceController
 from .measurement_drawing import MeasurementDrawingController
 from .presentation import PresentationController
@@ -210,6 +211,7 @@ class DesktopSession(
         self.graphs.configure(self.graph_settings)
         self.actual_image_source = self.renderer.image_source
         self.pending_save_kind: str | None = None
+        self.environment_presets = EnvironmentPresets(self)
         self.capture_cursor = self.saved_settings.get("capture_cursor", False)
         self.capture_graphs = self.saved_settings.get("capture_graphs", False)
         self.recording_graphs = False

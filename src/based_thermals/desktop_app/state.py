@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from ..maintenance.logging import SupportLogging
     from ..maintenance_panel import MaintenancePanel
     from ..measurements.drawing import MeasurementDrawing
+    from .environment import EnvironmentPresets
 
 
 @dataclass
@@ -48,6 +49,7 @@ class SessionState:
     display_awake: api_types.DisplayAwake = field(init=False)
     distance_calibration: api_types.DistanceCalibrator = field(init=False)
     emissivity_calibration: api_types.EmissivityCalibrator = field(init=False)
+    environment_presets: EnvironmentPresets = field(init=False)
     event_viewport: tuple[int, int] | None = None
     frame: bytes | CameraFrame | None = None
     frame_pump: api_types.CameraFramePump | None = None

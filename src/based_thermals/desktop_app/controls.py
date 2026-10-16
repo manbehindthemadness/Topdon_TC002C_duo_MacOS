@@ -33,6 +33,7 @@ class ControlsController(SessionState):
         applied = action in (
             "distance_calibration", "emissivity_calibration", "reflected_calibration",
         ) and command.get("operation") == "apply"
+        applied = applied or (action == "environment_preset" and command.get("operation") == "load")
         if not (correction or applied or action == "restore_hardware"):
             self.renderer.reset_measurement_average()
             return
@@ -199,6 +200,7 @@ class ControlsController(SessionState):
                 "restore_hardware",
                 "reset",
                 "distance_calibration",
+                "environment_preset",
             ):
                 self.notify("Stop logging or calibration measurement before changing settings.")
                 continue
@@ -256,6 +258,8 @@ class ControlsController(SessionState):
                     if command["action"] == "pipeline":
                         self.set_pipeline(command["document"])
                         self.hardware.error = ""
+                elif command.get("action") == "environment_preset":
+                    self.environment_presets.command(command)
                 elif command.get("action") == "setting":
                     self.set_view_setting(command["name"], command["value"])
                 elif command.get("action") in (
@@ -486,7 +490,7 @@ class ControlsController(SessionState):
                     self.persist_settings()
                 elif command.get("action") == "error":
                     self.notify(f"Imaging window failed: {command.get('message', '')}")
-            except (KeyError, ValueError, TypeError, self.api.CameraError) as exc:
+            except (KeyError, ValueError, TypeError, OSError, self.api.CameraError) as exc:
                 self.hardware.error = f"Camera setting rejected: {exc}"
                 operation_error = self.hardware.error
                 self.notify(self.hardware.error)

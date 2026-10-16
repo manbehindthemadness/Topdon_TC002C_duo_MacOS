@@ -112,6 +112,11 @@ on release. See the [measurement editing guide](docs/measurements-guide.md#edit-
 exclusions and graph sampling. Its mixed state means only some are enabled;
 clicking mixed shows all. This control follows the existing logging/calibration locks.
 
+Imaging's **Environment + calibration presets** save environmental values and
+calibration references together as one named setup. Create your own presets,
+then select one to restore both sections and recalibrate the camera. No presets
+are bundled. See the [preset workflow](docs/calibration.md#environment--calibration-presets).
+
 In portrait layout, charts and their controls move below the image. The main
 toolbar uses slightly narrower native buttons to fit the default rotated image
 width with graphs hidden. Smaller windows use Qt's toolbar overflow menu.

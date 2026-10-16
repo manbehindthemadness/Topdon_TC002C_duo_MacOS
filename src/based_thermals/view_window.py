@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from .camera_backends.duo.hardware_controls import HARDWARE_CONTROLS, camera_operation_title
 from .capture_window import run_window
+from .environment_preset_ui import EnvironmentPresetControls
 from .view_controls import (
     ControlRow,
     NoWheelCheckBox,
@@ -409,6 +410,17 @@ class ReflectedCalibrationControls(QWidget):
 
 
 class ViewWindow(QWidget):
+    def prepare_environment_preset(self, save: bool) -> None:
+        """
+        Flush environmental edits before snapshots and stop stale edits before preset loads.
+        """
+        for row in self.hardware_rows.values():
+            if save and hasattr(row.input, "interpretText"):
+                row.input.interpretText()
+            if save and row.timer.isActive():
+                row.timer.timeout.emit()
+            row.timer.stop()
+
     def _set_environment_expanded(self, expanded: bool) -> None:
         """
         Show environmental controls and remember the disclosure state independently of hardware.
@@ -466,6 +478,10 @@ class ViewWindow(QWidget):
         rows = QVBoxLayout(body)
         self.pipeline_editor = PipelineEditor(self._send, ControlRow)
         rows.addWidget(self.pipeline_editor)
+        self.environment_presets = EnvironmentPresetControls(
+            self._send, self.prepare_environment_preset,
+        )
+        rows.addWidget(self.environment_presets)
         self.environment_button = QPushButton()
         self.environment_button.setAccessibleName("Environment")
         self.environment_button.setStyleSheet("text-align: left; font-weight: bold")
@@ -597,7 +613,10 @@ class ViewWindow(QWidget):
                 row.timer.stop()
             self._send({"action": "restore_hardware"})
 
-    def update_state(self, state):
+    def update_state(self, state: dict[str, Any]) -> None:
+        """
+        Refresh acknowledged pipeline, environment and calibration controls and their locks.
+        """
         anchor = state.get("anchor_top_right")
         if (
             sys.platform != "darwin"
@@ -626,6 +645,7 @@ class ViewWindow(QWidget):
         self.cancel_tone.setVisible(tone_busy)
         self.cancel_tone.setEnabled(tone_busy and not state.get("settings_locked", False))
         self.pipeline_editor.update_state(state, locked)
+        self.environment_presets.update_state(state.get("environment_presets", {}), locked)
         from .hardware_ui import update_hardware_ui
 
         update_hardware_ui(self, state, locked)

@@ -11,6 +11,7 @@ DEVICE_KEYS = frozenset({
     "hardware", "spot_hardware", "pipeline", "spots", "ambient_input_celsius", "advanced_auto",
     "auto_calibrate", "fixed_range", "processing_preset", "camera_gamma", "camera_boost",
     "distance_calibration", "emissivity_calibration", "reflected_calibration",
+    "environment_preset",
 })
 
 

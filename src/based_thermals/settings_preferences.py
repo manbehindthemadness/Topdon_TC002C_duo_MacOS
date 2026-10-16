@@ -47,6 +47,9 @@ def load_settings(
             saved = {**{key: value for key, value in shared.items() if key not in DEVICE_KEYS},
                      **saved}
     result: dict[str, Any] = {"display": {}, "hardware": {}}
+    preset_name = saved.get("environment_preset")
+    if isinstance(preset_name, str) and preset_name.strip():
+        result["environment_preset"] = preset_name
     for section in ("display", "hardware"):
         values = saved.get(section, {})
         if not isinstance(values, dict):

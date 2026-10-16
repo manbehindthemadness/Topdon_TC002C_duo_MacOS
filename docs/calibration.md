@@ -69,6 +69,51 @@ reflector-measurement probes do not trigger this extra recalibration. If the
 recalibration request fails, the applied setting remains saved and the viewer
 reports the failure.
 
+## Environment + calibration presets
+
+The **Environment + calibration presets** selector in Imaging, above both
+sections, saves them as **one preset**. There are no bundled presets. Set and
+apply the environment values and calibration results you want to reuse, close
+any calibration tool, then click **Save preset** and give the setup a name.
+
+Each preset contains the current camera's supported whole-camera environmental
+values (ambient temperature, distance, emissivity, reflected temperature, optical
+transmission and humidity on the Duo) plus its saved distance, emissivity and
+reflected-temperature calibration references. Values are stored in Celsius and
+meters regardless of display units. References that have not been calibrated
+are saved as empty; loading such a preset clears the corresponding old reference.
+Unfinished measurements, display units, pipelines, palettes and measuring spots
+are not part of these presets.
+
+Choose a saved name to load the environment and calibration references together.
+The viewer validates the complete preset before writing, applies its environmental
+values as explicit camera overrides, saves the working configuration, then requests
+one camera recalibration when supported. It attempts to restore the previous
+settings if a hardware write fails. A failed recalibration request retains the
+successfully applied preset and reports the error separately.
+
+**Update preset** replaces the selected preset with the current setup. The
+selector also offers **Save current settings as…**, **Rename current preset…** and
+**Delete current preset…**; replacing an existing name or deleting requires
+confirmation. Edited settings retain the selected name with a **(modified)**
+label until updated or reloaded. Saving, renaming and deleting presets do not
+change camera settings, except that saving first commits pending environment
+input edits. Presets are locked during logging, pending logging dialogs, tone
+updates and open calibration tools.
+
+The selector reports **saved** for an unchanged selected preset and **modified**
+for changes to that preset. If the selected name is missing, it recognizes a
+saved preset only when all environment values and calibration references match;
+recognition does not apply settings or recalibrate the camera.
+
+User presets and the selected name survive restarting, Reset display and Restore
+camera settings. They are stored beside the camera's preferences in
+`environment-presets.json` (profile-specific files for other cameras), separately
+from pipeline presets. The normal saved working settings restore at connection;
+selecting a preset is an explicit load, not an extra startup camera operation.
+Presets are limited to compatible camera profiles; verify the material, distance
+and environmental conditions before reusing a calibrated setup.
+
 ## Distance calibration with a square
 
 Imaging → Distance calibration uses a **76 × 76 mm Post-it** by default. You can
