@@ -100,6 +100,14 @@ class MeasurementsWindow(QWidget):
         self.placing.toggled.connect(
             lambda enabled: self.send({"action": "placing", "enabled": enabled})
         )
+        self.dynamic_markers = QCheckBox("Dynamic markers")
+        self.dynamic_markers.setToolTip(
+            "Show 10 px circles at the coldest point (blue), hottest point (red), "
+            "and camera center (green), with inverted contrast halos."
+        )
+        self.dynamic_markers.toggled.connect(
+            lambda enabled: self.send({"action": "dynamic_markers", "enabled": enabled})
+        )
         self.calibrate = QPushButton("Calibrate now")
         self.calibrate.clicked.connect(lambda: self.send({"action": "calibrate_now"}))
         header.addWidget(self.kind)
@@ -107,6 +115,7 @@ class MeasurementsWindow(QWidget):
         header.addWidget(self.draw_exclude)
         header.addWidget(self.auto_hide)
         header.addWidget(self.placing)
+        header.addWidget(self.dynamic_markers)
         header.addStretch()
         header.addWidget(self.calibrate)
         layout.addLayout(header)
@@ -662,11 +671,14 @@ class MeasurementsWindow(QWidget):
                     self.items.setCurrentItem(item)
         with QSignalBlocker(self.placing):
             self.placing.setChecked(bool(state.get("placing")))
+        with QSignalBlocker(self.dynamic_markers):
+            self.dynamic_markers.setChecked(bool(state.get("dynamic_markers", False)))
         self._loading = False
         for control in (self.kind, self.create, self.draw_exclude, self.placing, self.clear):
             control.setEnabled(not locked)
         for control in (self.create, self.placing):
             control.setEnabled(not locked and state.get("mapping_available", True))
+        self.dynamic_markers.setEnabled(not locked and state.get("mapping_available", True))
         selected = self._selected in new_items
         self.delete.setEnabled(selected and not locked)
         self.clear_history.setEnabled(

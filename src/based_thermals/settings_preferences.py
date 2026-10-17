@@ -136,6 +136,7 @@ def load_settings(
         "advanced_auto",
         "show_graph",
         "auto_calibrate",
+        "dynamic_markers",
         "fixed_range",
         "capture_cursor",
         "capture_graphs",

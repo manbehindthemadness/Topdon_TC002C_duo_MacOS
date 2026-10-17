@@ -332,6 +332,8 @@ class PresentationController(SessionState):
                 self.renderer.temperature_unit,
             )
         elif not self.emissivity_calibration.active:
+            if self.dynamic_markers and not self.distance_calibration.selecting:
+                self.display = self.api.draw_dynamic_markers(self.display, self.rendered)
             self.display = self.api.draw_sample_spots(
                 self.display,
                 self.rendered,

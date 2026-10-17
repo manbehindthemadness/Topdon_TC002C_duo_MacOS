@@ -47,6 +47,7 @@ class SettingsController(SessionState):
             "ambient_input_celsius": self.ambient_input_celsius,
             "environment_preset": self.environment_presets.current_name,
             "spots": self.last_saved_spots,
+            "dynamic_markers": self.dynamic_markers,
             "rotation": self.renderer.rotation,
             "viewer_layout": self.viewer_layout,
             "advanced_auto": self.advanced_auto,
@@ -261,6 +262,7 @@ class SettingsController(SessionState):
             "orientation": [self.renderer.rotation, self.renderer.mirror_horizontal,
                             self.renderer.mirror_vertical],
             "placing": self.spots.placing,
+            "dynamic_markers": self.dynamic_markers,
             "mapping_available": not hasattr(self, "rendered") or self.rendered.measurement_mapping_valid,
             "calibration_available": self.calibration_available
             and not self.renderer.measurement_status,

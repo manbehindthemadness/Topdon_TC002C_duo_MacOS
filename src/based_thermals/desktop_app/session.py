@@ -165,6 +165,7 @@ class DesktopSession(
         self.display_awake = self.api.DisplayAwake()
         self.picker = self.api.MousePicker()
         self.spots = self.api.SampleSpots()
+        self.dynamic_markers = self.saved_settings.get("dynamic_markers", False)
         self.spots.native_size = self.camera_profile.native_size
         if "spots" in self.saved_settings:
             self.spots.restore_saved_state(

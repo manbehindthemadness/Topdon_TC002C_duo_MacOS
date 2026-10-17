@@ -42,6 +42,18 @@ Graphs, toolbar areas and image padding are not drawing targets.
 For quick single-pixel spots, press `P` or check **Place spots on image (P)**,
 then click positions. Press `P` again to stop placement without removing spots.
 
+**Dynamic markers**, immediately to the right of **Place spots on image**, is
+off by default. Enable it to show three 10 px diameter circle outlines on the
+camera feed at the coldest pixel (blue), hottest pixel (red) and camera center
+(green). The colored circle lines have inverted halos with the same black/white
+contrast treatment as dynamic measurement lines. The hot/cold markers follow
+each frame's global temperature
+readings, including rotation and mirroring, rather than palette brightness.
+They are display-only and do not create measuring spots or change sampling,
+graphs, CSV logs or radiometric data. They hide during calibration tools or
+invalid/unregistered readings. The checkbox follows the measurement panel's
+locks, and your choice is remembered for the camera profile.
+
 ## Configure, move or disable an area
 
 Each measurement has **Line Color**, **Fill**, and **Opacity** controls.

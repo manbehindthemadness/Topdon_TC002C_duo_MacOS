@@ -116,6 +116,7 @@ end run
 from .desktop_app.captures import restore_user_ownership, save_capture
 from .desktop_app.cli import parse_args
 from .desktop_app.dialogs import LinuxSaveDialog, MacSaveDialog
+from .desktop_app.dynamic_markers import draw_dynamic_markers
 from .desktop_app.layout import (
     GraphWindowLayout,
     ToolbarLayout,
@@ -225,6 +226,7 @@ __all__ = [
     "draw_contrasting_overlay",
     "draw_control_instructions",
     "draw_distance_selection",
+    "draw_dynamic_markers",
     "draw_emissivity_point",
     "draw_graph_logging_control",
     "draw_label_leader",

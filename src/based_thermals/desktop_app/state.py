@@ -48,6 +48,7 @@ class SessionState:
     display: np.ndarray = field(init=False)
     display_awake: api_types.DisplayAwake = field(init=False)
     distance_calibration: api_types.DistanceCalibrator = field(init=False)
+    dynamic_markers: bool = False
     emissivity_calibration: api_types.EmissivityCalibrator = field(init=False)
     environment_presets: EnvironmentPresets = field(init=False)
     event_viewport: tuple[int, int] | None = None

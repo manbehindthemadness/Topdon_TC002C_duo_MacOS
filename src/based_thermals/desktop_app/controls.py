@@ -133,6 +133,13 @@ class ControlsController(SessionState):
                     if type(command["enabled"]) is not bool:
                         raise ValueError("Placement state must be a boolean")
                     self.spots.placing = command["enabled"]
+                elif action == "dynamic_markers":
+                    if type(command.get("enabled")) is not bool:
+                        raise ValueError("Dynamic markers state must be a boolean")
+                    if not self.spots_state()["mapping_available"]:
+                        raise ValueError("Image registration is unavailable for dynamic markers")
+                    self.dynamic_markers = command["enabled"]
+                    self.persist_settings()
                 elif action == "enable":
                     self.spots.set_enabled(command["spot"], command["enabled"])
                 elif action == "enable_all":

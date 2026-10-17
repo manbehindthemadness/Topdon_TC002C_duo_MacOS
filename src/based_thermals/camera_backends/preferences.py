@@ -12,6 +12,7 @@ DEVICE_KEYS = frozenset({
     "auto_calibrate", "fixed_range", "processing_preset", "camera_gamma", "camera_boost",
     "distance_calibration", "emissivity_calibration", "reflected_calibration",
     "environment_preset",
+    "dynamic_markers",
 })
 
 
