@@ -19,6 +19,7 @@ from support.qt_process import run_popup
 from based_thermals import desktop
 from based_thermals.camera import HEADER_U16, SENSOR_PIXELS
 from based_thermals.desktop_app.dynamic_markers import draw_dynamic_markers
+from based_thermals.desktop_app.overlays import draw_contrasting_overlay
 from based_thermals.render import RenderedThermalFrame, ThermalRenderer
 from based_thermals.settings_preferences import load_settings
 
@@ -42,9 +43,23 @@ def marked_frame(
     return rendered
 
 
+def full_canvas_markers(image: np.ndarray, points: list[tuple[int, int]]) -> np.ndarray:
+    """
+    Preserve the original full-canvas rendering as an independent pixel reference.
+    """
+    mask = np.zeros(image.shape[:2], np.uint8)
+    for point in points:
+        cv2.circle(mask, point, 5, 255, 1, cv2.LINE_AA)
+    halo = cv2.dilate(mask, np.ones((3, 3), np.uint8))
+    result = draw_contrasting_overlay(image, halo, np.zeros_like(mask))
+    for point, color in zip(points, ((255, 128, 0), (0, 0, 255), (0, 255, 0)), strict=True):
+        cv2.circle(result, point, 5, color, 1, cv2.LINE_AA)
+    return result
+
+
 @pytest.mark.parametrize("scale", [1, 2, 4])
 def test_fixed_diameter_markers_follow_measurements_and_preserve_inputs(
-    monkeypatch: pytest.MonkeyPatch, scale: int,
+    scale: int,
 ) -> None:
     """
     Mark known sensor targets with fixed display-size circles, never palette extrema.
@@ -57,42 +72,32 @@ def test_fixed_diameter_markers_follow_measurements_and_preserve_inputs(
     before_temperatures = rendered.temperatures_celsius.copy()
     assert rendered.raw_counts is not None
     before_counts = rendered.raw_counts.copy()
-    spy = Mock(wraps=cv2.circle)
-    monkeypatch.setattr("based_thermals.desktop_app.dynamic_markers.cv2.circle", spy)
-    result = draw_dynamic_markers(image, rendered)
-    circles = spy.call_args_list[:3]
-    assert [entry.args[1] for entry in circles] == [
+    points = [
         (12 * scale + scale // 2, 10 * scale + scale // 2),
         (145 * scale + scale // 2, 129 * scale + scale // 2),
         (128 * scale + scale // 2, 96 * scale + scale // 2),
     ]
-    assert [entry.args[2] for entry in circles] == [5, 5, 5]
-    assert [entry.args[3] for entry in circles] == [255, 255, 255]
-    assert [entry.args[3] for entry in spy.call_args_list[3:]] == [
-        (255, 128, 0), (0, 0, 255), (0, 255, 0),
-    ]
+    result = draw_dynamic_markers(image, rendered)
+    np.testing.assert_array_equal(result, full_canvas_markers(image, points))
     assert np.any(result != image)
     np.testing.assert_array_equal(image, before_image)
     np.testing.assert_array_equal(rendered.temperatures_celsius, before_temperatures)
     np.testing.assert_array_equal(rendered.raw_counts, before_counts)
     changed_y, changed_x = np.where(np.any(result != image, axis=2))
     for x, y in zip(changed_x, changed_y, strict=True):
-        assert any((x - entry.args[1][0]) ** 2 + (y - entry.args[1][1]) ** 2 <= 9 ** 2
-                   for entry in circles)
+        assert any((x - px) ** 2 + (y - py) ** 2 <= 9 ** 2 for px, py in points)
 
 
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 @pytest.mark.parametrize("horizontal,vertical", [(False, False), (True, False), (False, True), (True, True)])
 def test_markers_follow_camera_rotation_and_mirrors(
-    monkeypatch: pytest.MonkeyPatch, rotation: int, horizontal: bool, vertical: bool,
+    rotation: int, horizontal: bool, vertical: bool,
 ) -> None:
     """
     Sensor targets land at the corresponding oriented camera pixels in every viewing direction.
     """
     rendered = marked_frame(2, rotation, horizontal, vertical)
-    spy = Mock(wraps=cv2.circle)
-    monkeypatch.setattr("based_thermals.desktop_app.dynamic_markers.cv2.circle", spy)
-    draw_dynamic_markers(rendered.image, rendered)
+    result = draw_dynamic_markers(rendered.image, rendered)
     expected = []
     for x, y in ((12, 10), (145, 129)):
         width, height = 256, 192
@@ -104,12 +109,12 @@ def test_markers_follow_camera_rotation_and_mirrors(
         if vertical:
             y = height - 1 - y
         expected.append((x * 2 + 1, y * 2 + 1))
-    assert [entry.args[1] for entry in spy.call_args_list[:2]] == expected
+    height, width = rendered.temperatures_celsius.shape
+    expected.append((width // 2 * 2 + 1, height // 2 * 2 + 1))
+    np.testing.assert_array_equal(result, full_canvas_markers(rendered.image, expected))
 
 
-def test_markers_refresh_when_the_same_temperature_array_is_reused(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_markers_refresh_when_the_same_temperature_array_is_reused() -> None:
     """
     Moving extrema must not retain positions from an earlier frame or a cached array identity.
     """
@@ -118,10 +123,53 @@ def test_markers_refresh_when_the_same_temperature_array_is_reused(
     rendered.temperatures_celsius.fill(20)
     rendered.temperatures_celsius[40, 50] = 0
     rendered.temperatures_celsius[80, 100] = 100
-    spy = Mock(wraps=cv2.circle)
-    monkeypatch.setattr("based_thermals.desktop_app.dynamic_markers.cv2.circle", spy)
+    result = draw_dynamic_markers(rendered.image, rendered)
+    np.testing.assert_array_equal(
+        result, full_canvas_markers(rendered.image, [(50, 40), (100, 80), (128, 96)]),
+    )
+
+
+@pytest.mark.parametrize("size", [(1024, 768), (768, 1024), (23, 19)])
+@pytest.mark.parametrize("layout", ["spread", "overlap", "chain", "edges", "flat"])
+def test_local_regions_match_original_compositing(size: tuple[int, int], layout: str) -> None:
+    """
+    Match full-canvas pixels at edges, shared halos, chained regions and coincident extrema.
+    """
+    width, height = size
+    temperatures = np.full((height, width), 20.0)
+    positions = {
+        "spread": ((width // 4, height // 4), (width * 3 // 4, height * 3 // 4)),
+        "overlap": ((width // 2 - 2, height // 2), (width // 2 + 2, height // 2)),
+        "chain": ((width // 2 - 18, height // 2), (width // 2 - 36, height // 2)),
+        "edges": ((0, 0), (width - 1, height - 1)),
+        "flat": ((0, 0), (0, 0)),
+    }
+    minimum, maximum = positions[layout]
+    minimum = (max(0, minimum[0]), minimum[1])
+    maximum = (max(0, maximum[0]), maximum[1])
+    if layout != "flat":
+        temperatures[minimum[1], minimum[0]] = 0
+        temperatures[maximum[1], maximum[0]] = 100
+    if minimum == maximum:
+        minimum = (0, 0)
+    image = np.random.default_rng(42).integers(0, 256, (height, width, 3), dtype=np.uint8)
+    rendered = replace(marked_frame(1), image=image, temperatures_celsius=temperatures)
+    points = [minimum, maximum, (width // 2, height // 2)]
+    np.testing.assert_array_equal(
+        draw_dynamic_markers(image, rendered), full_canvas_markers(image, points),
+    )
+
+
+def test_separated_markers_composite_only_small_regions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Bound contrast work to three 21-pixel patches even when markers span a large display.
+    """
+    rendered = marked_frame(4)
+    spy = Mock(wraps=draw_contrasting_overlay)
+    monkeypatch.setattr("based_thermals.desktop_app.dynamic_markers.draw_contrasting_overlay", spy)
     draw_dynamic_markers(rendered.image, rendered)
-    assert [entry.args[1] for entry in spy.call_args_list[:2]] == [(50, 40), (100, 80)]
+    assert spy.call_count == 3
+    assert [call.args[0].shape for call in spy.call_args_list] == [(21, 21, 3)] * 3
 
 
 @pytest.mark.parametrize("background", [0, 127, 128, 255])
