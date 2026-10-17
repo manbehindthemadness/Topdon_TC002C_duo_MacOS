@@ -614,7 +614,7 @@ class PresentationController(SessionState):
                     measurements_valid=self.rendered.measurements_valid,
                 )
             )
-            self.graph_image = self.graphs.image(graph_size, resize=True).copy()
+            self.graph_image = self.graphs.image(graph_size).copy()
             if self.viewer is not None and self.graph_image.shape[0] > 34:
                 # The cached capture graph retains its history heading. Qt owns
                 # that heading in the live window, so display only the charts.

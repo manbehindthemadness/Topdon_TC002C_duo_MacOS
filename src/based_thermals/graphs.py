@@ -179,6 +179,7 @@ class GraphWorker:
         self._interval = GRAPH_INTERVAL
         self._reschedule = False
         self._redraw = False
+        self._render_generation = 0
         self._history_generation = 0
         self._history_paused = False
         self._thread = threading.Thread(target=self._run, name="temperature-graphs", daemon=True)
@@ -418,10 +419,15 @@ class GraphWorker:
 
     def submit(self, snapshot: GraphSnapshot) -> None:
         """
-        Queue the latest frame and discard histories whose curve count changed.
+        Redraw opened/resized panes immediately without changing the sampling deadline.
+
+        Discard histories whose curve count changed and invalidate obsolete pane renders.
         """
         with self._condition:
             first = self._latest is None
+            if first or snapshot.size != self._latest.size:
+                self._render_generation += 1
+                self._redraw = True
             for key, value in snapshot.spots:
                 history: History | None = self._spots.get(key)
                 if history and len(history[-1][1]) != len(series_values(value)):
@@ -521,6 +527,7 @@ class GraphWorker:
                     self._sample(snapshot, now, compact=False)
                     self._write_log(snapshot, now)
                 generation = self._history_generation
+                render_generation = self._render_generation
                 master = visible_history(
                     self._master,
                     now,
@@ -543,6 +550,7 @@ class GraphWorker:
                     self._latest is not None
                     and not self._closed
                     and generation == self._history_generation
+                    and render_generation == self._render_generation
                 ):
                     self._image = result
                     self._condition.notify_all()

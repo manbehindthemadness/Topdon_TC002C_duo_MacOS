@@ -190,7 +190,8 @@ Reference each have three curves; Exclude peak has none. The same synthetic scen
 can also be displayed in landscape layout. On narrow windows, use toolbar overflow
 for controls that do not fit.*
 
-- **Update (s)** sets the sampling/update interval.
+- **Update (s)** sets the sampling/update interval. Opening or resizing charts
+  redraws them immediately; resizing does not add temperature samples or CSV rows.
 - **Config** chooses the entire session or a recent time window, the point budget,
   and whether to compress older history. Compression preserves older peaks/gaps;
   without it, old points are discarded when the budget fills.
